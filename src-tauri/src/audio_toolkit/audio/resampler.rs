@@ -63,6 +63,15 @@ impl FrameResampler {
         }
     }
 
+    /// Reset internal buffers so the resampler can be reused for a new recording session.
+    pub fn reset(&mut self) {
+        self.in_buf.clear();
+        self.pending.clear();
+        if let Some(ref mut resampler) = self.resampler {
+            resampler.reset();
+        }
+    }
+
     pub fn finish(&mut self, mut emit: impl FnMut(&[f32])) {
         // Process any remaining input samples
         if let Some(ref mut resampler) = self.resampler {

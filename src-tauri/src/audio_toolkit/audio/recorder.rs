@@ -328,6 +328,7 @@ fn run_consumer(
                 Cmd::Start => {
                     processed_samples.clear();
                     recording = true;
+                    frame_resampler.reset(); // Reset resampler state from previous recording
                     visualizer.reset(); // Reset visualization buffer
                     if let Some(v) = &vad {
                         v.lock().unwrap().reset();
