@@ -724,14 +724,41 @@ impl ModelManager {
             .models_dir
             .join(format!("{}.partial", &model_info.filename));
 
-        // Don't download if complete version already exists
+        // Don't download if complete version already exists and is valid
         if model_path.exists() {
-            // Clean up any partial file that might exist
-            if partial_path.exists() {
-                let _ = fs::remove_file(&partial_path);
+            let is_valid = if model_info.is_directory {
+                // Directory-based model: check it's a non-empty directory
+                model_path.is_dir()
+                    && fs::read_dir(&model_path)
+                        .map(|mut d| d.next().is_some())
+                        .unwrap_or(false)
+            } else {
+                // File-based model: check it's not empty (corrupt download)
+                model_path
+                    .metadata()
+                    .map(|m| m.len() > 0)
+                    .unwrap_or(false)
+            };
+
+            if is_valid {
+                // Clean up any partial file that might exist
+                if partial_path.exists() {
+                    let _ = fs::remove_file(&partial_path);
+                }
+                self.update_download_status()?;
+                return Ok(());
+            } else {
+                // Existing file/directory is corrupt (empty), remove and re-download
+                warn!(
+                    "Model {} exists but appears corrupt, removing and re-downloading",
+                    model_id
+                );
+                if model_path.is_dir() {
+                    let _ = fs::remove_dir_all(&model_path);
+                } else {
+                    let _ = fs::remove_file(&model_path);
+                }
             }
-            self.update_download_status()?;
-            return Ok(());
         }
 
         // Check if we have a partial download to resume

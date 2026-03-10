@@ -115,9 +115,19 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // on macOS before the user is ready.
 
     // Initialize the managers
-    let recording_manager = Arc::new(
-        AudioRecordingManager::new(app_handle).expect("Failed to initialize recording manager"),
-    );
+    let recording_manager = Arc::new(match AudioRecordingManager::new(app_handle) {
+        Ok(manager) => manager,
+        Err(e) => {
+            log::warn!(
+                "Failed to initialize recording manager (no microphone?): {}. \
+                 The app will start but recording won't work until a microphone is connected.",
+                e
+            );
+            // Try again without always-on mode by creating a minimal manager
+            // that will attempt to open the mic on-demand when user starts recording
+            AudioRecordingManager::new_without_mic(app_handle)
+        }
+    });
     let model_manager =
         Arc::new(ModelManager::new(app_handle).expect("Failed to initialize model manager"));
     let transcription_manager = Arc::new(
@@ -171,6 +181,11 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         )
         .show_menu_on_left_click(true)
         .icon_as_template(true)
+        .on_tray_icon_event(|tray_icon, event| {
+            if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
+                show_main_window(tray_icon.app_handle());
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
                 show_main_window(app);
@@ -393,7 +408,7 @@ pub fn run(cli_args: CliArgs) {
                     }),
                     // File logs respect the user's settings (stored in FILE_LOG_LEVEL atomic)
                     Target::new(TargetKind::LogDir {
-                        file_name: Some("parler".into()),
+                        file_name: Some("phonara".into()),
                     })
                     .filter(|metadata| {
                         let file_level = FILE_LOG_LEVEL.load(Ordering::Relaxed);

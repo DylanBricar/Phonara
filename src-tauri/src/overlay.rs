@@ -104,11 +104,14 @@ fn init_gtk_layer_shell(overlay_window: &tauri::webview::WebviewWindow) -> bool 
 }
 
 /// Forces a window to be topmost using Win32 API (Windows only)
-/// This is more reliable than Tauri's set_always_on_top which can be overridden
+/// This is more reliable than Tauri's set_always_on_top which can be overridden.
+/// Also ensures the window never steals focus from the active application.
 #[cfg(target_os = "windows")]
 fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     use windows::Win32::UI::WindowsAndMessaging::{
-        SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW,
+        GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE,
+        SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TRANSPARENT,
     };
 
     // Clone because run_on_main_thread takes 'static
@@ -118,6 +121,13 @@ fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     let _ = overlay_clone.clone().run_on_main_thread(move || {
         if let Ok(hwnd) = overlay_clone.hwnd() {
             unsafe {
+                // Add WS_EX_NOACTIVATE and WS_EX_TOOLWINDOW to prevent focus stealing
+                // WS_EX_TRANSPARENT makes the window click-through
+                let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+                let new_style =
+                    ex_style | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0 | WS_EX_TRANSPARENT.0;
+                SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
+
                 // Force Z-order: make this window topmost without changing size/pos or stealing focus
                 let _ = SetWindowPos(
                     hwnd,
@@ -392,6 +402,12 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     update_overlay_position(app_handle);
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        // Ensure overlay size is correct for the current monitor's DPI scale
+        let _ = overlay_window.set_size(tauri::Size::Logical(tauri::LogicalSize {
+            width: OVERLAY_WIDTH,
+            height: OVERLAY_HEIGHT,
+        }));
+
         let _ = overlay_window.show();
 
         #[cfg(target_os = "windows")]

@@ -254,6 +254,22 @@ impl AudioRecordingManager {
         Ok(manager)
     }
 
+    /// Creates a manager in on-demand mode without opening the microphone.
+    /// Used as a fallback when no microphone is available at startup.
+    pub fn new_without_mic(app: &tauri::AppHandle) -> Self {
+        Self {
+            state: Arc::new(Mutex::new(RecordingState::Idle)),
+            mode: Arc::new(Mutex::new(MicrophoneMode::OnDemand)),
+            app_handle: app.clone(),
+
+            recorder: Arc::new(Mutex::new(None)),
+            is_open: Arc::new(Mutex::new(false)),
+            is_recording: Arc::new(Mutex::new(false)),
+            is_paused: Arc::new(AtomicBool::new(false)),
+            did_mute: Arc::new(Mutex::new(false)),
+        }
+    }
+
     /* ---------- helper methods --------------------------------------------- */
 
     fn get_effective_microphone_device(&self, settings: &AppSettings) -> Option<cpal::Device> {
