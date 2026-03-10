@@ -445,6 +445,21 @@ mod tests {
     }
 
     #[test]
+    fn test_filter_stutter_longer_words() {
+        // Parakeet v3 can produce long repeated words (PR #976)
+        let text = "hello hello hello hello world";
+        let result = filter_transcription_output(text);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_filter_stutter_sentence_like_repeats() {
+        let text = "the the the the quick brown fox";
+        let result = filter_transcription_output(text);
+        assert_eq!(result, "the quick brown fox");
+    }
+
+    #[test]
     fn test_apply_custom_words_trailing_number_not_doubled() {
         // Verify that trailing non-alpha chars (like numbers) aren't double-counted
         // between build_ngram stripping them and extract_punctuation capturing them

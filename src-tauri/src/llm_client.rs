@@ -4,6 +4,23 @@ use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, REFER
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Resolves the effective LLM base URL for a provider.
+/// If the `PHONARA_CUSTOM_LLM_BASE_URL` environment variable is set, it takes precedence
+/// over the provider's configured base URL. This is useful when running a local LLM
+/// service on a dynamic port.
+fn resolve_base_url(provider: &PostProcessProvider) -> String {
+    if let Ok(env_url) = std::env::var("PHONARA_CUSTOM_LLM_BASE_URL") {
+        if !env_url.is_empty() {
+            debug!(
+                "Using custom LLM base URL from env: {} (overriding {})",
+                env_url, provider.base_url
+            );
+            return env_url.trim_end_matches('/').to_string();
+        }
+    }
+    provider.base_url.trim_end_matches('/').to_string()
+}
+
 #[derive(Debug, Serialize)]
 struct ChatMessage {
     role: String,
@@ -126,7 +143,7 @@ pub async fn send_chat_completion_with_schema(
         }
     }
 
-    let base_url = provider.base_url.trim_end_matches('/');
+    let base_url = resolve_base_url(provider);
     let url = format!("{}/chat/completions", base_url);
 
     debug!("Sending chat completion request to: {}", url);
@@ -207,7 +224,7 @@ pub async fn fetch_models(
         return fetch_gemini_models(&api_key).await;
     }
 
-    let base_url = provider.base_url.trim_end_matches('/');
+    let base_url = resolve_base_url(provider);
     let url = format!("{}/models", base_url);
 
     debug!("Fetching models from: {}", url);

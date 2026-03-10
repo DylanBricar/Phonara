@@ -3,9 +3,9 @@ use crate::helpers::clamshell;
 use crate::settings::{get_settings, AppSettings};
 use crate::utils;
 use log::{debug, error, info};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 
 fn set_mute(mute: bool) {
@@ -210,6 +210,10 @@ fn create_audio_recorder(
 
 /* ──────────────────────────────────────────────────────────────── */
 
+/// Duration to keep the mic stream open after recording stops in OnDemand mode.
+/// This eliminates Bluetooth microphone activation latency for subsequent recordings.
+const LAZY_CLOSE_SECS: u64 = 30;
+
 #[derive(Clone)]
 pub struct AudioRecordingManager {
     state: Arc<Mutex<RecordingState>>,
@@ -221,6 +225,10 @@ pub struct AudioRecordingManager {
     is_recording: Arc<Mutex<bool>>,
     is_paused: Arc<AtomicBool>,
     did_mute: Arc<Mutex<bool>>,
+    /// Monotonic counter incremented each time a lazy-close is scheduled.
+    /// If the value changes before the timer fires, the close is cancelled
+    /// (because a new recording started in the meantime).
+    lazy_close_gen: Arc<AtomicU64>,
 }
 
 impl AudioRecordingManager {
@@ -244,6 +252,7 @@ impl AudioRecordingManager {
             is_recording: Arc::new(Mutex::new(false)),
             is_paused: Arc::new(AtomicBool::new(false)),
             did_mute: Arc::new(Mutex::new(false)),
+            lazy_close_gen: Arc::new(AtomicU64::new(0)),
         };
 
         // Always-on?  Open immediately.
@@ -267,6 +276,7 @@ impl AudioRecordingManager {
             is_recording: Arc::new(Mutex::new(false)),
             is_paused: Arc::new(AtomicBool::new(false)),
             did_mute: Arc::new(Mutex::new(false)),
+            lazy_close_gen: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -401,6 +411,50 @@ impl AudioRecordingManager {
         debug!("Microphone stream stopped");
     }
 
+    /// Schedules a delayed microphone stream close for OnDemand mode.
+    /// If a new recording starts before the timer fires, the close is cancelled.
+    fn schedule_lazy_close(&self) {
+        let gen = self.lazy_close_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let gen_arc = Arc::clone(&self.lazy_close_gen);
+        let is_open = Arc::clone(&self.is_open);
+        let is_recording = Arc::clone(&self.is_recording);
+        let recorder = Arc::clone(&self.recorder);
+        let did_mute = Arc::clone(&self.did_mute);
+
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(LAZY_CLOSE_SECS));
+
+            // If generation changed, a new recording happened — skip close
+            if gen_arc.load(Ordering::SeqCst) != gen {
+                debug!("Lazy close cancelled (new recording started)");
+                return;
+            }
+
+            // Don't close if currently recording
+            if *is_recording.lock().unwrap() {
+                return;
+            }
+
+            let mut open_flag = is_open.lock().unwrap();
+            if !*open_flag {
+                return;
+            }
+
+            // Unmute if needed
+            let mut did_mute_guard = did_mute.lock().unwrap();
+            if *did_mute_guard {
+                set_mute(false);
+            }
+            *did_mute_guard = false;
+
+            if let Some(rec) = recorder.lock().unwrap().as_mut() {
+                let _ = rec.close();
+            }
+            *open_flag = false;
+            debug!("Microphone stream closed after {}s idle", LAZY_CLOSE_SECS);
+        });
+    }
+
     /* ---------- mode switching --------------------------------------------- */
 
     pub fn update_mode(&self, new_mode: MicrophoneMode) -> Result<(), anyhow::Error> {
@@ -503,9 +557,11 @@ impl AudioRecordingManager {
 
                 *self.is_recording.lock().unwrap() = false;
 
-                // In on-demand mode turn the mic off again
+                // In on-demand mode, schedule a lazy close instead of stopping immediately.
+                // This keeps the mic stream warm for ~30 seconds so subsequent recordings
+                // don't incur Bluetooth microphone activation latency.
                 if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
-                    self.stop_microphone_stream();
+                    self.schedule_lazy_close();
                 }
 
                 // Pad if very short
@@ -544,9 +600,9 @@ impl AudioRecordingManager {
 
             *self.is_recording.lock().unwrap() = false;
 
-            // In on-demand mode turn the mic off again
+            // In on-demand mode, schedule a lazy close
             if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
-                self.stop_microphone_stream();
+                self.schedule_lazy_close();
             }
         }
     }
