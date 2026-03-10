@@ -740,6 +740,14 @@ impl ShortcutAction for TranscribeAction {
                             change_tray_icon(&ah, TrayIconState::Idle);
                         }
 
+                        // Run post-transcription hook if configured
+                        if !transcription.is_empty() {
+                            crate::managers::transcription::run_transcription_hook(
+                                &ah,
+                                &transcription,
+                            );
+                        }
+
                         // Always save to history for non-empty results or meaningful audio duration
                         if !transcription.is_empty() || duration_seconds > 1.0 {
                             let hm_clone = Arc::clone(&hm);

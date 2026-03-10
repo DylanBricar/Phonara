@@ -1,5 +1,5 @@
 .recording-overlay {
-  height: 34px;
+  height: 40px;
   width: 200px;
   display: flex;
   align-items: center;
@@ -76,17 +76,17 @@
 .bars-container {
   display: flex;
   align-items: center;
-  gap: 3px;
-  height: 24px;
+  gap: 1.5px;
+  height: 28px;
   flex: 1;
 }
 
 .bar {
   flex: 1;
   background: rgba(255, 255, 255, 0.6);
-  max-height: 22px;
-  border-radius: 1.5px;
-  min-height: 3px;
+  max-height: 26px;
+  border-radius: 1px;
+  min-height: 2px;
   transition:
     height 60ms ease-out,
     opacity 80ms ease-out;

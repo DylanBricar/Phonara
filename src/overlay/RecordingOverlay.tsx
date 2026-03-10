@@ -121,9 +121,11 @@ const TimerDisplay: React.FC<{ startTime: number; isPaused: boolean }> = ({
   return <div className="timer-text">{display}</div>;
 };
 
+const NUM_BARS = 13;
+
 const AudioBars: React.FC = () => {
   const barsRef = useRef<HTMLDivElement>(null);
-  const smoothedRef = useRef<number[]>(Array(16).fill(0));
+  const smoothedRef = useRef<number[]>(Array(25).fill(0));
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -138,11 +140,14 @@ const AudioBars: React.FC = () => {
 
         if (barsRef.current) {
           const bars = barsRef.current.children;
-          for (let i = 0; i < bars.length; i++) {
-            const v = smoothed[i] || 0;
+          const half = Math.ceil(NUM_BARS / 2);
+          for (let i = 0; i < NUM_BARS; i++) {
+            // Mirror: map bar index to bucket index (center = highest bucket)
+            const bucketIdx = i < half ? i : NUM_BARS - 1 - i;
+            const v = smoothed[bucketIdx] || 0;
             const el = bars[i] as HTMLElement;
-            el.style.height = `${Math.min(20, 3 + Math.pow(v, 0.6) * 17)}px`;
-            el.style.opacity = `${Math.max(0.25, v * 1.4)}`;
+            el.style.height = `${Math.min(24, 2 + Math.pow(v, 0.6) * 22)}px`;
+            el.style.opacity = `${Math.max(0.2, v * 1.4)}`;
           }
         }
       });
@@ -155,7 +160,7 @@ const AudioBars: React.FC = () => {
 
   return (
     <div className="bars-container" ref={barsRef}>
-      {Array.from({ length: 9 }, (_, i) => (
+      {Array.from({ length: NUM_BARS }, (_, i) => (
         <div key={i} className="bar" />
       ))}
     </div>

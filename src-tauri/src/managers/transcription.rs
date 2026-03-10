@@ -700,6 +700,72 @@ impl TranscriptionManager {
     }
 }
 
+/// Run a post-transcription hook script if it exists.
+/// Looks for `hooks/transcription` (or `.exe`/`.bat`/`.cmd` on Windows)
+/// in the app data directory and runs it, passing the transcription text via stdin.
+pub fn run_transcription_hook(app_handle: &AppHandle, text: &str) {
+    use tauri::Manager;
+
+    let data_dir = match app_handle.path().app_data_dir() {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+
+    let hook_path = data_dir.join("hooks").join("transcription");
+
+    // On Windows, also check for .exe, .bat, .cmd
+    #[cfg(target_os = "windows")]
+    let hook_path = {
+        if hook_path.exists() {
+            hook_path
+        } else {
+            let extensions = ["exe", "bat", "cmd"];
+            extensions
+                .iter()
+                .map(|ext| hook_path.with_extension(ext))
+                .find(|p| p.exists())
+                .unwrap_or(hook_path)
+        }
+    };
+
+    if !hook_path.exists() {
+        return;
+    }
+
+    let text = text.to_string();
+    let hook = hook_path.clone();
+    std::thread::spawn(move || {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let mut child = match Command::new(&hook)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to run transcription hook {:?}: {}", hook, e);
+                return;
+            }
+        };
+
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+
+        match child.wait() {
+            Ok(status) => {
+                if !status.success() {
+                    warn!("Transcription hook exited with status: {}", status);
+                }
+            }
+            Err(e) => warn!("Failed to wait for transcription hook: {}", e),
+        }
+    });
+}
+
 impl Drop for TranscriptionManager {
     fn drop(&mut self) {
         debug!("Shutting down TranscriptionManager");
