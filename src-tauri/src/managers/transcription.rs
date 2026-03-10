@@ -473,7 +473,14 @@ impl TranscriptionManager {
         }
 
         // Get current settings for configuration
-        let settings = get_settings(&self.app_handle);
+        let mut settings = get_settings(&self.app_handle);
+
+        // Resolve "os-input" to actual language from the OS keyboard layout
+        if settings.selected_language == "os-input" {
+            settings.selected_language = crate::commands::get_language_from_os_input()
+                .unwrap_or_else(|| "auto".to_string());
+            debug!("Resolved OS input language to: {}", settings.selected_language);
+        }
 
         // Handle Gemini API separately (requires async HTTP call)
         {

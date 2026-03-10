@@ -341,6 +341,7 @@ pub fn run(cli_args: CliArgs) {
         commands::open_app_data_dir,
         commands::export_settings,
         commands::import_settings,
+        commands::get_language_from_os_input,
         commands::check_apple_intelligence_available,
         commands::initialize_enigo,
         commands::initialize_shortcuts,

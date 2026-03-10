@@ -154,6 +154,216 @@ pub fn import_settings(app: AppHandle, path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Get the language code from the current OS keyboard input method.
+/// Returns a language code (e.g., "en", "fr", "de") or None if detection fails.
+#[specta::specta]
+#[tauri::command]
+pub fn get_language_from_os_input() -> Option<String> {
+    get_os_input_language()
+}
+
+#[cfg(target_os = "windows")]
+fn get_os_input_language() -> Option<String> {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetForegroundWindow, GetWindowThreadProcessId,
+    };
+
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        let thread_id = GetWindowThreadProcessId(hwnd, None);
+        let layout = GetKeyboardLayout(thread_id);
+        // The low word of the keyboard layout handle is the language identifier (LANGID)
+        let lang_id = (layout.0 as u32) & 0xFFFF;
+        // Primary language is the low 10 bits
+        let primary_lang = lang_id & 0x3FF;
+        keyboard_lang_id_to_code(primary_lang)
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn get_os_input_language() -> Option<String> {
+    use std::process::Command;
+    // Use defaults to read the current input source
+    let output = Command::new("defaults")
+        .args(["read", "com.apple.HIToolbox", "AppleSelectedInputSources"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    // Look for "KeyboardLayout Name" pattern - extract language from it
+    // The input source ID typically contains the language code
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("KeyboardLayout Name") {
+            // Extract the value after "="
+            if let Some(name) = trimmed.split('=').nth(1) {
+                let name = name.trim().trim_matches('"').trim_matches(';').trim();
+                return input_source_to_lang(name);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn get_os_input_language() -> Option<String> {
+    use std::process::Command;
+    // Try setxkbmap on X11
+    if let Ok(output) = Command::new("setxkbmap").args(["-query"]).output() {
+        let text = String::from_utf8_lossy(&output.stdout);
+        for line in text.lines() {
+            if line.starts_with("layout:") {
+                let layout = line.trim_start_matches("layout:").trim();
+                // Take first layout if multiple
+                let primary = layout.split(',').next().unwrap_or(layout).trim();
+                return xkb_layout_to_lang(primary);
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "windows")]
+fn keyboard_lang_id_to_code(primary_lang: u32) -> Option<String> {
+    // Windows primary language IDs (SUBLANG-neutral)
+    match primary_lang {
+        0x09 => Some("en".into()),
+        0x0C => Some("fr".into()),
+        0x07 => Some("de".into()),
+        0x0A => Some("es".into()),
+        0x10 => Some("it".into()),
+        0x16 => Some("pt".into()),
+        0x13 => Some("nl".into()),
+        0x19 => Some("ru".into()),
+        0x11 => Some("ja".into()),
+        0x04 => Some("zh".into()),
+        0x12 => Some("ko".into()),
+        0x1E => Some("th".into()),
+        0x2A => Some("vi".into()),
+        0x01 => Some("ar".into()),
+        0x0D => Some("he".into()),
+        0x39 => Some("hi".into()),
+        0x15 => Some("pl".into()),
+        0x05 => Some("cs".into()),
+        0x1B => Some("sk".into()),
+        0x0E => Some("hu".into()),
+        0x18 => Some("ro".into()),
+        0x02 => Some("bg".into()),
+        0x1A => Some("hr".into()),
+        0x24 => Some("sl".into()),
+        0x27 => Some("lt".into()),
+        0x26 => Some("lv".into()),
+        0x25 => Some("et".into()),
+        0x0B => Some("fi".into()),
+        0x1D => Some("sv".into()),
+        0x14 => Some("no".into()),
+        0x06 => Some("da".into()),
+        0x08 => Some("el".into()),
+        0x1F => Some("tr".into()),
+        0x21 => Some("id".into()),
+        0x3E => Some("ms".into()),
+        0x20 => Some("ur".into()),
+        0x29 => Some("fa".into()),
+        0x0F => Some("is".into()),
+        0x03 => Some("ca".into()),
+        0x36 => Some("af".into()),
+        0x22 => Some("uk".into()),
+        0x41 => Some("sw".into()),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn input_source_to_lang(name: &str) -> Option<String> {
+    let lower = name.to_lowercase();
+    // Common macOS keyboard layout names
+    if lower.contains("french") || lower == "azerty" {
+        Some("fr".into())
+    } else if lower.contains("german") || lower == "qwertz" {
+        Some("de".into())
+    } else if lower.contains("spanish") {
+        Some("es".into())
+    } else if lower.contains("italian") {
+        Some("it".into())
+    } else if lower.contains("portuguese") {
+        Some("pt".into())
+    } else if lower.contains("russian") {
+        Some("ru".into())
+    } else if lower.contains("japanese") || lower == "kana" || lower == "romaji" {
+        Some("ja".into())
+    } else if lower.contains("chinese") || lower.contains("pinyin") || lower.contains("zhuyin") {
+        Some("zh".into())
+    } else if lower.contains("korean") {
+        Some("ko".into())
+    } else if lower.contains("arabic") {
+        Some("ar".into())
+    } else if lower.contains("hebrew") {
+        Some("he".into())
+    } else if lower.contains("hindi") {
+        Some("hi".into())
+    } else if lower.contains("thai") {
+        Some("th".into())
+    } else if lower.contains("vietnamese") {
+        Some("vi".into())
+    } else if lower.contains("turkish") {
+        Some("tr".into())
+    } else if lower.contains("polish") {
+        Some("pl".into())
+    } else if lower.contains("dutch") {
+        Some("nl".into())
+    } else if lower.contains("us") || lower.contains("abc") || lower.contains("british") || lower.contains("australian") || lower.contains("canadian") {
+        Some("en".into())
+    } else {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn xkb_layout_to_lang(layout: &str) -> Option<String> {
+    match layout {
+        "us" | "gb" => Some("en".into()),
+        "fr" => Some("fr".into()),
+        "de" => Some("de".into()),
+        "es" => Some("es".into()),
+        "it" => Some("it".into()),
+        "pt" => Some("pt".into()),
+        "ru" => Some("ru".into()),
+        "jp" => Some("ja".into()),
+        "cn" => Some("zh".into()),
+        "kr" => Some("ko".into()),
+        "nl" => Some("nl".into()),
+        "pl" => Some("pl".into()),
+        "tr" => Some("tr".into()),
+        "ar" => Some("ar".into()),
+        "il" => Some("he".into()),
+        "th" => Some("th".into()),
+        "vn" => Some("vi".into()),
+        "in" => Some("hi".into()),
+        "cz" => Some("cs".into()),
+        "sk" => Some("sk".into()),
+        "hu" => Some("hu".into()),
+        "ro" => Some("ro".into()),
+        "bg" => Some("bg".into()),
+        "hr" => Some("hr".into()),
+        "si" => Some("sl".into()),
+        "lt" => Some("lt".into()),
+        "lv" => Some("lv".into()),
+        "ee" => Some("et".into()),
+        "fi" => Some("fi".into()),
+        "se" => Some("sv".into()),
+        "no" => Some("no".into()),
+        "dk" => Some("da".into()),
+        "gr" => Some("el".into()),
+        "id" => Some("id".into()),
+        "my" => Some("ms".into()),
+        "ua" => Some("uk".into()),
+        "ir" => Some("fa".into()),
+        "is" => Some("is".into()),
+        "za" => Some("af".into()),
+        _ => None,
+    }
+}
+
 /// Check if Apple Intelligence is available on this device.
 /// Called by the frontend when the user selects Apple Intelligence provider.
 #[specta::specta]
