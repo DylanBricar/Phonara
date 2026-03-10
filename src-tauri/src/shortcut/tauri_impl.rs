@@ -97,9 +97,8 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
 
     // Prevent duplicate registrations that would silently shadow one another
     if app.global_shortcut().is_registered(shortcut) {
-        let error_msg = format!("Shortcut '{}' is already in use", binding.current_binding);
-        warn!("register_tauri_shortcut duplicate error: {}", error_msg);
-        return Err(error_msg);
+        // Unregister first to allow re-registration (e.g. after settings change)
+        let _ = app.global_shortcut().unregister(shortcut);
     }
 
     // Clone binding.id for use in the closure

@@ -206,7 +206,16 @@
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* High visibility mode - red border for better visibility during recording */
+/* Distinct visual states for transcribing and processing */
+.recording-overlay.state-transcribing {
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.recording-overlay.state-processing {
+  border-color: rgba(168, 85, 247, 0.5);
+}
+
+/* High visibility mode - colored borders for better visibility */
 .recording-overlay.high-visibility {
   border: 2px solid rgba(239, 68, 68, 0.9);
   box-shadow: 0 0 12px rgba(239, 68, 68, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
@@ -214,4 +223,14 @@
 
 .recording-overlay.high-visibility.state-recording {
   border-color: rgba(239, 68, 68, 0.9);
+}
+
+.recording-overlay.high-visibility.state-transcribing {
+  border-color: rgba(59, 130, 246, 0.9);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
+}
+
+.recording-overlay.high-visibility.state-processing {
+  border-color: rgba(168, 85, 247, 0.9);
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
 }

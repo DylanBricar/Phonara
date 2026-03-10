@@ -61,6 +61,11 @@ fn paste_via_clipboard(
         }
     }
 
+    // Wait for paste to complete before restoring clipboard
+    // macOS needs a longer delay to ensure paste is fully processed
+    #[cfg(target_os = "macos")]
+    std::thread::sleep(std::time::Duration::from_millis(150));
+    #[cfg(not(target_os = "macos"))]
     std::thread::sleep(std::time::Duration::from_millis(50));
 
     // Restore original clipboard content

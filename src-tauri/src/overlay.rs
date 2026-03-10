@@ -111,7 +111,6 @@ fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     use windows::Win32::UI::WindowsAndMessaging::{
         GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST, SWP_NOACTIVATE,
         SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TRANSPARENT,
     };
 
     // Clone because run_on_main_thread takes 'static
@@ -121,11 +120,12 @@ fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     let _ = overlay_clone.clone().run_on_main_thread(move || {
         if let Ok(hwnd) = overlay_clone.hwnd() {
             unsafe {
-                // Add WS_EX_NOACTIVATE and WS_EX_TOOLWINDOW to prevent focus stealing
-                // WS_EX_TRANSPARENT makes the window click-through
+                // Add WS_EX_NOACTIVATE to prevent focus stealing when overlay appears
+                // WS_EX_TOOLWINDOW hides it from the taskbar and Alt-Tab
+                // Note: We do NOT use WS_EX_TRANSPARENT as that makes the window
+                // click-through, which would prevent pause/cancel button interaction
                 let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
-                let new_style =
-                    ex_style | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0 | WS_EX_TRANSPARENT.0;
+                let new_style = ex_style | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
                 SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
 
                 // Force Z-order: make this window topmost without changing size/pos or stealing focus
