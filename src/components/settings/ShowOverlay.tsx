@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown } from "../ui/Dropdown";
 import { SettingContainer } from "../ui/SettingContainer";
+import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { useSettings } from "../../hooks/useSettings";
 import type { OverlayPosition } from "@/bindings";
 
@@ -24,22 +25,41 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
     const selectedPosition = (getSetting("overlay_position") ||
       "bottom") as OverlayPosition;
 
+    const highVisibility = getSetting("overlay_high_visibility") ?? false;
+
     return (
-      <SettingContainer
-        title={t("settings.advanced.overlay.title")}
-        description={t("settings.advanced.overlay.description")}
-        descriptionMode={descriptionMode}
-        grouped={grouped}
-      >
-        <Dropdown
-          options={overlayOptions}
-          selectedValue={selectedPosition}
-          onSelect={(value) =>
-            updateSetting("overlay_position", value as OverlayPosition)
-          }
-          disabled={isUpdating("overlay_position")}
-        />
-      </SettingContainer>
+      <>
+        <SettingContainer
+          title={t("settings.advanced.overlay.title")}
+          description={t("settings.advanced.overlay.description")}
+          descriptionMode={descriptionMode}
+          grouped={grouped}
+        >
+          <Dropdown
+            options={overlayOptions}
+            selectedValue={selectedPosition}
+            onSelect={(value) =>
+              updateSetting("overlay_position", value as OverlayPosition)
+            }
+            disabled={isUpdating("overlay_position")}
+          />
+        </SettingContainer>
+        {selectedPosition !== "none" && (
+          <ToggleSwitch
+            checked={highVisibility}
+            onChange={(enabled) =>
+              updateSetting("overlay_high_visibility", enabled)
+            }
+            isUpdating={isUpdating("overlay_high_visibility")}
+            label={t("settings.advanced.overlay.highVisibility.label")}
+            description={t(
+              "settings.advanced.overlay.highVisibility.description",
+            )}
+            descriptionMode={descriptionMode}
+            grouped={grouped}
+          />
+        )}
+      </>
     );
   },
 );

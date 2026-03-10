@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "ParlerDev",
-  "identifier": "com.melvynx.parler.dev",
+  "productName": "PhonaraDev",
+  "identifier": "com.dylanbricar.phonara.dev",
   "app": {
     "windows": [
       {
         "label": "main",
-        "title": "ParlerDev",
+        "title": "PhonaraDev",
         "width": 680,
         "height": 570,
         "minWidth": 680,

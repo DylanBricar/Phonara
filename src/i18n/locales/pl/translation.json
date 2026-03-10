@@ -83,7 +83,7 @@
     },
     "permissions": {
       "title": "Wymagane uprawnienia",
-      "description": "Parler potrzebuje kilku uprawnień, aby działać poprawnie.",
+      "description": "Phonara potrzebuje kilku uprawnień, aby działać poprawnie.",
       "microphone": {
         "title": "Dostęp do mikrofonu",
         "description": "Wymagany do słyszenia Twojego głosu w celu transkrypcji."
@@ -158,7 +158,7 @@
     "general": {
       "title": "Ogólne",
       "shortcut": {
-        "title": "Skróty Parler",
+        "title": "Skróty Phonara",
         "description": "Skonfiguruj skróty klawiaturowe do uruchamiania nagrywania mowy",
         "loading": "Wczytywanie skrótów...",
         "none": "Brak skonfigurowanych skrótów",
@@ -239,11 +239,11 @@
       },
       "autostart": {
         "label": "Uruchamiaj przy starcie",
-        "description": "Automatycznie uruchamiaj Parler po zalogowaniu."
+        "description": "Automatycznie uruchamiaj Phonara po zalogowaniu."
       },
       "showTrayIcon": {
         "label": "Pokaż ikonę w zasobniku",
-        "description": "Wyświetlaj ikonę Parler w zasobniku systemowym."
+        "description": "Wyświetlaj ikonę Phonara w zasobniku systemowym."
       },
       "overlay": {
         "title": "Pozycja nakładki",
@@ -404,7 +404,7 @@
       },
       "updateChecks": {
         "label": "Sprawdzaj aktualizacje",
-        "description": "Automatycznie sprawdzaj nowe wersje Parler"
+        "description": "Automatycznie sprawdzaj nowe wersje Phonara"
       },
       "soundTheme": {
         "label": "Motyw dźwiękowy",
@@ -468,11 +468,11 @@
       "title": "O programie",
       "version": {
         "title": "Wersja",
-        "description": "Aktualna wersja Parler"
+        "description": "Aktualna wersja Phonara"
       },
       "appDataDirectory": {
         "title": "Katalog danych aplikacji",
-        "description": "Miejsce, gdzie Parler przechowuje swoje dane"
+        "description": "Miejsce, gdzie Phonara przechowuje swoje dane"
       },
       "sourceCode": {
         "title": "Kod źródłowy",
@@ -481,7 +481,7 @@
       },
       "supportDevelopment": {
         "title": "Wspieraj rozwój",
-        "description": "Pomóż nam dalej rozwijać Parler",
+        "description": "Pomóż nam dalej rozwijać Phonara",
         "button": "Wesprzyj"
       },
       "acknowledgments": {
@@ -489,7 +489,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "Wydajne wykonywanie modelu rozpoznawania mowy Whisper od OpenAI",
-          "details": "Parler używa Whisper.cpp do szybkiego, lokalnego przetwarzania mowy na tekst. Dzięki niesamowitej pracy Georgi Gerganova i współtwórców."
+          "details": "Phonara używa Whisper.cpp do szybkiego, lokalnego przetwarzania mowy na tekst. Dzięki niesamowitej pracy Georgi Gerganova i współtwórców."
         }
       }
     }
@@ -532,7 +532,7 @@
   },
   "accessibility": {
     "permissionsRequired": "Wymagane uprawnienia dostępności",
-    "permissionsDescription": "Parler potrzebuje uprawnień dostępności, aby wpisywać transkrybowany tekst.",
+    "permissionsDescription": "Phonara potrzebuje uprawnień dostępności, aby wpisywać transkrybowany tekst.",
     "openSettings": "Otwórz ustawienia systemowe",
     "dismiss": "Zamknij"
   },
@@ -541,7 +541,7 @@
   },
   "appLanguage": {
     "title": "Język aplikacji",
-    "description": "Zmień język interfejsu Parler"
+    "description": "Zmień język interfejsu Phonara"
   },
   "overlay": {
     "transcribing": "Transkrypcja...",

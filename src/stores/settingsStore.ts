@@ -107,6 +107,8 @@ const settingUpdaters: {
     commands.changeSelectedLanguageSetting(value as string),
   overlay_position: (value) =>
     commands.changeOverlayPositionSetting(value as string),
+  overlay_high_visibility: (value) =>
+    commands.changeOverlayHighVisibilitySetting(value as boolean),
   debug_mode: (value) => commands.changeDebugModeSetting(value as boolean),
   custom_words: (value) => commands.updateCustomWords(value as string[]),
   word_correction_threshold: (value) =>

@@ -83,7 +83,7 @@
     },
     "permissions": {
       "title": "Permessi Richiesti",
-      "description": "Parler ha bisogno di alcuni permessi per funzionare correttamente.",
+      "description": "Phonara ha bisogno di alcuni permessi per funzionare correttamente.",
       "microphone": {
         "title": "Accesso al Microfono",
         "description": "Necessario per sentire la tua voce per la trascrizione."
@@ -158,7 +158,7 @@
     "general": {
       "title": "Generale",
       "shortcut": {
-        "title": "Scorciatoie di Parler",
+        "title": "Scorciatoie di Phonara",
         "description": "Configura le scorciatoie per attivare la trascrizione vocale",
         "loading": "Caricamento delle scorciatoie...",
         "none": "Nessuna scorciatoia configurata",
@@ -239,11 +239,11 @@
       },
       "autostart": {
         "label": "Avvia all'Accensione",
-        "description": "Avvia Parler automaticamente quando accedi al computer."
+        "description": "Avvia Phonara automaticamente quando accedi al computer."
       },
       "showTrayIcon": {
         "label": "Mostra icona nella barra di sistema",
-        "description": "Mostra l'icona di Parler nella barra di sistema."
+        "description": "Mostra l'icona di Phonara nella barra di sistema."
       },
       "overlay": {
         "title": "Posizione della Sovrimpressione",
@@ -404,7 +404,7 @@
       },
       "updateChecks": {
         "label": "Controlla aggiornamenti",
-        "description": "Controlla automaticamente la disponibilità di nuove versioni di Parler"
+        "description": "Controlla automaticamente la disponibilità di nuove versioni di Phonara"
       },
       "soundTheme": {
         "label": "Tema Sonoro",
@@ -468,11 +468,11 @@
       "title": "Informazioni",
       "version": {
         "title": "Versione",
-        "description": "Versione attuale di Parler"
+        "description": "Versione attuale di Phonara"
       },
       "appDataDirectory": {
         "title": "Cartella Dati App",
-        "description": "Cartella in cui Parler salva i dati"
+        "description": "Cartella in cui Phonara salva i dati"
       },
       "sourceCode": {
         "title": "Codice Sorgente",
@@ -481,7 +481,7 @@
       },
       "supportDevelopment": {
         "title": "Supporta lo Sviluppo",
-        "description": "Aiutaci a sviluppare Parler",
+        "description": "Aiutaci a sviluppare Phonara",
         "button": "Dona"
       },
       "acknowledgments": {
@@ -489,7 +489,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "Inferenza ad alte prestazioni del modello di riconoscimento vocale automatico Whisper di OpenAI",
-          "details": "Parler usa Whisper.cpp per il riconoscimento vocale veloce in locale. Grazie a Georgi Gerganov e collaboratori per il fantastico lavoro."
+          "details": "Phonara usa Whisper.cpp per il riconoscimento vocale veloce in locale. Grazie a Georgi Gerganov e collaboratori per il fantastico lavoro."
         }
       }
     }
@@ -532,7 +532,7 @@
   },
   "accessibility": {
     "permissionsRequired": "Richiesti Permessi di Accessibilità",
-    "permissionsDescription": "Parler ha bisogno dei permessi di accessibilità per digitare il testo trascritto.",
+    "permissionsDescription": "Phonara ha bisogno dei permessi di accessibilità per digitare il testo trascritto.",
     "openSettings": "Apri Impostazioni di Sistema",
     "dismiss": "Ignora"
   },
@@ -541,7 +541,7 @@
   },
   "appLanguage": {
     "title": "Lingua Applicazione",
-    "description": "Cambia la lingua dell'interfaccia di Parler"
+    "description": "Cambia la lingua dell'interfaccia di Phonara"
   },
   "overlay": {
     "transcribing": "Trascrizione...",

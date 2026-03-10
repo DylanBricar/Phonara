@@ -87,7 +87,7 @@
     },
     "permissions": {
       "title": "Permissions Required",
-      "description": "Parler needs a couple of permissions to work properly.",
+      "description": "Phonara needs a couple of permissions to work properly.",
       "microphone": {
         "title": "Microphone Access",
         "description": "Required to hear your voice for transcription."
@@ -154,7 +154,7 @@
     "general": {
       "title": "General",
       "shortcut": {
-        "title": "Parler Shortcuts",
+        "title": "Phonara Shortcuts",
         "description": "Configure keyboard shortcuts to trigger speech-to-text recording",
         "loading": "Loading shortcuts...",
         "none": "No shortcuts configured",
@@ -282,11 +282,11 @@
       },
       "autostart": {
         "label": "Launch on Startup",
-        "description": "Automatically start Parler when you log in to your computer."
+        "description": "Automatically start Phonara when you log in to your computer."
       },
       "showTrayIcon": {
         "label": "Show Tray Icon",
-        "description": "Display the Parler icon in the system tray."
+        "description": "Display the Phonara icon in the system tray."
       },
       "overlay": {
         "title": "Overlay Position",
@@ -295,6 +295,10 @@
           "none": "None",
           "bottom": "Bottom",
           "top": "Top"
+        },
+        "highVisibility": {
+          "label": "High Visibility Overlay",
+          "description": "Add a red border to the recording overlay for better visibility."
         }
       },
       "pasteMethod": {
@@ -488,7 +492,7 @@
       },
       "updateChecks": {
         "label": "Check for Updates",
-        "description": "Automatically check for new versions of Parler"
+        "description": "Automatically check for new versions of Phonara"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -552,11 +556,11 @@
       "title": "About",
       "version": {
         "title": "Version",
-        "description": "Current version of Parler"
+        "description": "Current version of Phonara"
       },
       "appDataDirectory": {
         "title": "App Data Directory",
-        "description": "Location where Parler stores its data"
+        "description": "Location where Phonara stores its data"
       },
       "exportImport": {
         "title": "Export / Import Settings",
@@ -573,7 +577,7 @@
       },
       "supportDevelopment": {
         "title": "Support Development",
-        "description": "Help us continue building Parler",
+        "description": "Help us continue building Phonara",
         "button": "Donate"
       },
       "acknowledgments": {
@@ -581,7 +585,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
-          "details": "Parler uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
         }
       }
     }
@@ -624,7 +628,7 @@
   },
   "accessibility": {
     "permissionsRequired": "Accessibility Permissions Required",
-    "permissionsDescription": "Parler needs accessibility permissions to type transcribed text.",
+    "permissionsDescription": "Phonara needs accessibility permissions to type transcribed text.",
     "openSettings": "Open System Settings",
     "dismiss": "Dismiss"
   },
@@ -633,7 +637,7 @@
   },
   "appLanguage": {
     "title": "Application Language",
-    "description": "Change the language of the Parler interface"
+    "description": "Change the language of the Phonara interface"
   },
   "overlay": {
     "transcribing": "Transcribing...",

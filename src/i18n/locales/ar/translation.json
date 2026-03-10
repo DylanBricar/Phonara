@@ -83,7 +83,7 @@
     },
     "permissions": {
       "title": "الأذونات المطلوبة",
-      "description": ".يحتاج Parler إلى بعض الأذونات ليعمل بشكل صحيح",
+      "description": ".يحتاج Phonara إلى بعض الأذونات ليعمل بشكل صحيح",
       "microphone": {
         "title": "الوصول إلى الميكروفون",
         "description": ".مطلوب لسماع صوتك من أجل التفريغ الصوتي"
@@ -136,7 +136,7 @@
     "general": {
       "title": "عام",
       "shortcut": {
-        "title": "اختصارات Parler",
+        "title": "اختصارات Phonara",
         "description": "إعداد اختصارات لوحة المفاتيح لبدء تسجيل التفريغ الصوتي",
         "loading": "...جاري تحميل الاختصارات",
         "none": "لا توجد اختصارات مجهزة",
@@ -217,11 +217,11 @@
       },
       "autostart": {
         "label": "التشغيل عند بدء التشغيل",
-        "description": ".بدء تشغيل Parler تلقائياً عند تسجيل الدخول إلى جهاز الكمبيوتر الخاص بك"
+        "description": ".بدء تشغيل Phonara تلقائياً عند تسجيل الدخول إلى جهاز الكمبيوتر الخاص بك"
       },
       "showTrayIcon": {
         "label": "إظهار أيقونة شريط النظام",
-        "description": ".عرض أيقونة Parler في شريط النظام"
+        "description": ".عرض أيقونة Phonara في شريط النظام"
       },
       "overlay": {
         "title": "موقع التراكب",
@@ -382,7 +382,7 @@
       },
       "updateChecks": {
         "label": "التحقق من وجود تحديثات",
-        "description": "التحقق تلقائياً من وجود إصدارات جديدة من Parler"
+        "description": "التحقق تلقائياً من وجود إصدارات جديدة من Phonara"
       },
       "soundTheme": {
         "label": "سمة الصوت",
@@ -446,11 +446,11 @@
       "title": "حول",
       "version": {
         "title": "الإصدار",
-        "description": "الإصدار الحالي من Parler"
+        "description": "الإصدار الحالي من Phonara"
       },
       "appDataDirectory": {
         "title": "مجلد بيانات التطبيق",
-        "description": "الموقع الذي يخزن فيه Parler بياناته"
+        "description": "الموقع الذي يخزن فيه Phonara بياناته"
       },
       "sourceCode": {
         "title": "كود المصدر",
@@ -459,7 +459,7 @@
       },
       "supportDevelopment": {
         "title": "دعم التطوير",
-        "description": "ساعدنا في مواصلة بناء Parler",
+        "description": "ساعدنا في مواصلة بناء Phonara",
         "button": "تبرع"
       },
       "acknowledgments": {
@@ -467,7 +467,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "استنتاج عالي الأداء لنموذج التعرف التلقائي على الكلام Whisper من OpenAI",
-          "details": ".يستخدم Parler برنامج Whisper.cpp لمعالجة سريعة ومحلية لتحويل الكلام إلى نص. شكراً للعمل الرائع الذي قام به Georgi Gerganov والمساهمون"
+          "details": ".يستخدم Phonara برنامج Whisper.cpp لمعالجة سريعة ومحلية لتحويل الكلام إلى نص. شكراً للعمل الرائع الذي قام به Georgi Gerganov والمساهمون"
         }
       }
     },
@@ -532,7 +532,7 @@
   },
   "accessibility": {
     "permissionsRequired": "أذونات إمكانية الوصول مطلوبة",
-    "permissionsDescription": ".يحتاج Parler إلى أذونات إمكانية الوصول لكتابة النص المفرغ",
+    "permissionsDescription": ".يحتاج Phonara إلى أذونات إمكانية الوصول لكتابة النص المفرغ",
     "openSettings": "فتح إعدادات النظام",
     "dismiss": "تجاهل"
   },
@@ -541,7 +541,7 @@
   },
   "appLanguage": {
     "title": "لغة التطبيق",
-    "description": "تغيير لغة واجهة Parler"
+    "description": "تغيير لغة واجهة Phonara"
   },
   "overlay": {
     "transcribing": "...جاري التفريغ",

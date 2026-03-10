@@ -4078,66 +4078,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parler"
-version = "0.7.17"
-dependencies = [
- "anyhow",
- "base64 0.22.1",
- "chrono",
- "clap",
- "cpal",
- "enigo",
- "env_filter",
- "ferrous-opencc",
- "flate2",
- "futures-util",
- "gtk",
- "gtk-layer-shell",
- "handy-keys",
- "hound",
- "log",
- "natural",
- "once_cell",
- "rdev 0.5.0-2",
- "regex",
- "reqwest 0.12.28",
- "rodio",
- "rubato",
- "rusqlite",
- "rusqlite_migration",
- "rustfft",
- "serde",
- "serde_json",
- "signal-hook",
- "specta",
- "specta-typescript",
- "strsim",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-nspanel",
- "tauri-plugin-autostart",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
- "tauri-plugin-global-shortcut",
- "tauri-plugin-log",
- "tauri-plugin-macos-permissions",
- "tauri-plugin-opener",
- "tauri-plugin-os",
- "tauri-plugin-process",
- "tauri-plugin-single-instance",
- "tauri-plugin-store",
- "tauri-plugin-updater",
- "tauri-specta",
- "tempfile",
- "tokio",
- "transcribe-rs",
- "vad-rs",
- "windows 0.61.3",
-]
-
-[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4366,6 +4306,66 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e57fef6bc5981e38c2ce2d63bfa546861309f875b8a75f092d1d54ae2d64f266"
 dependencies = [
  "siphasher 1.0.2",
+]
+
+[[package]]
+name = "phonara"
+version = "0.7.17"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "chrono",
+ "clap",
+ "cpal",
+ "enigo",
+ "env_filter",
+ "ferrous-opencc",
+ "flate2",
+ "futures-util",
+ "gtk",
+ "gtk-layer-shell",
+ "handy-keys",
+ "hound",
+ "log",
+ "natural",
+ "once_cell",
+ "rdev 0.5.0-2",
+ "regex",
+ "reqwest 0.12.28",
+ "rodio",
+ "rubato",
+ "rusqlite",
+ "rusqlite_migration",
+ "rustfft",
+ "serde",
+ "serde_json",
+ "signal-hook",
+ "specta",
+ "specta-typescript",
+ "strsim",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-nspanel",
+ "tauri-plugin-autostart",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+ "tauri-plugin-global-shortcut",
+ "tauri-plugin-log",
+ "tauri-plugin-macos-permissions",
+ "tauri-plugin-opener",
+ "tauri-plugin-os",
+ "tauri-plugin-process",
+ "tauri-plugin-single-instance",
+ "tauri-plugin-store",
+ "tauri-plugin-updater",
+ "tauri-specta",
+ "tempfile",
+ "tokio",
+ "transcribe-rs",
+ "vad-rs",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -7068,9 +7068,9 @@ dependencies = [
 
 [[package]]
 name = "transcribe-rs"
-version = "0.2.9"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6fe25a69f6aa6ca4a8cb1dfc201e94c4cc7acb43f69353aa9ebb6aa4d0d26a9"
+checksum = "811b3e12455e39ad39003be9a4b7043363a7082b50484a3eb6e3e862466520e4"
 dependencies = [
  "base64 0.22.1",
  "derive_builder",

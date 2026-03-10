@@ -205,3 +205,13 @@
 .pause-button:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* High visibility mode - red border for better visibility during recording */
+.recording-overlay.high-visibility {
+  border: 2px solid rgba(239, 68, 68, 0.9);
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
+}
+
+.recording-overlay.high-visibility.state-recording {
+  border-color: rgba(239, 68, 68, 0.9);
+}

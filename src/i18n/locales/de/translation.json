@@ -83,7 +83,7 @@
     },
     "permissions": {
       "title": "Berechtigungen erforderlich",
-      "description": "Parler benötigt einige Berechtigungen, um richtig zu funktionieren.",
+      "description": "Phonara benötigt einige Berechtigungen, um richtig zu funktionieren.",
       "microphone": {
         "title": "Mikrofonzugriff",
         "description": "Erforderlich, um Ihre Stimme für die Transkription zu hören."
@@ -158,7 +158,7 @@
     "general": {
       "title": "Allgemein",
       "shortcut": {
-        "title": "Parler-Tastenkürzel",
+        "title": "Phonara-Tastenkürzel",
         "description": "Tastenkürzel für die Sprachaufnahme konfigurieren",
         "loading": "Tastenkürzel werden geladen...",
         "none": "Keine Tastenkürzel konfiguriert",
@@ -239,11 +239,11 @@
       },
       "autostart": {
         "label": "Beim Start ausführen",
-        "description": "Parler automatisch beim Anmelden starten."
+        "description": "Phonara automatisch beim Anmelden starten."
       },
       "showTrayIcon": {
         "label": "Taskleistensymbol anzeigen",
-        "description": "Das Parler-Symbol in der Taskleiste anzeigen."
+        "description": "Das Phonara-Symbol in der Taskleiste anzeigen."
       },
       "overlay": {
         "title": "Overlay-Position",
@@ -404,7 +404,7 @@
       },
       "updateChecks": {
         "label": "Nach Updates suchen",
-        "description": "Automatisch nach neuen Versionen von Parler suchen"
+        "description": "Automatisch nach neuen Versionen von Phonara suchen"
       },
       "soundTheme": {
         "label": "Sound-Thema",
@@ -468,11 +468,11 @@
       "title": "Info",
       "version": {
         "title": "Version",
-        "description": "Aktuelle Version von Parler"
+        "description": "Aktuelle Version von Phonara"
       },
       "appDataDirectory": {
         "title": "App-Datenverzeichnis",
-        "description": "Speicherort der Parler-Daten"
+        "description": "Speicherort der Phonara-Daten"
       },
       "sourceCode": {
         "title": "Quellcode",
@@ -481,7 +481,7 @@
       },
       "supportDevelopment": {
         "title": "Entwicklung unterstützen",
-        "description": "Hilf uns, Parler weiterzuentwickeln",
+        "description": "Hilf uns, Phonara weiterzuentwickeln",
         "button": "Spenden"
       },
       "acknowledgments": {
@@ -489,7 +489,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "Hochleistungs-Inferenz des Whisper-Spracherkennungsmodells von OpenAI",
-          "details": "Parler verwendet Whisper.cpp für schnelle, lokale Sprach-zu-Text-Verarbeitung. Dank an Georgi Gerganov und die Mitwirkenden für ihre großartige Arbeit."
+          "details": "Phonara verwendet Whisper.cpp für schnelle, lokale Sprach-zu-Text-Verarbeitung. Dank an Georgi Gerganov und die Mitwirkenden für ihre großartige Arbeit."
         }
       }
     }
@@ -532,7 +532,7 @@
   },
   "accessibility": {
     "permissionsRequired": "Bedienungshilfen-Berechtigungen erforderlich",
-    "permissionsDescription": "Parler benötigt Bedienungshilfen-Berechtigungen, um transkribierten Text einzugeben.",
+    "permissionsDescription": "Phonara benötigt Bedienungshilfen-Berechtigungen, um transkribierten Text einzugeben.",
     "openSettings": "Systemeinstellungen öffnen",
     "dismiss": "Schließen"
   },
@@ -541,7 +541,7 @@
   },
   "appLanguage": {
     "title": "Anwendungssprache",
-    "description": "Sprache der Parler-Oberfläche ändern"
+    "description": "Sprache der Phonara-Oberfläche ändern"
   },
   "overlay": {
     "transcribing": "Transkribiere...",

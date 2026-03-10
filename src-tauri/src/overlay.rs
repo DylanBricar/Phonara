@@ -397,7 +397,13 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
         #[cfg(target_os = "windows")]
         force_overlay_topmost(&overlay_window);
 
-        let _ = overlay_window.emit("show-overlay", state);
+        let _ = overlay_window.emit(
+            "show-overlay",
+            serde_json::json!({
+                "state": state,
+                "highVisibility": settings.overlay_high_visibility
+            }),
+        );
     }
 }
 

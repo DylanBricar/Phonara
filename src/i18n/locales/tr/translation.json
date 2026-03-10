@@ -83,7 +83,7 @@
     },
     "permissions": {
       "title": "İzinler Gerekli",
-      "description": "Parler'in düzgün çalışabilmesi için birkaç izne ihtiyacı var.",
+      "description": "Phonara'in düzgün çalışabilmesi için birkaç izne ihtiyacı var.",
       "microphone": {
         "title": "Mikrofon Erişimi",
         "description": "Sesinizi transkripsiyon için alabilmek için gereklidir."
@@ -158,7 +158,7 @@
     "general": {
       "title": "Genel",
       "shortcut": {
-        "title": "Parler Kısayolları",
+        "title": "Phonara Kısayolları",
         "description": "Sesle yazma kaydını başlatmak için klavye kısayollarını yapılandırın",
         "loading": "Kısayollar yükleniyor...",
         "none": "Kısayol yapılandırılmadı",
@@ -239,11 +239,11 @@
       },
       "autostart": {
         "label": "Başlangıçta Çalıştır",
-        "description": "Bilgisayara giriş yaptığınızda Parler otomatik olarak başlatılır."
+        "description": "Bilgisayara giriş yaptığınızda Phonara otomatik olarak başlatılır."
       },
       "showTrayIcon": {
         "label": "Tepsi simgesini göster",
-        "description": "Parler simgesini sistem tepsisinde göster."
+        "description": "Phonara simgesini sistem tepsisinde göster."
       },
       "overlay": {
         "title": "Overlay Konumu",
@@ -404,7 +404,7 @@
       },
       "updateChecks": {
         "label": "Güncellemeleri Kontrol Et",
-        "description": "Parler için yeni sürümleri otomatik olarak kontrol eder"
+        "description": "Phonara için yeni sürümleri otomatik olarak kontrol eder"
       },
       "soundTheme": {
         "label": "Ses Teması",
@@ -468,11 +468,11 @@
       "title": "Hakkında",
       "version": {
         "title": "Sürüm",
-        "description": "Parler'nin mevcut sürümü"
+        "description": "Phonara'nin mevcut sürümü"
       },
       "appDataDirectory": {
         "title": "Uygulama Veri Dizini",
-        "description": "Parler'nin verilerini sakladığı konum"
+        "description": "Phonara'nin verilerini sakladığı konum"
       },
       "sourceCode": {
         "title": "Kaynak Kodu",
@@ -481,7 +481,7 @@
       },
       "supportDevelopment": {
         "title": "Geliştirmeyi Destekle",
-        "description": "Parler'yi geliştirmeye devam etmemize yardımcı olun",
+        "description": "Phonara'yi geliştirmeye devam etmemize yardımcı olun",
         "button": "Bağış Yap"
       },
       "acknowledgments": {
@@ -489,7 +489,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "OpenAI'nin Whisper otomatik konuşma tanıma modelinin yüksek performanslı çıkarımı",
-          "details": "Parler, hızlı ve yerel konuşmadan metne dönüştürme için Whisper.cpp kullanır. Georgi Gerganov ve katkıda bulunanların harika çalışmaları için teşekkür ederiz."
+          "details": "Phonara, hızlı ve yerel konuşmadan metne dönüştürme için Whisper.cpp kullanır. Georgi Gerganov ve katkıda bulunanların harika çalışmaları için teşekkür ederiz."
         }
       }
     }
@@ -532,7 +532,7 @@
   },
   "accessibility": {
     "permissionsRequired": "Erişilebilirlik İzinleri Gerekli",
-    "permissionsDescription": "Parler, transkribe edilen metni yazabilmek için erişilebilirlik izinlerine ihtiyaç duyar.",
+    "permissionsDescription": "Phonara, transkribe edilen metni yazabilmek için erişilebilirlik izinlerine ihtiyaç duyar.",
     "openSettings": "Sistem Ayarlarını Aç",
     "dismiss": "Yoksay"
   },
@@ -541,7 +541,7 @@
   },
   "appLanguage": {
     "title": "Uygulama Dili",
-    "description": "Parler arayüzünün dilini değiştirin"
+    "description": "Phonara arayüzünün dilini değiştirin"
   },
   "overlay": {
     "transcribing": "Transkribe ediliyor...",

@@ -8,6 +8,11 @@ import { getLanguageDirection } from "@/lib/utils/rtl";
 
 type OverlayState = "recording" | "transcribing" | "processing";
 
+interface ShowOverlayPayload {
+  state: OverlayState;
+  highVisibility?: boolean;
+}
+
 interface ActionInfo {
   key: number;
   name: string;
@@ -165,6 +170,7 @@ const RecordingOverlay: React.FC = () => {
   const [selectedAction, setSelectedAction] = useState<ActionInfo | null>(null);
   const [cancelPending, setCancelPending] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
+  const [highVisibility, setHighVisibility] = useState(false);
   const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pauseStartRef = useRef<number>(0);
   const direction = getLanguageDirection(i18n.language);
@@ -182,10 +188,14 @@ const RecordingOverlay: React.FC = () => {
     let cleanupListeners: (() => void) | undefined;
 
     const setupEventListeners = async () => {
-      const unlistenShow = await listen("show-overlay", async (event) => {
+      const unlistenShow = await listen<ShowOverlayPayload>("show-overlay", async (event) => {
         await syncLanguageFromSettings();
-        const overlayState = event.payload as OverlayState;
+        const payload = event.payload;
+        // Support both old string payload and new object payload
+        const overlayState = typeof payload === "string" ? payload as OverlayState : payload.state;
+        const hv = typeof payload === "object" && payload.highVisibility;
         setState(overlayState);
+        setHighVisibility(!!hv);
         setIsVisible(true);
         setIsPaused(false);
         if (overlayState === "recording") {
@@ -274,7 +284,7 @@ const RecordingOverlay: React.FC = () => {
   return (
     <div
       dir={direction}
-      className={`recording-overlay state-${state} ${isVisible ? "is-visible" : "is-hidden"}`}
+      className={`recording-overlay state-${state} ${isVisible ? "is-visible" : "is-hidden"} ${highVisibility ? "high-visibility" : ""}`}
     >
       <div className="overlay-left">
         {state === "recording" ? <MicIcon /> : <DotsIcon />}
