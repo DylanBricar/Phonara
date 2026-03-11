@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { platform } from "@tauri-apps/plugin-os";
 import { getIdentifier } from "@tauri-apps/api/app";
@@ -8,6 +8,7 @@ import {
   checkMicrophonePermission,
 } from "tauri-plugin-macos-permissions-api";
 import { listen } from "@tauri-apps/api/event";
+import { ModelStateEvent } from "./lib/types/events";
 import "./App.css";
 import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import Footer from "./components/footer";
@@ -27,7 +28,7 @@ const renderSettingsContent = (section: SidebarSection) => {
 };
 
 function App() {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(
     null,
   );
@@ -108,6 +109,34 @@ function App() {
     };
   }, []);
 
+  // Listen for model loading failures and show a toast
+  useEffect(() => {
+    const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {
+      if (event.payload.event_type === "loading_failed") {
+        toast.error(
+          t("errors.modelLoadFailed", {
+            model:
+              event.payload.model_name || t("errors.modelLoadFailedUnknown"),
+          }),
+          {
+            description: event.payload.error,
+          },
+        );
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
+  const revealMainWindowForPermissions = async () => {
+    try {
+      await commands.showMainWindowCommand();
+    } catch (e) {
+      console.warn("Failed to show main window for permission onboarding:", e);
+    }
+  };
+
   const checkOnboardingStatus = async () => {
     try {
       const appIdentifier = await getIdentifier();
@@ -116,26 +145,45 @@ function App() {
       // Check if they have any models available
       const result = await commands.hasAnyModelsAvailable();
       const hasModels = result.status === "ok" && result.data;
+      const currentPlatform = platform();
 
       if (hasModels) {
-        // Returning user - but check if they need to grant permissions on macOS
+        // Returning user - check if they need to grant permissions first
         setIsReturningUser(true);
-        if (platform() === "macos" && !isDevFlavor) {
+
+        if (currentPlatform === "macos" && !isDevFlavor) {
           try {
             const [hasAccessibility, hasMicrophone] = await Promise.all([
               checkAccessibilityPermission(),
               checkMicrophonePermission(),
             ]);
             if (!hasAccessibility || !hasMicrophone) {
-              // Missing permissions - show accessibility onboarding
+              await revealMainWindowForPermissions();
               setOnboardingStep("accessibility");
               return;
             }
           } catch (e) {
-            console.warn("Failed to check permissions:", e);
-            // If we can't check, proceed to main app and let them fix it there
+            console.warn("Failed to check macOS permissions:", e);
           }
         }
+
+        if (currentPlatform === "windows") {
+          try {
+            const microphoneStatus =
+              await commands.getWindowsMicrophonePermissionStatus();
+            if (
+              microphoneStatus.supported &&
+              microphoneStatus.overall_access === "denied"
+            ) {
+              await revealMainWindowForPermissions();
+              setOnboardingStep("accessibility");
+              return;
+            }
+          } catch (e) {
+            console.warn("Failed to check Windows microphone permissions:", e);
+          }
+        }
+
         setOnboardingStep("done");
       } else {
         // New user - dev flavor skips permissions (can't grant to debug binary)

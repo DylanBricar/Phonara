@@ -3,7 +3,7 @@ use crate::input::{self, EnigoState};
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
 use enigo::{Direction, Enigo, Key, Keyboard};
-use log::info;
+use log::{info, warn};
 use std::process::Command;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
@@ -11,6 +11,137 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[cfg(target_os = "linux")]
 use crate::utils::{is_kde_wayland, is_wayland};
+
+/// Represents the original clipboard content before we overwrite it for pasting.
+/// Supports both text and image data so we can restore either type. (Fix for #921)
+enum SavedClipboardContent {
+    Text(String),
+    Image(arboard::ImageData<'static>),
+    Empty,
+}
+
+/// Saves the current clipboard content (text or image) using arboard.
+/// Falls back gracefully if the clipboard is empty or contains unsupported formats.
+fn save_clipboard_content() -> SavedClipboardContent {
+    let mut clipboard = match arboard::Clipboard::new() {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Failed to open arboard clipboard for saving: {}", e);
+            return SavedClipboardContent::Empty;
+        }
+    };
+
+    // Try text first since it's most common
+    if let Ok(text) = clipboard.get_text() {
+        if !text.is_empty() {
+            return SavedClipboardContent::Text(text);
+        }
+    }
+
+    // Try image (fix for #921 - previously images were lost)
+    if let Ok(img) = clipboard.get_image() {
+        info!("Saved clipboard image ({}x{}) for later restoration", img.width, img.height);
+        return SavedClipboardContent::Image(img.to_owned_img());
+    }
+
+    SavedClipboardContent::Empty
+}
+
+/// Restores previously saved clipboard content.
+fn restore_clipboard_content(saved: SavedClipboardContent) {
+    match saved {
+        SavedClipboardContent::Text(text) => {
+            match arboard::Clipboard::new() {
+                Ok(mut clipboard) => {
+                    let _ = clipboard.set_text(&text);
+                }
+                Err(e) => warn!("Failed to open arboard clipboard for restore: {}", e),
+            }
+        }
+        SavedClipboardContent::Image(img) => {
+            match arboard::Clipboard::new() {
+                Ok(mut clipboard) => {
+                    if let Err(e) = clipboard.set_image(img) {
+                        warn!("Failed to restore clipboard image: {}", e);
+                    } else {
+                        info!("Restored clipboard image successfully");
+                    }
+                }
+                Err(e) => warn!("Failed to open arboard clipboard for image restore: {}", e),
+            }
+        }
+        SavedClipboardContent::Empty => {
+            // Nothing to restore; clear the clipboard so transcription text doesn't linger
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.clear();
+            }
+        }
+    }
+}
+
+/// Writes text to the clipboard and verifies it was written correctly.
+/// Retries up to `max_retries` times on failure. (Fix for #502)
+fn write_and_verify_clipboard(
+    app_handle: &AppHandle,
+    text: &str,
+    #[cfg(target_os = "linux")] use_wl_copy: bool,
+    max_retries: u32,
+) -> Result<(), String> {
+    let clipboard = app_handle.clipboard();
+
+    for attempt in 0..=max_retries {
+        // Write text to clipboard
+        #[cfg(target_os = "linux")]
+        let write_result = if use_wl_copy {
+            info!("Using wl-copy for clipboard write on Wayland");
+            write_clipboard_via_wl_copy(text)
+        } else {
+            clipboard
+                .write_text(text)
+                .map_err(|e| format!("Failed to write to clipboard: {}", e))
+        };
+
+        #[cfg(not(target_os = "linux"))]
+        let write_result = clipboard
+            .write_text(text)
+            .map_err(|e| format!("Failed to write to clipboard: {}", e));
+
+        if let Err(e) = write_result {
+            if attempt < max_retries {
+                warn!("Clipboard write attempt {} failed: {}, retrying...", attempt + 1, e);
+                std::thread::sleep(Duration::from_millis(30));
+                continue;
+            }
+            return Err(e);
+        }
+
+        // Small delay before verification to let the clipboard settle
+        std::thread::sleep(Duration::from_millis(10));
+
+        // Verify the write succeeded by reading back
+        let readback = clipboard.read_text().unwrap_or_default();
+        if readback == text {
+            if attempt > 0 {
+                info!("Clipboard write succeeded on attempt {}", attempt + 1);
+            }
+            return Ok(());
+        }
+
+        if attempt < max_retries {
+            warn!(
+                "Clipboard verification failed on attempt {} (expected len={}, got len={}), retrying...",
+                attempt + 1,
+                text.len(),
+                readback.len()
+            );
+            std::thread::sleep(Duration::from_millis(30));
+        }
+    }
+
+    // Final attempt failed verification but the write itself succeeded — proceed anyway
+    warn!("Clipboard verification failed after all retries, proceeding with paste anyway");
+    Ok(())
+}
 
 /// Pastes text using the clipboard: saves current content, writes text, sends paste keystroke, restores clipboard.
 fn paste_via_clipboard(
@@ -20,27 +151,20 @@ fn paste_via_clipboard(
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
 ) -> Result<(), String> {
-    let clipboard = app_handle.clipboard();
-    let clipboard_content = clipboard.read_text().unwrap_or_default();
+    // Save current clipboard content including images (fix for #921)
+    let saved_content = save_clipboard_content();
 
-    // Write text to clipboard first
-    // On Wayland, prefer wl-copy for better compatibility (especially with umlauts)
+    // Write text to clipboard with verification and retry (fix for #502)
     #[cfg(target_os = "linux")]
-    let write_result = if is_wayland() && is_wl_copy_available() {
-        info!("Using wl-copy for clipboard write on Wayland");
-        write_clipboard_via_wl_copy(text)
-    } else {
-        clipboard
-            .write_text(text)
-            .map_err(|e| format!("Failed to write to clipboard: {}", e))
-    };
+    let use_wl_copy = is_wayland() && is_wl_copy_available();
 
-    #[cfg(not(target_os = "linux"))]
-    let write_result = clipboard
-        .write_text(text)
-        .map_err(|e| format!("Failed to write to clipboard: {}", e));
-
-    write_result?;
+    write_and_verify_clipboard(
+        app_handle,
+        text,
+        #[cfg(target_os = "linux")]
+        use_wl_copy,
+        2, // max retries
+    )?;
 
     std::thread::sleep(Duration::from_millis(paste_delay_ms));
 
@@ -62,23 +186,29 @@ fn paste_via_clipboard(
     }
 
     // Wait for paste to complete before restoring clipboard
-    // macOS needs a longer delay to ensure paste is fully processed
+    // Increased delays slightly to reduce race conditions (fix for #502)
     #[cfg(target_os = "macos")]
-    std::thread::sleep(std::time::Duration::from_millis(150));
+    std::thread::sleep(std::time::Duration::from_millis(200));
     #[cfg(not(target_os = "macos"))]
-    std::thread::sleep(std::time::Duration::from_millis(50));
+    std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // Restore original clipboard content
-    // On Wayland, prefer wl-copy for better compatibility
+    // Restore original clipboard content (text or image)
+    // On Wayland with wl-copy, prefer wl-copy for text restoration; otherwise use arboard
     #[cfg(target_os = "linux")]
-    if is_wayland() && is_wl_copy_available() {
-        let _ = write_clipboard_via_wl_copy(&clipboard_content);
-    } else {
-        let _ = clipboard.write_text(&clipboard_content);
+    {
+        let use_wl_for_restore = use_wl_copy
+            && matches!(&saved_content, SavedClipboardContent::Text(_));
+        if use_wl_for_restore {
+            if let SavedClipboardContent::Text(ref text_content) = saved_content {
+                let _ = write_clipboard_via_wl_copy(text_content);
+            }
+        } else {
+            restore_clipboard_content(saved_content);
+        }
     }
 
     #[cfg(not(target_os = "linux"))]
-    let _ = clipboard.write_text(&clipboard_content);
+    restore_clipboard_content(saved_content);
 
     Ok(())
 }

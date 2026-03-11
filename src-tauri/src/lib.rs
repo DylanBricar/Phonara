@@ -88,15 +88,15 @@ fn build_console_filter() -> env_filter::Filter {
 
 pub(crate) fn show_main_window(app: &AppHandle) {
     if let Some(main_window) = app.get_webview_window("main") {
-        // First, ensure the window is visible
+        if let Err(e) = main_window.unminimize() {
+            log::error!("Failed to unminimize window: {}", e);
+        }
         if let Err(e) = main_window.show() {
             log::error!("Failed to show window: {}", e);
         }
-        // Then, bring it to the front and give it focus
         if let Err(e) = main_window.set_focus() {
             log::error!("Failed to focus window: {}", e);
         }
-        // Optional: On macOS, ensure the app becomes active if it was an accessory
         #[cfg(target_os = "macos")]
         {
             if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
@@ -104,8 +104,38 @@ pub(crate) fn show_main_window(app: &AppHandle) {
             }
         }
     } else {
-        log::error!("Main window not found.");
+        let webview_labels = app.webview_windows().keys().cloned().collect::<Vec<_>>();
+        log::error!(
+            "Main window not found. Webview labels: {:?}",
+            webview_labels
+        );
     }
+}
+
+fn should_force_show_permissions_window(app: &AppHandle) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let model_manager = app.state::<Arc<ModelManager>>();
+        let has_downloaded_models = model_manager
+            .get_available_models()
+            .iter()
+            .any(|model| model.is_downloaded);
+
+        if !has_downloaded_models {
+            return false;
+        }
+
+        let status = commands::audio::get_windows_microphone_permission_status();
+        if status.supported && status.overall_access == commands::audio::PermissionAccess::Denied {
+            log::info!(
+                "Windows microphone permissions are denied; forcing main window visible for onboarding"
+            );
+            return true;
+        }
+    }
+
+    let _ = app; // suppress unused warning on non-Windows
+    false
 }
 
 fn initialize_core_logic(app_handle: &AppHandle) {
@@ -270,6 +300,13 @@ fn trigger_update_check(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+#[specta::specta]
+fn show_main_window_command(app: AppHandle) -> Result<(), String> {
+    show_main_window(&app);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(cli_args: CliArgs) {
     // Parse console logging directives from RUST_LOG, falling back to info-level logging
@@ -314,6 +351,8 @@ pub fn run(cli_args: CliArgs) {
         shortcut::add_saved_processing_model,
         shortcut::delete_saved_processing_model,
         shortcut::update_custom_words,
+        shortcut::update_text_replacements,
+        shortcut::change_whisper_initial_prompt_setting,
         shortcut::suspend_binding,
         shortcut::resume_binding,
         shortcut::change_mute_while_recording_setting,
@@ -329,6 +368,7 @@ pub fn run(cli_args: CliArgs) {
         shortcut::handy_keys::start_handy_keys_recording,
         shortcut::handy_keys::stop_handy_keys_recording,
         trigger_update_check,
+        show_main_window_command,
         commands::cancel_operation,
         commands::toggle_pause,
         commands::get_app_dir_path,
@@ -337,6 +377,9 @@ pub fn run(cli_args: CliArgs) {
         commands::get_log_dir_path,
         commands::set_log_level,
         commands::open_recordings_folder,
+        commands::set_recordings_directory,
+        commands::clear_recordings_directory,
+        commands::get_recordings_directory,
         commands::open_log_dir,
         commands::open_app_data_dir,
         commands::export_settings,
@@ -358,6 +401,8 @@ pub fn run(cli_args: CliArgs) {
         commands::models::has_any_models_or_downloads,
         commands::audio::update_microphone_mode,
         commands::audio::get_microphone_mode,
+        commands::audio::get_windows_microphone_permission_status,
+        commands::audio::open_microphone_privacy_settings,
         commands::audio::get_available_microphones,
         commands::audio::set_selected_microphone,
         commands::audio::get_selected_microphone,
@@ -366,12 +411,15 @@ pub fn run(cli_args: CliArgs) {
         commands::audio::get_selected_output_device,
         commands::audio::play_test_sound,
         commands::audio::check_custom_sounds,
+        commands::audio::set_custom_sound_path,
+        commands::audio::clear_custom_sound_path,
         commands::audio::set_clamshell_microphone,
         commands::audio::get_clamshell_microphone,
         commands::audio::is_recording,
         commands::transcription::set_model_unload_timeout,
         commands::transcription::get_model_load_status,
         commands::transcription::unload_model_manually,
+        commands::transcription::transcribe_file,
         commands::history::get_history_entries,
         commands::history::toggle_history_entry_saved,
         commands::history::get_audio_file_path,
@@ -392,7 +440,7 @@ pub fn run(cli_args: CliArgs) {
         )
         .expect("Failed to export typescript bindings");
 
-    let mut builder = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .device_event_filter(tauri::DeviceEventFilter::Always)
         .plugin(tauri_plugin_dialog::init())
         .plugin(
@@ -420,9 +468,10 @@ pub fn run(cli_args: CliArgs) {
         );
 
     #[cfg(target_os = "macos")]
-    {
-        builder = builder.plugin(tauri_nspanel::init());
-    }
+    let builder = builder.plugin(tauri_nspanel::init());
+
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder;
 
     builder
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -474,18 +523,17 @@ pub fn run(cli_args: CliArgs) {
                 tray::set_tray_visibility(&app_handle, false);
             }
 
-            // Show main window only if not starting hidden
-            // CLI --start-hidden flag overrides the setting
+            // Show main window only if not starting hidden.
+            // CLI --start-hidden flag overrides the setting.
+            // But if permission onboarding is required, always show the window.
             let should_hide = settings.start_hidden || cli_args.start_hidden;
+            let should_force_show = should_force_show_permissions_window(&app_handle);
 
             // If start_hidden but tray is disabled, we must show the window
             // anyway. Without a tray icon, the dock is the only way back in.
             let tray_available = settings.show_tray_icon && !cli_args.no_tray;
-            if !should_hide || !tray_available {
-                if let Some(main_window) = app_handle.get_webview_window("main") {
-                    main_window.show().unwrap();
-                    main_window.set_focus().unwrap();
-                }
+            if should_force_show || !should_hide || !tray_available {
+                show_main_window(&app_handle);
             }
 
             Ok(())
@@ -495,12 +543,11 @@ pub fn run(cli_args: CliArgs) {
                 api.prevent_close();
                 let _res = window.hide();
 
-                let tray_visible =
-                    TRAY_ICON_ENABLED.load(Ordering::Relaxed)
-                        && !window.app_handle().state::<CliArgs>().no_tray;
-
                 #[cfg(target_os = "macos")]
                 {
+                    let tray_visible =
+                        TRAY_ICON_ENABLED.load(Ordering::Relaxed)
+                            && !window.app_handle().state::<CliArgs>().no_tray;
                     if tray_visible {
                         // Tray is available: hide the dock icon, app lives in the tray
                         let res = window

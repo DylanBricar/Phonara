@@ -1,3 +1,4 @@
+use crate::settings::TextReplacement;
 use natural::phonetics::soundex;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -283,6 +284,59 @@ pub fn filter_transcription_output(text: &str) -> String {
     filtered.trim().to_string()
 }
 
+/// Applies explicit text replacement rules to transcribed text.
+///
+/// Unlike `apply_custom_words` which uses fuzzy/phonetic matching, this function
+/// performs exact string replacement. Each rule specifies a "find" string and a
+/// "replace" string, with an optional case-sensitivity flag.
+///
+/// Replacements are applied in order, so earlier rules can affect later ones.
+///
+/// # Arguments
+/// * `text` - The input text to apply replacements to
+/// * `replacements` - Ordered list of replacement rules
+///
+/// # Returns
+/// The text with all matching replacements applied
+pub fn apply_text_replacements(text: &str, replacements: &[TextReplacement]) -> String {
+    if replacements.is_empty() {
+        return text.to_string();
+    }
+
+    let mut result = text.to_string();
+
+    for replacement in replacements {
+        if replacement.find.is_empty() {
+            continue;
+        }
+
+        if replacement.case_sensitive {
+            result = result.replace(&replacement.find, &replacement.replace);
+        } else {
+            // Case-insensitive replacement without regex:
+            // Find all occurrences by searching in the lowercased version,
+            // then replace in the original string from right to left to preserve indices.
+            let lower_result = result.to_lowercase();
+            let lower_find = replacement.find.to_lowercase();
+            let find_len = replacement.find.len();
+
+            let mut positions: Vec<usize> = Vec::new();
+            let mut start = 0;
+            while let Some(pos) = lower_result[start..].find(&lower_find) {
+                positions.push(start + pos);
+                start += pos + find_len;
+            }
+
+            // Replace from right to left so indices remain valid
+            for &pos in positions.iter().rev() {
+                result.replace_range(pos..pos + find_len, &replacement.replace);
+            }
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,5 +526,98 @@ mod tests {
             "got double-counted result: {}",
             result
         );
+    }
+
+    #[test]
+    fn test_text_replacements_basic() {
+        let replacements = vec![TextReplacement {
+            find: "gonna".to_string(),
+            replace: "going to".to_string(),
+            case_sensitive: false,
+        }];
+        let result = apply_text_replacements("I'm gonna do it", &replacements);
+        assert_eq!(result, "I'm going to do it");
+    }
+
+    #[test]
+    fn test_text_replacements_case_sensitive() {
+        let replacements = vec![TextReplacement {
+            find: "API".to_string(),
+            replace: "Application Programming Interface".to_string(),
+            case_sensitive: true,
+        }];
+        assert_eq!(
+            apply_text_replacements("The API is great", &replacements),
+            "The Application Programming Interface is great"
+        );
+        // Should NOT match lowercase "api"
+        assert_eq!(
+            apply_text_replacements("The api is great", &replacements),
+            "The api is great"
+        );
+    }
+
+    #[test]
+    fn test_text_replacements_case_insensitive() {
+        let replacements = vec![TextReplacement {
+            find: "gonna".to_string(),
+            replace: "going to".to_string(),
+            case_sensitive: false,
+        }];
+        assert_eq!(
+            apply_text_replacements("GONNA do it", &replacements),
+            "going to do it"
+        );
+        assert_eq!(
+            apply_text_replacements("Gonna do it", &replacements),
+            "going to do it"
+        );
+    }
+
+    #[test]
+    fn test_text_replacements_empty() {
+        let result = apply_text_replacements("hello world", &[]);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_text_replacements_empty_find() {
+        let replacements = vec![TextReplacement {
+            find: "".to_string(),
+            replace: "something".to_string(),
+            case_sensitive: false,
+        }];
+        let result = apply_text_replacements("hello world", &replacements);
+        assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn test_text_replacements_multiple() {
+        let replacements = vec![
+            TextReplacement {
+                find: "gonna".to_string(),
+                replace: "going to".to_string(),
+                case_sensitive: false,
+            },
+            TextReplacement {
+                find: "wanna".to_string(),
+                replace: "want to".to_string(),
+                case_sensitive: false,
+            },
+        ];
+        let result = apply_text_replacements("I'm gonna wanna do it", &replacements);
+        assert_eq!(result, "I'm going to want to do it");
+    }
+
+    #[test]
+    fn test_text_replacements_delete() {
+        // Replace with empty string to delete text
+        let replacements = vec![TextReplacement {
+            find: "um ".to_string(),
+            replace: "".to_string(),
+            case_sensitive: false,
+        }];
+        let result = apply_text_replacements("I um think so", &replacements);
+        assert_eq!(result, "I think so");
     }
 }

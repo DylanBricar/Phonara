@@ -9,8 +9,10 @@ import { AudioFeedback } from "../AudioFeedback";
 import { useSettings } from "../../../hooks/useSettings";
 import { VolumeSlider } from "../VolumeSlider";
 import { MuteWhileRecording } from "../MuteWhileRecording";
+import { SoundPicker } from "../SoundPicker";
 import { ModelSettingsCard } from "./ModelSettingsCard";
 import { LongAudioModelSettings } from "./LongAudioModelSettings";
+import { TranscribeFile } from "../TranscribeFile";
 
 export const GeneralSettings: React.FC = () => {
   const { t } = useTranslation();
@@ -27,6 +29,7 @@ export const GeneralSettings: React.FC = () => {
       </SettingsGroup>
       <ModelSettingsCard />
       <LongAudioModelSettings />
+      <TranscribeFile />
       <SettingsGroup title={t("settings.sound.title")}>
         <MicrophoneSelector descriptionMode="tooltip" grouped={true} />
         <MuteWhileRecording descriptionMode="tooltip" grouped={true} />
@@ -37,6 +40,10 @@ export const GeneralSettings: React.FC = () => {
           disabled={!audioFeedbackEnabled}
         />
         <VolumeSlider disabled={!audioFeedbackEnabled} />
+        <SoundPicker
+          label={t("settings.sound.soundTheme.label")}
+          description={t("settings.sound.soundTheme.description")}
+        />
       </SettingsGroup>
     </div>
   );

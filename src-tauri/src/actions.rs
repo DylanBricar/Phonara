@@ -11,6 +11,7 @@ use crate::utils::{
     self, show_processing_overlay, show_recording_overlay, show_transcribing_overlay,
 };
 use crate::TranscriptionCoordinator;
+use chrono::Local;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
 use log::{debug, error, info, warn};
 use once_cell::sync::Lazy;
@@ -52,10 +53,29 @@ fn strip_invisible_chars(s: &str) -> String {
     s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
 }
 
+/// Substitute template variables in a prompt string.
+///
+/// Supported variables:
+///   `$time_local` — current local time (e.g. "14:30:05")
+///   `$date`       — current local date  (e.g. "2026-03-11")
+///   `$language`   — the user's selected transcription language (e.g. "en", "fr", "auto")
+///
+/// The legacy `${output}` variable is NOT handled here; it is replaced
+/// separately with the actual transcription text by the caller.
+fn substitute_template_variables(prompt: &str, language: &str) -> String {
+    let now = Local::now();
+    prompt
+        .replace("$time_local", &now.format("%H:%M:%S").to_string())
+        .replace("$date", &now.format("%Y-%m-%d").to_string())
+        .replace("$language", language)
+}
+
 /// Build a system prompt from the user's prompt template.
 /// Removes `${output}` placeholder since the transcription is sent as the user message.
-fn build_system_prompt(prompt_template: &str) -> String {
-    prompt_template.replace("${output}", "").trim().to_string()
+/// Also substitutes template variables ($time_local, $date, $language).
+fn build_system_prompt(prompt_template: &str, language: &str) -> String {
+    let prompt = substitute_template_variables(prompt_template, language);
+    prompt.replace("${output}", "").trim().to_string()
 }
 
 async fn post_process_transcription(settings: &AppSettings, transcription: &str) -> Option<String> {
@@ -123,7 +143,7 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     if provider.supports_structured_output {
         debug!("Using structured outputs for provider '{}'", provider.id);
 
-        let system_prompt = build_system_prompt(&prompt);
+        let system_prompt = build_system_prompt(&prompt, &settings.selected_language);
         let user_content = transcription.to_string();
 
         // Handle Apple Intelligence separately since it uses native Swift APIs
@@ -235,8 +255,9 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         }
     }
 
-    // Legacy mode: Replace ${output} variable in the prompt with the actual text
-    let processed_prompt = prompt.replace("${output}", transcription);
+    // Legacy mode: Substitute template variables and replace ${output} with the actual text
+    let processed_prompt = substitute_template_variables(&prompt, &settings.selected_language)
+        .replace("${output}", transcription);
     debug!("Processed prompt length: {} chars", processed_prompt.len());
 
     match crate::llm_client::send_chat_completion(&provider, api_key, &model, processed_prompt)
@@ -300,10 +321,12 @@ async fn process_action(
         .or_else(|| settings.post_process_models.get(&provider.id).cloned())
         .unwrap_or_default();
 
-    let full_prompt = if prompt.contains("${output}") {
-        prompt.replace("${output}", transcription)
+    // Substitute template variables ($time_local, $date, $language) and ${output}
+    let prompt_with_vars = substitute_template_variables(prompt, &settings.selected_language);
+    let full_prompt = if prompt_with_vars.contains("${output}") {
+        prompt_with_vars.replace("${output}", transcription)
     } else {
-        format!("{}\n\n{}", prompt, transcription)
+        format!("{}\n\n{}", prompt_with_vars, transcription)
     };
 
     debug!(

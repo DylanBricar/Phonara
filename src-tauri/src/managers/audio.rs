@@ -470,6 +470,8 @@ impl AudioRecordingManager {
             }
             (MicrophoneMode::OnDemand, MicrophoneMode::AlwaysOn) => {
                 drop(mode_guard);
+                // Cancel any pending lazy close when switching to always-on
+                self.lazy_close_gen.fetch_add(1, Ordering::SeqCst);
                 self.start_microphone_stream()?;
             }
             _ => {}
@@ -499,6 +501,8 @@ impl AudioRecordingManager {
         if let RecordingState::Idle = *state {
             // Ensure microphone is open in on-demand mode
             if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
+                // Cancel any pending lazy close
+                self.lazy_close_gen.fetch_add(1, Ordering::SeqCst);
                 if let Err(e) = self.start_microphone_stream() {
                     error!("Failed to open microphone stream: {e}");
                     return false;

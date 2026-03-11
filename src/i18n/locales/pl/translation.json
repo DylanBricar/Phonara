@@ -537,7 +537,10 @@
     "dismiss": "Zamknij"
   },
   "errors": {
-    "loadDirectory": "Błąd wczytywania katalogu: {{error}}"
+    "loadDirectory": "Błąd wczytywania katalogu: {{error}}",
+    "recordingFailed": "Nie udało się rozpocząć nagrywania: {{error}}",
+    "modelLoadFailed": "Nie udało się załadować modelu: {{model}}",
+    "modelLoadFailedUnknown": "nieznany model"
   },
   "appLanguage": {
     "title": "Język aplikacji",

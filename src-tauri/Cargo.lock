@@ -4313,6 +4313,7 @@ name = "phonara"
 version = "0.7.17"
 dependencies = [
  "anyhow",
+ "arboard",
  "base64 0.22.1",
  "chrono",
  "clap",
@@ -4366,6 +4367,7 @@ dependencies = [
  "transcribe-rs",
  "vad-rs",
  "windows 0.61.3",
+ "winreg 0.55.0",
 ]
 
 [[package]]

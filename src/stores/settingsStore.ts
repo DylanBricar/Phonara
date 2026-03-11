@@ -111,6 +111,12 @@ const settingUpdaters: {
     commands.changeOverlayHighVisibilitySetting(value as boolean),
   debug_mode: (value) => commands.changeDebugModeSetting(value as boolean),
   custom_words: (value) => commands.updateCustomWords(value as string[]),
+  text_replacements: (value) =>
+    commands.updateTextReplacements(value as any[]),
+  whisper_initial_prompt: (value) =>
+    commands.changeWhisperInitialPromptSetting(
+      (value as string | null) ?? null,
+    ),
   word_correction_threshold: (value) =>
     commands.changeWordCorrectionThresholdSetting(value as number),
   paste_method: (value) => commands.changePasteMethodSetting(value as string),

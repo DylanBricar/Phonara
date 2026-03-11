@@ -546,7 +546,10 @@
     "dismiss": "Bỏ qua"
   },
   "errors": {
-    "loadDirectory": "Lỗi khi tải thư mục: {{error}}"
+    "loadDirectory": "Lỗi khi tải thư mục: {{error}}",
+    "recordingFailed": "Không thể bắt đầu ghi âm: {{error}}",
+    "modelLoadFailed": "Không thể tải mô hình: {{model}}",
+    "modelLoadFailedUnknown": "mô hình không xác định"
   },
   "appLanguage": {
     "title": "Ngôn ngữ ứng dụng",

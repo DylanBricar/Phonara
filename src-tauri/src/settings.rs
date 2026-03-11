@@ -93,6 +93,13 @@ pub struct LLMPrompt {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct TextReplacement {
+    pub find: String,
+    pub replace: String,
+    pub case_sensitive: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct PostProcessAction {
     pub key: u8,
     pub name: String,
@@ -335,6 +342,8 @@ pub struct AppSettings {
     #[serde(default)]
     pub custom_words: Vec<String>,
     #[serde(default)]
+    pub text_replacements: Vec<TextReplacement>,
+    #[serde(default)]
     pub model_unload_timeout: ModelUnloadTimeout,
     #[serde(default = "default_word_correction_threshold")]
     pub word_correction_threshold: f64,
@@ -380,6 +389,7 @@ pub struct AppSettings {
     pub paste_delay_ms: u64,
     #[serde(default = "default_typing_tool")]
     pub typing_tool: TypingTool,
+    #[serde(default)]
     pub external_script_path: Option<String>,
     #[serde(default)]
     pub long_audio_model: Option<String>,
@@ -393,6 +403,14 @@ pub struct AppSettings {
     pub post_process_actions: Vec<PostProcessAction>,
     #[serde(default)]
     pub saved_processing_models: Vec<SavedProcessingModel>,
+    #[serde(default)]
+    pub whisper_initial_prompt: Option<String>,
+    #[serde(default)]
+    pub custom_start_sound: Option<String>,
+    #[serde(default)]
+    pub custom_stop_sound: Option<String>,
+    #[serde(default)]
+    pub custom_recordings_directory: Option<String>,
 }
 
 fn default_model() -> String {
@@ -781,6 +799,7 @@ pub fn get_default_settings() -> AppSettings {
         debug_mode: false,
         log_level: default_log_level(),
         custom_words: Vec::new(),
+        text_replacements: Vec::new(),
         model_unload_timeout: ModelUnloadTimeout::Never,
         word_correction_threshold: default_word_correction_threshold(),
         history_limit: default_history_limit(),
@@ -811,6 +830,10 @@ pub fn get_default_settings() -> AppSettings {
         gemini_model: default_gemini_model(),
         post_process_actions: Vec::new(),
         saved_processing_models: Vec::new(),
+        whisper_initial_prompt: None,
+        custom_start_sound: None,
+        custom_stop_sound: None,
+        custom_recordings_directory: None,
     }
 }
 
@@ -942,6 +965,11 @@ pub fn get_history_limit(app: &AppHandle) -> usize {
 pub fn get_recording_retention_period(app: &AppHandle) -> RecordingRetentionPeriod {
     let settings = get_settings(app);
     settings.recording_retention_period
+}
+
+pub fn get_custom_recordings_directory(app: &AppHandle) -> Option<String> {
+    let settings = get_settings(app);
+    settings.custom_recordings_directory
 }
 
 #[cfg(test)]

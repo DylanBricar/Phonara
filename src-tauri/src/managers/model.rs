@@ -12,7 +12,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -439,6 +439,9 @@ impl ModelManager {
         // Migrate any bundled models to user directory
         manager.migrate_bundled_models()?;
 
+        // Clean up stale .partial files from interrupted downloads
+        manager.cleanup_stale_partial_files();
+
         // Check which models are already downloaded
         manager.update_download_status()?;
 
@@ -483,6 +486,64 @@ impl ModelManager {
         }
 
         Ok(())
+    }
+
+    /// Clean up stale `.partial` files from interrupted downloads.
+    ///
+    /// On app startup no downloads are active, so any `.partial` file that was
+    /// last modified more than 24 hours ago is considered stale and is removed.
+    /// This prevents old partial files from blocking retry attempts (Issue #858).
+    fn cleanup_stale_partial_files(&self) {
+        let stale_threshold = Duration::from_secs(24 * 60 * 60); // 24 hours
+
+        let entries = match fs::read_dir(&self.models_dir) {
+            Ok(entries) => entries,
+            Err(e) => {
+                warn!("Failed to read models directory for cleanup: {}", e);
+                return;
+            }
+        };
+
+        for entry in entries.flatten() {
+            let path = entry.path();
+
+            // Only consider .partial files
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) if n.ends_with(".partial") => n.to_string(),
+                _ => continue,
+            };
+
+            // At startup, no downloads are active. Check file age to decide
+            // whether to keep it (user might restart the app quickly and want
+            // to resume) or remove it (truly stale).
+            let is_stale = match path.metadata().and_then(|m| m.modified()) {
+                Ok(modified) => {
+                    SystemTime::now()
+                        .duration_since(modified)
+                        .unwrap_or(Duration::ZERO)
+                        > stale_threshold
+                }
+                Err(_) => {
+                    // Can't determine age; treat as stale to be safe
+                    true
+                }
+            };
+
+            if is_stale {
+                info!(
+                    "Removing stale partial download: {} (older than 24 hours)",
+                    name
+                );
+                if let Err(e) = fs::remove_file(&path) {
+                    warn!("Failed to remove stale partial file {}: {}", name, e);
+                }
+            } else {
+                debug!(
+                    "Keeping recent partial download for possible resume: {}",
+                    name
+                );
+            }
+        }
     }
 
     fn update_download_status(&self) -> Result<()> {
@@ -812,6 +873,42 @@ impl ModelManager {
 
             // Restart download without range header
             response = client.get(&url).send().await?;
+        }
+
+        // If the server returned 206 Partial Content, verify the Content-Range
+        // header is consistent with our partial file size. If the remote file
+        // changed (different total size), the partial data is invalid.
+        if resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+            if let Some(content_range) = response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+            {
+                // Content-Range format: "bytes <start>-<end>/<total>"
+                // Verify the remaining content length is plausible
+                if let Some(total_str) = content_range.rsplit('/').next() {
+                    if let Ok(server_total) = total_str.trim().parse::<u64>() {
+                        let expected_remaining = server_total.saturating_sub(resume_from);
+                        let actual_remaining = response.content_length().unwrap_or(0);
+
+                        if actual_remaining > 0
+                            && expected_remaining > 0
+                            && (actual_remaining as f64 - expected_remaining as f64).abs()
+                                > 1024.0
+                        {
+                            warn!(
+                                "Content-Range mismatch for model {} (expected {} remaining, got {}). \
+                                 Remote file may have changed. Restarting download.",
+                                model_id, expected_remaining, actual_remaining
+                            );
+                            drop(response);
+                            let _ = fs::remove_file(&partial_path);
+                            resume_from = 0;
+                            response = client.get(&url).send().await?;
+                        }
+                    }
+                }
+            }
         }
 
         // Check for success or partial content status

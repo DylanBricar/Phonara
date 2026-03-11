@@ -83,12 +83,9 @@ pub fn set_log_level(app: AppHandle, level: LogLevel) -> Result<(), String> {
 #[specta::specta]
 #[tauri::command]
 pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-
-    let recordings_dir = app_data_dir.join("recordings");
+    let history_manager =
+        app.state::<std::sync::Arc<crate::managers::history::HistoryManager>>();
+    let recordings_dir = history_manager.get_recordings_dir();
 
     let path = recordings_dir.to_string_lossy().as_ref().to_string();
     app.opener()
@@ -96,6 +93,60 @@ pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Failed to open recordings folder: {}", e))?;
 
     Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), String> {
+    // Validate the path exists and is a directory
+    let dir_path = std::path::Path::new(&path);
+    if !dir_path.exists() {
+        return Err("Directory does not exist".to_string());
+    }
+    if !dir_path.is_dir() {
+        return Err("Path is not a directory".to_string());
+    }
+
+    // Validate the directory is writable by attempting to create a temp file
+    let test_file = dir_path.join(".phonara_write_test");
+    match std::fs::write(&test_file, b"test") {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&test_file);
+        }
+        Err(e) => {
+            return Err(format!("Directory is not writable: {}", e));
+        }
+    }
+
+    // Save to settings
+    let mut settings = get_settings(&app);
+    settings.custom_recordings_directory = Some(path.clone());
+    write_settings(&app, settings);
+
+    log::info!("Custom recordings directory set to: {}", path);
+
+    Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn clear_recordings_directory(app: AppHandle) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.custom_recordings_directory = None;
+    write_settings(&app, settings);
+
+    log::info!("Custom recordings directory cleared, using default");
+
+    Ok(())
+}
+
+#[specta::specta]
+#[tauri::command]
+pub fn get_recordings_directory(app: AppHandle) -> Result<String, String> {
+    let history_manager =
+        app.state::<std::sync::Arc<crate::managers::history::HistoryManager>>();
+    let recordings_dir = history_manager.get_recordings_dir();
+    Ok(recordings_dir.to_string_lossy().to_string())
 }
 
 #[specta::specta]

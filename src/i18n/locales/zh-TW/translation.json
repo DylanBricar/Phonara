@@ -537,7 +537,10 @@
     "dismiss": "關閉"
   },
   "errors": {
-    "loadDirectory": "載入目錄時發生錯誤: {{error}}"
+    "loadDirectory": "載入目錄時發生錯誤: {{error}}",
+    "recordingFailed": "錄音啟動失敗: {{error}}",
+    "modelLoadFailed": "載入模型失敗: {{model}}",
+    "modelLoadFailedUnknown": "未知模型"
   },
   "appLanguage": {
     "title": "應用程式語言",

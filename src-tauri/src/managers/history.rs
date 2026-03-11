@@ -57,10 +57,27 @@ pub struct HistoryManager {
 
 impl HistoryManager {
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
-        // Create recordings directory in app data dir
         let app_data_dir = app_handle.path().app_data_dir()?;
-        let recordings_dir = app_data_dir.join("recordings");
         let db_path = app_data_dir.join("history.db");
+
+        // Use custom recordings directory if set, otherwise fall back to default
+        let recordings_dir =
+            match crate::settings::get_custom_recordings_directory(app_handle) {
+                Some(custom_dir) if !custom_dir.is_empty() => {
+                    let custom_path = PathBuf::from(&custom_dir);
+                    if custom_path.exists() && custom_path.is_dir() {
+                        info!("Using custom recordings directory: {:?}", custom_path);
+                        custom_path
+                    } else {
+                        info!(
+                            "Custom recordings directory {:?} is not valid, falling back to default",
+                            custom_path
+                        );
+                        app_data_dir.join("recordings")
+                    }
+                }
+                _ => app_data_dir.join("recordings"),
+            };
 
         // Ensure recordings directory exists
         if !recordings_dir.exists() {
@@ -78,6 +95,12 @@ impl HistoryManager {
         manager.init_database()?;
 
         Ok(manager)
+    }
+
+    /// Update the recordings directory at runtime (e.g. when the user changes the setting).
+    /// Returns the new effective recordings directory path.
+    pub fn get_recordings_dir(&self) -> &PathBuf {
+        &self.recordings_dir
     }
 
     fn init_database(&self) -> Result<()> {

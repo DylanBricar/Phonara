@@ -537,7 +537,10 @@
     "dismiss": "Yoksay"
   },
   "errors": {
-    "loadDirectory": "Dizin yüklenirken hata oluştu: {{error}}"
+    "loadDirectory": "Dizin yüklenirken hata oluştu: {{error}}",
+    "recordingFailed": "Kayıt başlatılamadı: {{error}}",
+    "modelLoadFailed": "Model yüklenemedi: {{model}}",
+    "modelLoadFailedUnknown": "bilinmeyen model"
   },
   "appLanguage": {
     "title": "Uygulama Dili",

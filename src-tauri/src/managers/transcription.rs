@@ -1,4 +1,4 @@
-use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
+use crate::audio_toolkit::{apply_custom_words, apply_text_replacements, filter_transcription_output};
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{get_settings, ModelUnloadTimeout};
 use anyhow::Result;
@@ -512,7 +512,8 @@ impl TranscriptionManager {
                 } else {
                     result
                 };
-                let final_result = filter_transcription_output(&corrected);
+                let replaced = apply_text_replacements(&corrected, &settings.text_replacements);
+                let final_result = filter_transcription_output(&replaced);
 
                 let et = std::time::Instant::now();
                 info!(
@@ -566,6 +567,7 @@ impl TranscriptionManager {
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
                                 translate: settings.translate_to_english,
+                                initial_prompt: settings.whisper_initial_prompt.clone(),
                                 ..Default::default()
                             };
 
@@ -678,8 +680,11 @@ impl TranscriptionManager {
             result.text
         };
 
+        // Apply explicit text replacement rules
+        let replaced_result = apply_text_replacements(&corrected_result, &settings.text_replacements);
+
         // Filter out filler words and hallucinations
-        let filtered_result = filter_transcription_output(&corrected_result);
+        let filtered_result = filter_transcription_output(&replaced_result);
 
         let et = std::time::Instant::now();
         let translation_note = if settings.translate_to_english {
