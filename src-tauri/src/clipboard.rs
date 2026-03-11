@@ -5,6 +5,8 @@ use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMetho
 use enigo::{Direction, Enigo, Key, Keyboard};
 use log::{info, warn};
 use std::process::Command;
+#[cfg(target_os = "linux")]
+use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -153,6 +155,13 @@ fn paste_via_clipboard(
 ) -> Result<(), String> {
     // Save current clipboard content including images (fix for #921)
     let saved_content = save_clipboard_content();
+
+    // Release modifier keys before pasting to avoid shortcut bleed-through
+    // (e.g., Option still held from Option+Space shortcut)
+    let _ = enigo.key(Key::Shift, Direction::Release);
+    let _ = enigo.key(Key::Alt, Direction::Release);
+    let _ = enigo.key(Key::Control, Direction::Release);
+    let _ = enigo.key(Key::Meta, Direction::Release);
 
     // Write text to clipboard with verification and retry (fix for #502)
     #[cfg(target_os = "linux")]
@@ -356,63 +365,51 @@ pub fn get_available_typing_tools() -> Vec<String> {
     tools
 }
 
-/// Check if wtype is available (Wayland text input tool)
+/// Cache tool availability checks using OnceLock to avoid repeated subprocess probes.
+/// Tools are either installed or not for the lifetime of the app, so checking once is sufficient.
+#[cfg(target_os = "linux")]
+fn check_tool_available(tool_name: &str) -> bool {
+    Command::new("which")
+        .arg(tool_name)
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 #[cfg(target_os = "linux")]
 fn is_wtype_available() -> bool {
-    Command::new("which")
-        .arg("wtype")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| check_tool_available("wtype"))
 }
 
-/// Check if dotool is available (another Wayland text input tool)
 #[cfg(target_os = "linux")]
 fn is_dotool_available() -> bool {
-    Command::new("which")
-        .arg("dotool")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| check_tool_available("dotool"))
 }
 
-/// Check if ydotool is available (uinput-based, works on both Wayland and X11)
 #[cfg(target_os = "linux")]
 fn is_ydotool_available() -> bool {
-    Command::new("which")
-        .arg("ydotool")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| check_tool_available("ydotool"))
 }
 
 #[cfg(target_os = "linux")]
 fn is_xdotool_available() -> bool {
-    Command::new("which")
-        .arg("xdotool")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| check_tool_available("xdotool"))
 }
 
-/// Check if kwtype is available (KDE Wayland virtual keyboard input tool)
 #[cfg(target_os = "linux")]
 fn is_kwtype_available() -> bool {
-    Command::new("which")
-        .arg("kwtype")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| check_tool_available("kwtype"))
 }
 
-/// Check if wl-copy is available (Wayland clipboard tool)
 #[cfg(target_os = "linux")]
 fn is_wl_copy_available() -> bool {
-    Command::new("which")
-        .arg("wl-copy")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+    static AVAILABLE: OnceLock<bool> = OnceLock::new();
+    *AVAILABLE.get_or_init(|| check_tool_available("wl-copy"))
 }
 
 /// Type text directly via wtype on Wayland.
@@ -463,8 +460,11 @@ fn type_text_via_dotool(text: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to spawn dotool: {}", e))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        // dotool uses "type <text>" command
-        writeln!(stdin, "type {}", text)
+        // dotool uses "type <text>" command via stdin.
+        // Sanitize newlines to prevent command injection — dotool interprets
+        // each line as a separate command (e.g., "key ctrl+c" could be injected).
+        let sanitized = text.replace('\n', " ").replace('\r', " ");
+        writeln!(stdin, "type {}", sanitized)
             .map_err(|e| format!("Failed to write to dotool stdin: {}", e))?;
     }
 

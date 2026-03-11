@@ -48,6 +48,8 @@ const ProcessingModelsSection: React.FC = () => {
     [providers],
   );
 
+  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
+  const providerRequiresApiKey = selectedProvider?.requires_api_key !== false;
   const availableModels = postProcessModelOptions[selectedProviderId] || [];
   const modelOptions = useMemo(
     () => availableModels.map((m) => ({ value: m, label: m })),
@@ -170,20 +172,22 @@ const ProcessingModelsSection: React.FC = () => {
 
           {selectedProviderId && (
             <>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold">
-                  {t("settings.models.processingModels.apiKey")}
-                </label>
-                <Input
-                  type="password"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={t(
-                    "settings.models.processingModels.apiKeyPlaceholder",
-                  )}
-                  variant="compact"
-                />
-              </div>
+              {providerRequiresApiKey && (
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold">
+                    {t("settings.models.processingModels.apiKey")}
+                  </label>
+                  <Input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={t(
+                      "settings.models.processingModels.apiKeyPlaceholder",
+                    )}
+                    variant="compact"
+                  />
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-sm font-semibold">
@@ -214,7 +218,7 @@ const ProcessingModelsSection: React.FC = () => {
                   )}
                   <button
                     onClick={handleFetchModels}
-                    disabled={isFetching || !apiKey.trim()}
+                    disabled={isFetching || (providerRequiresApiKey && !apiKey.trim())}
                     className="flex items-center justify-center h-8 w-8 rounded-md bg-mid-gray/10 hover:bg-mid-gray/20 transition-colors disabled:opacity-40"
                     title={t("settings.models.processingModels.fetchModels")}
                   >

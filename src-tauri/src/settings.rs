@@ -129,6 +129,12 @@ pub struct PostProcessProvider {
     pub models_endpoint: Option<String>,
     #[serde(default)]
     pub supports_structured_output: bool,
+    #[serde(default = "default_requires_api_key")]
+    pub requires_api_key: bool,
+}
+
+fn default_requires_api_key() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
@@ -511,6 +517,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "zai".to_string(),
@@ -519,6 +526,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "openrouter".to_string(),
@@ -527,6 +535,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "anthropic".to_string(),
@@ -535,6 +544,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "groq".to_string(),
@@ -543,6 +553,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "cerebras".to_string(),
@@ -551,6 +562,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
     ];
 
@@ -567,6 +579,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: None,
             supports_structured_output: true,
+            requires_api_key: false,
         });
     }
 
@@ -577,6 +590,18 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: false,
         models_endpoint: None,
         supports_structured_output: false,
+        requires_api_key: true,
+    });
+
+    // Ollama: local LLM provider, no API key needed, editable base URL
+    providers.push(PostProcessProvider {
+        id: "ollama".to_string(),
+        label: "Ollama".to_string(),
+        base_url: "http://localhost:11434/v1".to_string(),
+        allow_base_url_edit: true,
+        models_endpoint: Some("/models".to_string()),
+        supports_structured_output: false,
+        requires_api_key: false,
     });
 
     // Custom provider always comes last
@@ -587,6 +612,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: true,
         models_endpoint: Some("/models".to_string()),
         supports_structured_output: false,
+        requires_api_key: false,
     });
 
     providers
@@ -870,7 +896,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
         // Parse the entire settings object
         match serde_json::from_value::<AppSettings>(settings_value) {
             Ok(mut settings) => {
-                debug!("Found existing settings: {:?}", settings);
+                debug!("Found existing settings (api_keys redacted)");
                 let default_settings = get_default_settings();
                 let mut updated = false;
 
