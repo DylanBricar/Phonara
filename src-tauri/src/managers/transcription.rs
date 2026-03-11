@@ -52,12 +52,16 @@ const MAX_CHUNK_SECS: f32 = 25.0;
 /// Minimum audio duration (seconds) before we bother chunking.
 /// Short recordings are sent as-is.
 const CHUNK_THRESHOLD_SECS: f32 = 28.0;
+/// Overlap added when a hard split (no silence found) is needed, to
+/// avoid cutting a word in half. 0.5s at 16kHz = 8000 samples.
+const OVERLAP_SAMPLES: usize = 8000;
 
 /// Split long audio into chunks at silence boundaries.
 ///
 /// Uses simple energy-based silence detection (no model needed) to find
 /// good split points. Each chunk is at most `MAX_CHUNK_SECS` long.
-/// If no silence is found within a chunk, it force-splits at the limit.
+/// If no true silence is found, it splits at the quietest frame and adds
+/// a small overlap so the boundary word appears in both chunks.
 fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
     let sample_rate = WHISPER_SAMPLE_RATE as usize;
     let max_chunk_samples = (MAX_CHUNK_SECS * sample_rate as f32) as usize;
@@ -82,7 +86,7 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
     while chunk_start < audio.len() {
         let chunk_end = (chunk_start + max_chunk_samples).min(audio.len());
 
-        // If this is the last piece and it's short, just include it
+        // If this is the last piece, just include it
         if chunk_end == audio.len() {
             chunks.push(audio[chunk_start..chunk_end].to_vec());
             break;
@@ -94,6 +98,7 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
 
         let mut best_split = chunk_end; // fallback: hard split at max
         let mut lowest_energy = f32::MAX;
+        let mut found_silence = false;
 
         let mut pos = search_start;
         while pos + frame_size <= search_end {
@@ -108,6 +113,7 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
             // If we find true silence, use it immediately
             if rms < silence_threshold {
                 best_split = pos + frame_size / 2;
+                found_silence = true;
                 break;
             }
 
@@ -115,7 +121,19 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
         }
 
         chunks.push(audio[chunk_start..best_split].to_vec());
-        chunk_start = best_split;
+
+        if found_silence {
+            // Clean split at a silent point — no overlap needed
+            chunk_start = best_split;
+        } else {
+            // No real silence found — rewind by OVERLAP_SAMPLES so the
+            // boundary word appears in both chunks (avoids cut words)
+            chunk_start = if best_split > OVERLAP_SAMPLES {
+                best_split - OVERLAP_SAMPLES
+            } else {
+                best_split
+            };
+        }
     }
 
     debug!(
