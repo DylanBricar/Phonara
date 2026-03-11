@@ -158,9 +158,20 @@ build() {
     # Setup VAD model if needed
     setup_vad_model
 
+    # Disable updater artifact signing for local builds (requires TAURI_SIGNING_PRIVATE_KEY)
+    if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+        info "No signing key found, disabling updater artifacts..."
+        sed -i.bak 's/"createUpdaterArtifacts": true/"createUpdaterArtifacts": false/' "$PROJECT_ROOT/src-tauri/tauri.conf.json"
+    fi
+
     # Build
     info "Running Tauri build..."
     bun run tauri build
+
+    # Restore tauri.conf.json if we modified it
+    if [[ -f "$PROJECT_ROOT/src-tauri/tauri.conf.json.bak" ]]; then
+        mv "$PROJECT_ROOT/src-tauri/tauri.conf.json.bak" "$PROJECT_ROOT/src-tauri/tauri.conf.json"
+    fi
 
     # Copy artifacts to target/
     mkdir -p "$TARGET_DIR"
