@@ -459,6 +459,14 @@ async changeOverlayCustomHeightSetting(height: number) : Promise<Result<null, st
     else return { status: "error", error: e  as any };
 }
 },
+async previewOverlaySettings() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("preview_overlay_settings") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 /**
  * Start key recording mode
  */
