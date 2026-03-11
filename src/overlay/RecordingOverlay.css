@@ -1,16 +1,16 @@
 .recording-overlay {
-  height: 40px;
-  width: 200px;
+  height: var(--overlay-height, 40px);
+  width: var(--overlay-width, 200px);
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 0 12px;
-  background: #1a1a1a;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--overlay-bg, #1a1a1a);
+  border: var(--overlay-border-width, 1px) solid var(--overlay-border-color, rgba(255, 255, 255, 0.12));
   border-radius: 17px;
   opacity: 0;
   transform: translateY(8px) scale(0.96);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.26);
+  box-shadow: none;
   transition:
     opacity 260ms ease-out,
     transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
@@ -218,7 +218,7 @@
 /* High visibility mode - colored borders for better visibility */
 .recording-overlay.high-visibility {
   border: 2px solid rgba(239, 68, 68, 0.9);
-  box-shadow: 0 0 12px rgba(239, 68, 68, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
 }
 
 .recording-overlay.high-visibility.state-recording {
@@ -227,10 +227,10 @@
 
 .recording-overlay.high-visibility.state-transcribing {
   border-color: rgba(59, 130, 246, 0.9);
-  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
 }
 
 .recording-overlay.high-visibility.state-processing {
   border-color: rgba(168, 85, 247, 0.9);
-  box-shadow: 0 0 12px rgba(168, 85, 247, 0.4), 0 8px 24px rgba(0, 0, 0, 0.26);
+  box-shadow: 0 0 8px rgba(168, 85, 247, 0.3);
 }

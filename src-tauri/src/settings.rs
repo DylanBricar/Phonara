@@ -417,6 +417,16 @@ pub struct AppSettings {
     pub custom_stop_sound: Option<String>,
     #[serde(default)]
     pub custom_recordings_directory: Option<String>,
+    #[serde(default)]
+    pub overlay_border_color: Option<String>,
+    #[serde(default)]
+    pub overlay_background_color: Option<String>,
+    #[serde(default = "default_overlay_border_width")]
+    pub overlay_border_width: u8,
+    #[serde(default = "default_overlay_width")]
+    pub overlay_custom_width: u16,
+    #[serde(default = "default_overlay_height")]
+    pub overlay_custom_height: u16,
 }
 
 fn default_model() -> String {
@@ -664,6 +674,18 @@ fn default_gemini_model() -> String {
     "gemini-2.5-flash".to_string()
 }
 
+fn default_overlay_border_width() -> u8 {
+    1
+}
+
+fn default_overlay_width() -> u16 {
+    200
+}
+
+fn default_overlay_height() -> u16 {
+    40
+}
+
 fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
     let mut changed = false;
     for provider in default_post_process_providers() {
@@ -860,6 +882,11 @@ pub fn get_default_settings() -> AppSettings {
         custom_start_sound: None,
         custom_stop_sound: None,
         custom_recordings_directory: None,
+        overlay_border_color: None,
+        overlay_background_color: None,
+        overlay_border_width: default_overlay_border_width(),
+        overlay_custom_width: default_overlay_width(),
+        overlay_custom_height: default_overlay_height(),
     }
 }
 

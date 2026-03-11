@@ -8,9 +8,16 @@ import { getLanguageDirection } from "@/lib/utils/rtl";
 
 type OverlayState = "recording" | "transcribing" | "processing";
 
+const isValidHexColor = (v: string): boolean => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+
 interface ShowOverlayPayload {
   state: OverlayState;
   highVisibility?: boolean;
+  borderColor?: string | null;
+  backgroundColor?: string | null;
+  borderWidth?: number;
+  customWidth?: number;
+  customHeight?: number;
 }
 
 interface ActionInfo {
@@ -176,6 +183,7 @@ const RecordingOverlay: React.FC = () => {
   const [cancelPending, setCancelPending] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [highVisibility, setHighVisibility] = useState(false);
+  const [customStyle, setCustomStyle] = useState<Record<string, string>>({});
   const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pauseStartRef = useRef<number>(0);
   const direction = getLanguageDirection(i18n.language);
@@ -201,6 +209,20 @@ const RecordingOverlay: React.FC = () => {
         const hv = typeof payload === "object" && payload.highVisibility;
         setState(overlayState);
         setHighVisibility(!!hv);
+        const styles: Record<string, string> = {};
+        if (typeof payload === "object") {
+          if (payload.borderColor && isValidHexColor(payload.borderColor))
+            styles["--overlay-border-color"] = payload.borderColor;
+          if (payload.backgroundColor && isValidHexColor(payload.backgroundColor))
+            styles["--overlay-bg"] = payload.backgroundColor;
+          if (payload.borderWidth && payload.borderWidth >= 0 && payload.borderWidth <= 10)
+            styles["--overlay-border-width"] = `${payload.borderWidth}px`;
+          if (payload.customWidth && payload.customWidth >= 120 && payload.customWidth <= 500)
+            styles["--overlay-width"] = `${payload.customWidth}px`;
+          if (payload.customHeight && payload.customHeight >= 30 && payload.customHeight <= 80)
+            styles["--overlay-height"] = `${payload.customHeight}px`;
+        }
+        setCustomStyle(styles);
         setIsVisible(true);
         setIsPaused(false);
         if (overlayState === "recording") {
@@ -289,6 +311,7 @@ const RecordingOverlay: React.FC = () => {
   return (
     <div
       dir={direction}
+      style={customStyle}
       className={`recording-overlay state-${state} ${isVisible ? "is-visible" : "is-hidden"} ${highVisibility ? "high-visibility" : ""}`}
     >
       <div className="overlay-left">

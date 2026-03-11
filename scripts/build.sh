@@ -173,7 +173,9 @@ build() {
         mv "$PROJECT_ROOT/src-tauri/tauri.conf.json.bak" "$PROJECT_ROOT/src-tauri/tauri.conf.json"
     fi
 
-    # Copy artifacts to target/
+    # Clean and copy artifacts to target/
+    info "Cleaning target/ directory..."
+    rm -rf "$TARGET_DIR"
     mkdir -p "$TARGET_DIR"
 
     local bundle_dir="$PROJECT_ROOT/src-tauri/target/release/bundle"

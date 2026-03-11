@@ -1350,3 +1350,54 @@ pub fn change_long_audio_threshold_setting(app: AppHandle, threshold: f32) -> Re
     settings::write_settings(&app, settings);
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_overlay_border_color_setting(
+    app: AppHandle,
+    color: Option<String>,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.overlay_border_color = color;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_overlay_background_color_setting(
+    app: AppHandle,
+    color: Option<String>,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.overlay_background_color = color;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_overlay_border_width_setting(app: AppHandle, width: u8) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.overlay_border_width = width.min(10);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_overlay_custom_width_setting(app: AppHandle, width: u16) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.overlay_custom_width = width.max(120).min(500);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_overlay_custom_height_setting(app: AppHandle, height: u16) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.overlay_custom_height = height.max(30).min(80);
+    settings::write_settings(&app, settings);
+    Ok(())
+}

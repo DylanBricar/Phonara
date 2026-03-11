@@ -150,6 +150,20 @@ const settingUpdaters: {
   gemini_api_key: (value) =>
     commands.changeGeminiApiKeySetting((value as string | null) ?? ""),
   gemini_model: (value) => commands.changeGeminiModelSetting(value as string),
+  overlay_border_color: (value) =>
+    commands.changeOverlayBorderColorSetting(
+      (value as string | null) ?? null,
+    ),
+  overlay_background_color: (value) =>
+    commands.changeOverlayBackgroundColorSetting(
+      (value as string | null) ?? null,
+    ),
+  overlay_border_width: (value) =>
+    commands.changeOverlayBorderWidthSetting(value as number),
+  overlay_custom_width: (value) =>
+    commands.changeOverlayCustomWidthSetting(value as number),
+  overlay_custom_height: (value) =>
+    commands.changeOverlayCustomHeightSetting(value as number),
 };
 
 export const useSettingsStore = create<SettingsStore>()(

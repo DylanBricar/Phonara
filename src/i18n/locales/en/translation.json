@@ -328,6 +328,26 @@
         "highVisibility": {
           "label": "High Visibility Overlay",
           "description": "Add a red border to the recording overlay for better visibility."
+        },
+        "borderColor": {
+          "label": "Border Color",
+          "description": "Custom border color for the recording overlay."
+        },
+        "backgroundColor": {
+          "label": "Background Color",
+          "description": "Custom background color for the recording overlay."
+        },
+        "borderWidth": {
+          "label": "Border Width",
+          "description": "Border thickness of the recording overlay."
+        },
+        "width": {
+          "label": "Overlay Width",
+          "description": "Width of the recording overlay in pixels."
+        },
+        "height": {
+          "label": "Overlay Height",
+          "description": "Height of the recording overlay in pixels."
         }
       },
       "pasteMethod": {

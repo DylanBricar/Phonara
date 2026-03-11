@@ -280,12 +280,13 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
         };
 
         let settings = settings::get_settings(app_handle);
+        let (ow, oh) = get_overlay_dimensions(&settings);
 
-        let x = area_x + (area_w - OVERLAY_WIDTH) / 2.0;
+        let x = area_x + (area_w - ow) / 2.0;
         let y = match settings.overlay_position {
             OverlayPosition::Top => area_y + OVERLAY_TOP_OFFSET,
             OverlayPosition::Bottom | OverlayPosition::None => {
-                area_y + area_h - OVERLAY_HEIGHT - OVERLAY_BOTTOM_OFFSET
+                area_y + area_h - oh - OVERLAY_BOTTOM_OFFSET
             }
         };
 
@@ -393,6 +394,28 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
     }
 }
 
+/// Validates a CSS color string (only allows hex colors like #rrggbb or #rgb)
+fn sanitize_color(color: &Option<String>) -> Option<String> {
+    color.as_ref().and_then(|c| {
+        let trimmed = c.trim();
+        if (trimmed.len() == 7 || trimmed.len() == 4)
+            && trimmed.starts_with('#')
+            && trimmed[1..].chars().all(|ch| ch.is_ascii_hexdigit())
+        {
+            Some(trimmed.to_string())
+        } else {
+            None
+        }
+    })
+}
+
+fn get_overlay_dimensions(settings: &settings::AppSettings) -> (f64, f64) {
+    // Clamp dimensions to safe bounds (120-500px width, 30-80px height)
+    let w = (settings.overlay_custom_width.max(120).min(500) as f64) + 10.0;
+    let h = (settings.overlay_custom_height.max(30).min(80) as f64) + 4.0;
+    (w, h)
+}
+
 fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     let settings = settings::get_settings(app_handle);
     if settings.overlay_position == OverlayPosition::None {
@@ -402,10 +425,11 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     update_overlay_position(app_handle);
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        let (w, h) = get_overlay_dimensions(&settings);
         // Ensure overlay size is correct for the current monitor's DPI scale
         let _ = overlay_window.set_size(tauri::Size::Logical(tauri::LogicalSize {
-            width: OVERLAY_WIDTH,
-            height: OVERLAY_HEIGHT,
+            width: w,
+            height: h,
         }));
 
         let _ = overlay_window.show();
@@ -417,7 +441,12 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
             "show-overlay",
             serde_json::json!({
                 "state": state,
-                "highVisibility": settings.overlay_high_visibility
+                "highVisibility": settings.overlay_high_visibility,
+                "borderColor": sanitize_color(&settings.overlay_border_color),
+                "backgroundColor": sanitize_color(&settings.overlay_background_color),
+                "borderWidth": settings.overlay_border_width.min(10),
+                "customWidth": settings.overlay_custom_width.max(120).min(500),
+                "customHeight": settings.overlay_custom_height.max(30).min(80)
             }),
         );
     }
