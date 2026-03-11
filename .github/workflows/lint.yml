@@ -1,13 +1,16 @@
 name: "lint"
 on: [pull_request]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v1
+      - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 
