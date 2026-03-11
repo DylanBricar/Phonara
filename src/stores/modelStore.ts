@@ -268,16 +268,13 @@ export const useModelStore = create<ModelsStore>()(
       // Set up event listeners
       listen<DownloadProgress>("model-download-progress", (event) => {
         const progress = event.payload;
+        const now = Date.now();
+
+        // Single atomic state update for both progress and download stats
         set(
           produce((state) => {
             state.downloadProgress[progress.model_id] = progress;
-          }),
-        );
 
-        // Update download stats for speed calculation
-        const now = Date.now();
-        set(
-          produce((state) => {
             const current = state.downloadStats[progress.model_id];
 
             if (!current) {

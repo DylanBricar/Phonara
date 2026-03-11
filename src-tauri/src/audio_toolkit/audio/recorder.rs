@@ -216,7 +216,11 @@ impl AudioRecorder {
                 }
             }
 
-            if sample_tx.send(output_buffer.clone()).is_err() {
+            // Move the buffer into the channel (zero-copy) instead of cloning.
+            // The next callback iteration will start with an empty Vec that
+            // quickly re-allocates to the same capacity.
+            let buf = std::mem::take(&mut output_buffer);
+            if sample_tx.send(buf).is_err() {
                 log::error!("Failed to send samples");
             }
         };

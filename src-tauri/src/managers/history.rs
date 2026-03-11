@@ -33,6 +33,10 @@ static MIGRATIONS: &[M] = &[
     M::up("ALTER TABLE transcription_history ADD COLUMN post_process_prompt TEXT;"),
     M::up("ALTER TABLE transcription_history ADD COLUMN post_process_action_key INTEGER;"),
     M::up("ALTER TABLE transcription_history ADD COLUMN model_name TEXT;"),
+    M::up(
+        "CREATE INDEX IF NOT EXISTS idx_history_timestamp ON transcription_history(timestamp DESC);
+         CREATE INDEX IF NOT EXISTS idx_history_saved_timestamp ON transcription_history(saved, timestamp);",
+    ),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -291,6 +295,7 @@ impl HistoryManager {
         }
 
         let conn = self.get_connection()?;
+        conn.execute_batch("BEGIN")?;
         let mut deleted_count = 0;
 
         for (id, file_name) in entries {
@@ -312,6 +317,7 @@ impl HistoryManager {
             }
         }
 
+        conn.execute_batch("COMMIT")?;
         Ok(deleted_count)
     }
 
@@ -479,7 +485,11 @@ impl HistoryManager {
     }
 
     pub fn get_audio_file_path(&self, file_name: &str) -> PathBuf {
-        self.recordings_dir.join(file_name)
+        // Sanitize: only use the final file name component to prevent path traversal
+        let safe_name = std::path::Path::new(file_name)
+            .file_name()
+            .unwrap_or_default();
+        self.recordings_dir.join(safe_name)
     }
 
     pub fn update_transcription_text(
