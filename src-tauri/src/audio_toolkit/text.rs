@@ -283,6 +283,27 @@ fn collapse_repeated_chars(text: &str) -> String {
     result
 }
 
+/// Collapse spaced-out repeated punctuation like "! ! ! ! !" or ". . . ."
+/// If the same punctuation character appears 4+ times separated by spaces,
+/// strip the whole sequence.
+fn collapse_spaced_repeated_punctuation(text: &str) -> String {
+    let mut result = text.to_string();
+    // Check common hallucination punctuation characters
+    for ch in ['!', '?', '.', ',', ';', '-', '*', '#'] {
+        let spaced = format!("{ch} {ch} {ch} {ch}"); // 4+ spaced repeats
+        if result.contains(&spaced) {
+            // Remove all occurrences of "X " followed by more X's
+            // by repeatedly replacing "X X" with "X" until stable
+            let double = format!("{ch} {ch}");
+            let single = format!("{ch}");
+            while result.contains(&double) {
+                result = result.replace(&double, &single);
+            }
+        }
+    }
+    result
+}
+
 /// Filters transcription output by removing filler words and stutter artifacts.
 ///
 /// This function cleans up raw transcription text by:
@@ -307,8 +328,11 @@ pub fn filter_transcription_output(text: &str) -> String {
     filtered = collapse_stutters(&filtered);
 
     // Remove hallucinated repeated characters (e.g. "!!!!!!", "......", "??????")
-    // Any single non-alphanumeric character repeated 4+ times is collapsed to empty
+    // Any single non-alphanumeric character repeated 4+ times is collapsed to 1
     filtered = collapse_repeated_chars(&filtered);
+
+    // Remove spaced-out hallucinations like "! ! ! ! !" or ". . . . ."
+    filtered = collapse_spaced_repeated_punctuation(&filtered);
 
     // Clean up multiple spaces to single space
     filtered = MULTI_SPACE_PATTERN.replace_all(&filtered, " ").to_string();

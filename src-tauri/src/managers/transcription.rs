@@ -149,6 +149,47 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
     chunks
 }
 
+/// Simple heuristic language detection from transcription text.
+/// Used to lock language across chunks when the user has "auto" selected.
+/// Returns an ISO 639-1 code (e.g. "fr", "de", "es") or None if uncertain.
+fn detect_language_from_text(text: &str) -> Option<String> {
+    let lower = text.to_lowercase();
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    if words.len() < 3 {
+        return None;
+    }
+
+    // Common function words (articles, prepositions, conjunctions) per language.
+    // These are extremely frequent and unlikely to appear in other languages.
+    let lang_markers: &[(&str, &[&str])] = &[
+        ("fr", &["le", "la", "les", "de", "du", "des", "un", "une", "est", "et", "que", "qui", "dans", "pour", "avec", "pas", "sur", "ce", "sont", "nous", "vous", "ils", "elle", "mais", "ou", "donc", "c'est", "j'ai", "il", "je", "tu", "on"]),
+        ("de", &["der", "die", "das", "ein", "eine", "ist", "und", "ich", "nicht", "sie", "auf", "mit", "den", "von", "dem", "dass", "wir", "aber", "auch", "noch", "wie"]),
+        ("es", &["el", "la", "los", "las", "de", "del", "un", "una", "es", "en", "que", "por", "con", "para", "como", "pero", "más", "este", "esta", "están", "tiene", "muy"]),
+        ("it", &["il", "lo", "la", "di", "del", "che", "è", "per", "non", "con", "una", "sono", "anche", "come", "più", "questo", "questa", "gli", "dei", "delle"]),
+        ("pt", &["o", "os", "as", "de", "do", "da", "dos", "das", "um", "uma", "que", "não", "com", "para", "como", "mais", "por", "mas", "tem", "está", "são"]),
+        ("nl", &["de", "het", "een", "van", "is", "en", "dat", "niet", "op", "met", "voor", "zijn", "maar", "ook", "nog", "wel", "dit", "die"]),
+    ];
+
+    let mut best_lang = None;
+    let mut best_count = 0_usize;
+    let total = words.len();
+
+    for (lang, markers) in lang_markers {
+        let count = words.iter().filter(|w| markers.contains(w)).count();
+        if count > best_count {
+            best_count = count;
+            best_lang = Some(*lang);
+        }
+    }
+
+    // Require at least 15% of words to be markers to be confident
+    if best_count * 100 / total >= 15 {
+        best_lang.map(|l| l.to_string())
+    } else {
+        None
+    }
+}
+
 #[derive(Clone)]
 pub struct TranscriptionManager {
     engine: Arc<Mutex<Option<LoadedEngine>>>,
@@ -581,11 +622,30 @@ impl TranscriptionManager {
                 chunks.len()
             );
             let mut all_results = Vec::new();
+            let mut forced_language: Option<String> = None;
+            let total_chunks = chunks.len();
             for (i, chunk) in chunks.into_iter().enumerate() {
                 let chunk_duration = chunk.len() as f32 / WHISPER_SAMPLE_RATE as f32;
-                debug!("Transcribing chunk {}/{} ({:.1}s)", i + 1, all_results.capacity() + 1, chunk_duration);
-                match self.transcribe_single(chunk) {
-                    Ok(text) if !text.is_empty() => all_results.push(text),
+                debug!("Transcribing chunk {}/{} ({:.1}s)", i + 1, total_chunks, chunk_duration);
+                match self.transcribe_single(chunk, forced_language.clone()) {
+                    Ok(text) if !text.is_empty() => {
+                        // After the first chunk (longest, most reliable for language
+                        // detection), detect language from the text and force it for
+                        // subsequent chunks to prevent Whisper auto-detection errors
+                        // on shorter segments.
+                        if i == 0 && forced_language.is_none() {
+                            let settings = get_settings(&self.app_handle);
+                            if settings.selected_language == "auto"
+                                || settings.selected_language == "os-input"
+                            {
+                                if let Some(lang) = detect_language_from_text(&text) {
+                                    info!("Auto-detected language '{}' from first chunk, forcing for remaining chunks", lang);
+                                    forced_language = Some(lang);
+                                }
+                            }
+                        }
+                        all_results.push(text);
+                    }
                     Ok(_) => debug!("Chunk {} returned empty result", i + 1),
                     Err(e) => warn!("Chunk {} transcription failed: {}", i + 1, e),
                 }
@@ -602,11 +662,13 @@ impl TranscriptionManager {
         }
 
         // Single chunk — transcribe directly
-        self.transcribe_single(audio)
+        self.transcribe_single(audio, None)
     }
 
     /// Transcribe a single audio segment (must be short enough for the engine's context window).
-    fn transcribe_single(&self, audio: Vec<f32>) -> Result<String> {
+    /// If `language_override` is `Some`, it takes precedence over the user's setting
+    /// (used to force a consistent language across chunks).
+    fn transcribe_single(&self, audio: Vec<f32>, language_override: Option<String>) -> Result<String> {
         let st = std::time::Instant::now();
 
         // Check if model is loaded, if not try to load it
@@ -631,6 +693,12 @@ impl TranscriptionManager {
             settings.selected_language = crate::commands::get_language_from_os_input()
                 .unwrap_or_else(|| "auto".to_string());
             debug!("Resolved OS input language to: {}", settings.selected_language);
+        }
+
+        // Apply language override (from chunked transcription's first-chunk detection)
+        if let Some(ref lang) = language_override {
+            debug!("Using language override: {}", lang);
+            settings.selected_language = lang.clone();
         }
 
         // Handle Gemini API separately (requires async HTTP call)
