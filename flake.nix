@@ -1,5 +1,5 @@
 {
-  description = "Handy - A free, open source, and extensible speech-to-text application that works completely offline";
+  description = "Phonara - A free, open source, and extensible speech-to-text application";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -28,7 +28,7 @@
           lib = pkgs.lib;
 
           bunDeps = pkgs.stdenv.mkDerivation {
-            pname = "handy-bun-deps";
+            pname = "phonara-bun-deps";
             inherit version;
             src = self;
 
@@ -55,8 +55,8 @@
           };
         in
         {
-          handy = pkgs.rustPlatform.buildRustPackage {
-            pname = "handy";
+          phonara = pkgs.rustPlatform.buildRustPackage {
+            pname = "phonara";
             inherit version;
             src = self;
 
@@ -186,14 +186,14 @@
 
             meta = {
               description = "A free, open source, and extensible speech-to-text application that works completely offline";
-              homepage = "https://github.com/cjpais/Handy";
+              homepage = "https://github.com/DylanBricar/Phonara";
               license = lib.licenses.mit;
-              mainProgram = "handy";
+              mainProgram = "phonara";
               platforms = supportedSystems;
             };
           };
 
-          default = self.packages.${system}.handy;
+          default = self.packages.${system}.phonara;
         }
       );
 
@@ -254,7 +254,7 @@
             XDG_DATA_DIRS = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:${pkgs.hicolor-icon-theme}/share";
 
             shellHook = ''
-              echo "Handy development environment"
+              echo "Phonara development environment"
               bun install
               echo "Run 'bun run tauri dev' to start"
             '';
