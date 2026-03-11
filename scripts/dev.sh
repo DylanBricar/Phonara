@@ -15,6 +15,20 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 [[ -d "/c/Program Files/CMake/bin" ]] && export PATH="$PATH:/c/Program Files/CMake/bin"
 [[ -d "/c/Program Files/LLVM/bin" ]] && export PATH="$PATH:/c/Program Files/LLVM/bin"
 
+# Auto-detect VULKAN_SDK and LIBCLANG_PATH on Windows if not set
+if [[ -z "${VULKAN_SDK:-}" ]]; then
+    for dir in /c/VulkanSDK/*/; do
+        if [[ -d "$dir" ]]; then
+            export VULKAN_SDK="$(cygpath -w "$dir" 2>/dev/null || echo "$dir")"
+            export PATH="$PATH:$dir/Bin"
+            break
+        fi
+    done
+fi
+if [[ -z "${LIBCLANG_PATH:-}" && -d "/c/Program Files/LLVM/bin" ]]; then
+    export LIBCLANG_PATH="C:/Program Files/LLVM/bin"
+fi
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
