@@ -1,3 +1,4 @@
+use crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE;
 use crate::audio_toolkit::{apply_custom_words, apply_text_replacements, filter_transcription_output};
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{get_settings, ModelUnloadTimeout};
@@ -43,6 +44,91 @@ enum LoadedEngine {
     MoonshineStreaming(MoonshineStreamingEngine),
     SenseVoice(SenseVoiceEngine),
     GeminiApi,
+}
+
+/// Maximum chunk duration in seconds. Whisper's context window is 30s;
+/// we use 25s to leave headroom and avoid hallucinations at the boundary.
+const MAX_CHUNK_SECS: f32 = 25.0;
+/// Minimum audio duration (seconds) before we bother chunking.
+/// Short recordings are sent as-is.
+const CHUNK_THRESHOLD_SECS: f32 = 28.0;
+
+/// Split long audio into chunks at silence boundaries.
+///
+/// Uses simple energy-based silence detection (no model needed) to find
+/// good split points. Each chunk is at most `MAX_CHUNK_SECS` long.
+/// If no silence is found within a chunk, it force-splits at the limit.
+fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
+    let sample_rate = WHISPER_SAMPLE_RATE as usize;
+    let max_chunk_samples = (MAX_CHUNK_SECS * sample_rate as f32) as usize;
+
+    let duration_secs = audio.len() as f32 / sample_rate as f32;
+    if duration_secs <= CHUNK_THRESHOLD_SECS {
+        return vec![audio.to_vec()];
+    }
+
+    debug!(
+        "Chunking {:.1}s audio into segments of max {:.0}s",
+        duration_secs, MAX_CHUNK_SECS
+    );
+
+    // Energy-based silence detection parameters
+    let frame_size = sample_rate / 20; // 50ms frames
+    let silence_threshold = 0.005_f32; // RMS energy threshold for silence
+
+    let mut chunks: Vec<Vec<f32>> = Vec::new();
+    let mut chunk_start = 0;
+
+    while chunk_start < audio.len() {
+        let chunk_end = (chunk_start + max_chunk_samples).min(audio.len());
+
+        // If this is the last piece and it's short, just include it
+        if chunk_end == audio.len() {
+            chunks.push(audio[chunk_start..chunk_end].to_vec());
+            break;
+        }
+
+        // Search for the best silence point in the last 30% of the chunk
+        let search_start = chunk_start + (max_chunk_samples * 70 / 100);
+        let search_end = chunk_end;
+
+        let mut best_split = chunk_end; // fallback: hard split at max
+        let mut lowest_energy = f32::MAX;
+
+        let mut pos = search_start;
+        while pos + frame_size <= search_end {
+            let frame = &audio[pos..pos + frame_size];
+            let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame_size as f32).sqrt();
+
+            if rms < lowest_energy {
+                lowest_energy = rms;
+                best_split = pos + frame_size / 2; // split at middle of quiet frame
+            }
+
+            // If we find true silence, use it immediately
+            if rms < silence_threshold {
+                best_split = pos + frame_size / 2;
+                break;
+            }
+
+            pos += frame_size;
+        }
+
+        chunks.push(audio[chunk_start..best_split].to_vec());
+        chunk_start = best_split;
+    }
+
+    debug!(
+        "Audio split into {} chunks: [{}]",
+        chunks.len(),
+        chunks
+            .iter()
+            .map(|c| format!("{:.1}s", c.len() as f32 / sample_rate as f32))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+
+    chunks
 }
 
 #[derive(Clone)]
@@ -466,6 +552,44 @@ impl TranscriptionManager {
             self.maybe_unload_immediately("empty audio");
             return Ok(String::new());
         }
+
+        // For long audio, split into chunks and transcribe each separately
+        // to avoid Whisper hallucinations beyond its 30s context window.
+        let chunks = chunk_audio_by_silence(&audio);
+        if chunks.len() > 1 {
+            info!(
+                "Long audio ({:.1}s) split into {} chunks for transcription",
+                audio.len() as f32 / WHISPER_SAMPLE_RATE as f32,
+                chunks.len()
+            );
+            let mut all_results = Vec::new();
+            for (i, chunk) in chunks.into_iter().enumerate() {
+                let chunk_duration = chunk.len() as f32 / WHISPER_SAMPLE_RATE as f32;
+                debug!("Transcribing chunk {}/{} ({:.1}s)", i + 1, all_results.capacity() + 1, chunk_duration);
+                match self.transcribe_single(chunk) {
+                    Ok(text) if !text.is_empty() => all_results.push(text),
+                    Ok(_) => debug!("Chunk {} returned empty result", i + 1),
+                    Err(e) => warn!("Chunk {} transcription failed: {}", i + 1, e),
+                }
+            }
+            let final_result = all_results.join(" ");
+            info!(
+                "Chunked transcription completed in {}ms: {} chunks, {} chars",
+                st.elapsed().as_millis(),
+                all_results.len(),
+                final_result.len()
+            );
+            self.maybe_unload_immediately("chunked transcription");
+            return Ok(final_result);
+        }
+
+        // Single chunk — transcribe directly
+        self.transcribe_single(audio)
+    }
+
+    /// Transcribe a single audio segment (must be short enough for the engine's context window).
+    fn transcribe_single(&self, audio: Vec<f32>) -> Result<String> {
+        let st = std::time::Instant::now();
 
         // Check if model is loaded, if not try to load it
         {

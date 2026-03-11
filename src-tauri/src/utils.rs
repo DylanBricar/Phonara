@@ -3,6 +3,7 @@ use crate::managers::transcription::TranscriptionManager;
 use crate::shortcut;
 use crate::TranscriptionCoordinator;
 use log::info;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 
@@ -12,42 +13,50 @@ pub use crate::clipboard::*;
 pub use crate::overlay::*;
 pub use crate::tray::*;
 
+/// Guard to prevent re-entrant cancel operations (e.g. user spamming Escape).
+static CANCEL_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
 /// Centralized cancellation function that can be called from anywhere in the app.
 /// Handles cancelling both recording and transcription operations and updates UI state.
 ///
-/// The blocking work (stopping the audio recorder, unloading the model) is moved
-/// to a background task so the main/UI thread is never blocked.  This prevents a
-/// deadlock where the main thread waits for `rec.stop()` while the audio callback
-/// thread waits for the main thread to process emitted events.
+/// ALL work is dispatched to a background task so the shortcut handler callback
+/// (which runs on the main/UI thread) returns immediately.  This prevents:
+/// 1. Deadlocks where rec.stop() blocks waiting for the audio callback thread
+///    which itself waits for the main thread to process emitted events.
+/// 2. Re-entrant crashes from rapid Escape presses triggering overlapping cancels.
 pub fn cancel_current_operation(app: &AppHandle) {
+    // Prevent re-entrant calls — if a cancel is already in progress, ignore.
+    if CANCEL_IN_PROGRESS.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
     info!("Initiating operation cancellation...");
 
     // Reset cancel confirmation state (lightweight, safe on main thread)
     crate::shortcut::handler::reset_cancel_confirmation();
 
-    shortcut::unregister_cancel_shortcut(app);
-    shortcut::unregister_pause_shortcut(app);
-    shortcut::unregister_action_shortcuts(app);
-
-    // Update UI immediately (non-blocking)
-    change_tray_icon(app, crate::tray::TrayIconState::Idle);
-    hide_recording_overlay(app);
-
-    // Move the potentially-blocking operations to a background task so the
-    // main thread stays responsive and the audio callback can still emit events.
-    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+    // Capture everything we need, then dispatch ALL work to a background task.
+    // This frees the main thread (and the shortcut handler callback) immediately.
+    let audio_manager = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
     let recording_was_active = audio_manager.is_recording();
-    let audio_manager = Arc::clone(&audio_manager);
     let tm = Arc::clone(&app.state::<Arc<TranscriptionManager>>());
     let app_clone = app.clone();
 
     tauri::async_runtime::spawn(async move {
+        // Unregister shortcuts (these internally spawn async tasks already,
+        // but calling from async context avoids main-thread contention)
+        shortcut::unregister_cancel_shortcut(&app_clone);
+        shortcut::unregister_pause_shortcut(&app_clone);
+        shortcut::unregister_action_shortcuts(&app_clone);
+
+        // Update UI
+        change_tray_icon(&app_clone, crate::tray::TrayIconState::Idle);
+        hide_recording_overlay(&app_clone);
+
         // cancel_recording acquires mutexes and calls rec.stop() which can block
-        tokio::task::spawn_blocking({
-            let audio_manager = Arc::clone(&audio_manager);
-            move || {
-                audio_manager.cancel_recording();
-            }
+        let am = Arc::clone(&audio_manager);
+        tokio::task::spawn_blocking(move || {
+            am.cancel_recording();
         })
         .await
         .ok();
@@ -65,6 +74,7 @@ pub fn cancel_current_operation(app: &AppHandle) {
             coordinator.notify_cancel(recording_was_active);
         }
 
+        CANCEL_IN_PROGRESS.store(false, Ordering::SeqCst);
         info!("Operation cancellation completed - returned to idle state");
     });
 }
