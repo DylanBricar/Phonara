@@ -254,6 +254,35 @@ static FILLER_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
         .collect()
 });
 
+/// Collapse runs of the same non-alphanumeric character repeated 4+ times.
+/// E.g. "Hello!!!!!!!!!!" → "Hello!", "text......" → "text."
+fn collapse_repeated_chars(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        result.push(ch);
+        if !ch.is_alphanumeric() && !ch.is_whitespace() {
+            let mut count = 1;
+            while chars.peek() == Some(&ch) {
+                chars.next();
+                count += 1;
+            }
+            // If 4+ repeats, it's a hallucination — keep at most 1
+            if count >= 4 {
+                // already pushed one above, skip the rest
+            } else {
+                // Push the remaining occurrences (less than 4 total)
+                for _ in 1..count {
+                    result.push(ch);
+                }
+            }
+        }
+    }
+
+    result
+}
+
 /// Filters transcription output by removing filler words and stutter artifacts.
 ///
 /// This function cleans up raw transcription text by:
@@ -276,6 +305,10 @@ pub fn filter_transcription_output(text: &str) -> String {
 
     // Collapse repeated 1-2 letter words (stutter artifacts like "wh wh wh wh")
     filtered = collapse_stutters(&filtered);
+
+    // Remove hallucinated repeated characters (e.g. "!!!!!!", "......", "??????")
+    // Any single non-alphanumeric character repeated 4+ times is collapsed to empty
+    filtered = collapse_repeated_chars(&filtered);
 
     // Clean up multiple spaces to single space
     filtered = MULTI_SPACE_PATTERN.replace_all(&filtered, " ").to_string();
