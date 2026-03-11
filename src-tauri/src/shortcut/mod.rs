@@ -1401,3 +1401,10 @@ pub fn change_overlay_custom_height_setting(app: AppHandle, height: u16) -> Resu
     settings::write_settings(&app, settings);
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn preview_overlay_settings(app: AppHandle) -> Result<(), String> {
+    crate::overlay::preview_overlay(&app);
+    Ok(())
+}

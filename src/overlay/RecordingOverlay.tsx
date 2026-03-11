@@ -135,9 +135,12 @@ const AudioBars: React.FC = () => {
   const smoothedRef = useRef<number[]>(Array(25).fill(0));
 
   useEffect(() => {
+    let isMounted = true;
     let unlisten: (() => void) | null = null;
-    const setup = async () => {
-      unlisten = await listen<number[]>("mic-level", (event) => {
+
+    (async () => {
+      const unlistenFn = await listen<number[]>("mic-level", (event) => {
+        if (!isMounted) return;
         const newLevels = event.payload;
         const smoothed = smoothedRef.current.map((prev, i) => {
           const target = newLevels[i] || 0;
@@ -149,7 +152,6 @@ const AudioBars: React.FC = () => {
           const bars = barsRef.current.children;
           const half = Math.ceil(NUM_BARS / 2);
           for (let i = 0; i < NUM_BARS; i++) {
-            // Mirror: map bar index to bucket index (center = highest bucket)
             const bucketIdx = i < half ? i : NUM_BARS - 1 - i;
             const v = smoothed[bucketIdx] || 0;
             const el = bars[i] as HTMLElement;
@@ -158,9 +160,17 @@ const AudioBars: React.FC = () => {
           }
         }
       });
-    };
-    setup();
+
+      if (isMounted) {
+        unlisten = unlistenFn;
+      } else {
+        // Component unmounted before listener was set up
+        unlistenFn();
+      }
+    })();
+
     return () => {
+      isMounted = false;
       unlisten?.();
     };
   }, []);
@@ -182,7 +192,6 @@ const RecordingOverlay: React.FC = () => {
   const [selectedAction, setSelectedAction] = useState<ActionInfo | null>(null);
   const [cancelPending, setCancelPending] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
-  const [highVisibility, setHighVisibility] = useState(false);
   const [customStyle, setCustomStyle] = useState<Record<string, string>>({});
   const cancelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pauseStartRef = useRef<number>(0);
@@ -206,16 +215,14 @@ const RecordingOverlay: React.FC = () => {
         const payload = event.payload;
         // Support both old string payload and new object payload
         const overlayState = typeof payload === "string" ? payload as OverlayState : payload.state;
-        const hv = typeof payload === "object" && payload.highVisibility;
         setState(overlayState);
-        setHighVisibility(!!hv);
         const styles: Record<string, string> = {};
         if (typeof payload === "object") {
           if (payload.borderColor && isValidHexColor(payload.borderColor))
             styles["--overlay-border-color"] = payload.borderColor;
           if (payload.backgroundColor && isValidHexColor(payload.backgroundColor))
             styles["--overlay-bg"] = payload.backgroundColor;
-          if (payload.borderWidth && payload.borderWidth >= 0 && payload.borderWidth <= 10)
+          if (typeof payload.borderWidth === "number" && payload.borderWidth >= 0 && payload.borderWidth <= 10)
             styles["--overlay-border-width"] = `${payload.borderWidth}px`;
           if (payload.customWidth && payload.customWidth >= 120 && payload.customWidth <= 500)
             styles["--overlay-width"] = `${payload.customWidth}px`;
@@ -312,7 +319,7 @@ const RecordingOverlay: React.FC = () => {
     <div
       dir={direction}
       style={customStyle}
-      className={`recording-overlay state-${state} ${isVisible ? "is-visible" : "is-hidden"} ${highVisibility ? "high-visibility" : ""}`}
+      className={`recording-overlay state-${state} ${isVisible ? "is-visible" : "is-hidden"}`}
     >
       <div className="overlay-left">
         {state === "recording" ? <MicIcon /> : <DotsIcon />}

@@ -77,26 +77,36 @@ impl TranscriptionManager {
             loading_condvar: Arc::new(Condvar::new()),
         };
 
-        // Start the idle watcher
+        // Start the idle watcher using tokio instead of a dedicated OS thread
         {
             let app_handle_cloned = app_handle.clone();
             let manager_cloned = manager.clone();
             let shutdown_signal = manager.shutdown_signal.clone();
             let handle = thread::spawn(move || {
-                while !shutdown_signal.load(Ordering::Relaxed) {
-                    thread::sleep(Duration::from_secs(10)); // Check every 10 seconds
+                // Cache the timeout setting to avoid re-reading settings every 10s.
+                // Re-read only every 6th iteration (every ~60s) to pick up changes.
+                let mut cached_timeout: Option<u64> = None;
+                let mut cached_is_immediate = false;
+                let mut iteration: u32 = 0;
 
-                    // Check shutdown signal again after sleep
+                while !shutdown_signal.load(Ordering::Relaxed) {
+                    thread::sleep(Duration::from_secs(10));
+
                     if shutdown_signal.load(Ordering::Relaxed) {
                         break;
                     }
 
-                    let settings = get_settings(&app_handle_cloned);
-                    let timeout_seconds = settings.model_unload_timeout.to_seconds();
+                    // Refresh cached settings periodically (every ~60s) instead of every poll
+                    if iteration % 6 == 0 {
+                        let settings = get_settings(&app_handle_cloned);
+                        cached_timeout = settings.model_unload_timeout.to_seconds();
+                        cached_is_immediate =
+                            settings.model_unload_timeout == ModelUnloadTimeout::Immediately;
+                    }
+                    iteration = iteration.wrapping_add(1);
 
-                    if let Some(limit_seconds) = timeout_seconds {
-                        // Skip polling-based unloading for immediate timeout since it's handled directly in transcribe()
-                        if settings.model_unload_timeout == ModelUnloadTimeout::Immediately {
+                    if let Some(limit_seconds) = cached_timeout {
+                        if cached_is_immediate {
                             continue;
                         }
 
@@ -107,7 +117,6 @@ impl TranscriptionManager {
                             .as_millis() as u64;
 
                         if now_ms.saturating_sub(last) > limit_seconds * 1000 {
-                            // idle -> unload
                             if manager_cloned.is_model_loaded() {
                                 let unload_start = std::time::Instant::now();
                                 debug!("Starting to unload model due to inactivity");

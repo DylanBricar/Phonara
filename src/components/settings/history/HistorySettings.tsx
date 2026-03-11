@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AudioPlayer } from "../../ui/AudioPlayer";
 import { Button } from "../../ui/Button";
@@ -84,22 +84,21 @@ export const HistorySettings: React.FC = () => {
     };
   }, [loadHistoryEntries]);
 
-  const toggleSaved = async (id: number) => {
+  const toggleSaved = useCallback(async (id: number) => {
     try {
       await commands.toggleHistoryEntrySaved(id);
-      // No need to reload here - the event listener will handle it
     } catch (error) {
       console.error("Failed to toggle saved status:", error);
     }
-  };
+  }, []);
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboard = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
     } catch (error) {
       console.error("Failed to copy to clipboard:", error);
     }
-  };
+  }, []);
 
   const getAudioUrl = useCallback(
     async (fileName: string) => {
@@ -124,14 +123,14 @@ export const HistorySettings: React.FC = () => {
     [osType],
   );
 
-  const deleteAudioEntry = async (id: number) => {
+  const deleteAudioEntry = useCallback(async (id: number) => {
     try {
       await commands.deleteHistoryEntry(id);
     } catch (error) {
       console.error("Failed to delete audio entry:", error);
       throw error;
     }
-  };
+  }, []);
 
   const openRecordingsFolder = async () => {
     try {
@@ -211,12 +210,8 @@ export const HistorySettings: React.FC = () => {
               <HistoryEntryComponent
                 key={entry.id}
                 entry={entry}
-                onToggleSaved={() => toggleSaved(entry.id)}
-                onCopyText={() =>
-                  copyToClipboard(
-                    entry.post_processed_text ?? entry.transcription_text,
-                  )
-                }
+                onToggleSaved={toggleSaved}
+                onCopyText={copyToClipboard}
                 getAudioUrl={getAudioUrl}
                 deleteAudio={deleteAudioEntry}
               />
@@ -230,13 +225,13 @@ export const HistorySettings: React.FC = () => {
 
 interface HistoryEntryProps {
   entry: HistoryEntry;
-  onToggleSaved: () => void;
-  onCopyText: () => void;
+  onToggleSaved: (id: number) => void;
+  onCopyText: (text: string) => void;
   getAudioUrl: (fileName: string) => Promise<string | null>;
   deleteAudio: (id: number) => Promise<void>;
 }
 
-const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
+const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(({
   entry,
   onToggleSaved,
   onCopyText,
@@ -250,18 +245,22 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   const pickerRef = useRef<HTMLDivElement>(null);
   const models = useModelStore((s) => s.models);
 
-  const downloadedModels = models.filter((m) => m.is_downloaded);
+  const downloadedModels = useMemo(() => models.filter((m) => m.is_downloaded), [models]);
 
   const handleLoadAudio = useCallback(
     () => getAudioUrl(entry.file_name),
     [getAudioUrl, entry.file_name],
   );
 
-  const handleCopyText = () => {
-    onCopyText();
+  const handleToggleSaved = useCallback(() => {
+    onToggleSaved(entry.id);
+  }, [onToggleSaved, entry.id]);
+
+  const handleCopyText = useCallback(() => {
+    onCopyText(entry.post_processed_text ?? entry.transcription_text);
     setShowCopied(true);
     setTimeout(() => setShowCopied(false), 2000);
-  };
+  }, [onCopyText, entry.post_processed_text, entry.transcription_text]);
 
   const handleDeleteEntry = async () => {
     try {
@@ -357,7 +356,7 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
             )}
           </button>
           <button
-            onClick={onToggleSaved}
+            onClick={handleToggleSaved}
             className={`p-2 rounded-md transition-colors cursor-pointer ${
               entry.saved
                 ? "text-logo-primary hover:text-logo-primary/80"
@@ -420,4 +419,4 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
       <AudioPlayer onLoadRequest={handleLoadAudio} className="w-full" />
     </div>
   );
-};
+});

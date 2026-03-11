@@ -55,7 +55,7 @@ hound = "3.5.1"
 base64 = "0.22"
 log = "0.4.25"
 env_filter = "0.1.0"
-tokio = "1.43.0"
+tokio = { version = "1.43.0", features = ["time"] }
 vad-rs = { git = "https://github.com/cjpais/vad-rs", default-features = false }
 enigo = "0.6.1"
 arboard = "3.6"

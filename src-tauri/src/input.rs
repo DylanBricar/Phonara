@@ -249,36 +249,26 @@ pub fn send_paste_shift_insert(enigo: &mut Enigo) -> Result<(), String> {
 /// when the foreground window has higher privileges (UIPI).
 pub fn paste_text_direct(enigo: &mut Enigo, text: &str) -> Result<(), String> {
     // On Windows, enigo.text() can also block on admin windows.
-    // We can't easily replace it with SendInput for arbitrary Unicode, so wrap
-    // the call in a timeout using a monitoring thread.
+    // We can't easily replace it with SendInput for arbitrary Unicode, so
+    // measure the duration and warn if it took too long.
     #[cfg(target_os = "windows")]
     {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use std::sync::Arc;
-
-        let done = Arc::new(AtomicBool::new(false));
-        let done_clone = done.clone();
-
-        // Spawn a watchdog thread that will warn if the operation takes too long.
-        // We cannot actually abort the blocked enigo call, but we can detect it
-        // and log a clear warning so users know what happened.
-        let watchdog = std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_secs(5));
-            if !done_clone.load(Ordering::Relaxed) {
-                warn!(
-                    "Direct text paste (enigo) has been blocked for >5s – the target window \
-                     likely has higher privileges (UIPI). The app may appear frozen until \
-                     the target window is switched away from."
-                );
-            }
-        });
+        let start = std::time::Instant::now();
 
         let result = enigo
             .text(text)
             .map_err(|e| format!("Failed to send text directly: {}", e));
 
-        done.store(true, Ordering::Relaxed);
-        let _ = watchdog.join();
+        let elapsed = start.elapsed();
+        if elapsed.as_secs() >= 5 {
+            warn!(
+                "Direct text paste (enigo) was blocked for {:.1}s – the target window \
+                 likely has higher privileges (UIPI). The app may appear frozen until \
+                 the target window is switched away from.",
+                elapsed.as_secs_f64()
+            );
+        }
+
         return result;
     }
 

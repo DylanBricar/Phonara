@@ -371,6 +371,7 @@ pub fn run(cli_args: CliArgs) {
         shortcut::change_overlay_border_width_setting,
         shortcut::change_overlay_custom_width_setting,
         shortcut::change_overlay_custom_height_setting,
+        shortcut::preview_overlay_settings,
         shortcut::handy_keys::start_handy_keys_recording,
         shortcut::handy_keys::stop_handy_keys_recording,
         trigger_update_check,
@@ -513,6 +514,9 @@ pub fn run(cli_args: CliArgs) {
                 settings.debug_mode = true;
                 settings.log_level = settings::LogLevel::Trace;
             }
+
+            // Initialize the settings cache for fast reads (avoids repeated JSON deserialization)
+            app.manage(settings::SettingsCache::new(settings.clone()));
 
             let tauri_log_level: tauri_plugin_log::LogLevel = settings.log_level.into();
             let file_log_level: log::Level = tauri_log_level.into();

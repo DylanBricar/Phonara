@@ -259,10 +259,9 @@ jobs:
         run: |
           cd src-tauri
           if command -v jq &>/dev/null; then
-            jq '.bundle.createUpdaterArtifacts = false | del(.bundle.macOS.signingIdentity)' tauri.conf.json > tauri.conf.tmp && mv tauri.conf.tmp tauri.conf.json
+            jq '.bundle.createUpdaterArtifacts = false' tauri.conf.json > tauri.conf.tmp && mv tauri.conf.tmp tauri.conf.json
           else
             sed -i 's/"createUpdaterArtifacts": true/"createUpdaterArtifacts": false/' tauri.conf.json
-            sed -i '/"signingIdentity"/d' tauri.conf.json
           fi
 
       - name: Patch asset name pattern

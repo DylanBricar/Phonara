@@ -265,12 +265,9 @@ const PostProcessingActionsComponent: React.FC = () => {
                   "settings.postProcessing.actions.promptPlaceholder",
                 )}
               />
-              <p
-                className="text-xs text-mid-gray/70"
-                dangerouslySetInnerHTML={{
-                  __html: t("settings.postProcessing.actions.promptTip"),
-                }}
-              />
+              <p className="text-xs text-mid-gray/70">
+                {t("settings.postProcessing.actions.promptTip")}
+              </p>
             </div>
 
             <div className="space-y-1 flex flex-col">

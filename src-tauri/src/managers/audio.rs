@@ -413,6 +413,7 @@ impl AudioRecordingManager {
 
     /// Schedules a delayed microphone stream close for OnDemand mode.
     /// If a new recording starts before the timer fires, the close is cancelled.
+    /// Uses tokio task instead of spawning a dedicated OS thread per close.
     fn schedule_lazy_close(&self) {
         let gen = self.lazy_close_gen.fetch_add(1, Ordering::SeqCst) + 1;
         let gen_arc = Arc::clone(&self.lazy_close_gen);
@@ -421,8 +422,8 @@ impl AudioRecordingManager {
         let recorder = Arc::clone(&self.recorder);
         let did_mute = Arc::clone(&self.did_mute);
 
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_secs(LAZY_CLOSE_SECS));
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(LAZY_CLOSE_SECS)).await;
 
             // If generation changed, a new recording happened — skip close
             if gen_arc.load(Ordering::SeqCst) != gen {
@@ -430,28 +431,31 @@ impl AudioRecordingManager {
                 return;
             }
 
-            // Don't close if currently recording
-            if *is_recording.lock().unwrap() {
-                return;
-            }
+            // Run blocking lock operations on a blocking thread
+            tokio::task::spawn_blocking(move || {
+                // Don't close if currently recording
+                if *is_recording.lock().unwrap() {
+                    return;
+                }
 
-            let mut open_flag = is_open.lock().unwrap();
-            if !*open_flag {
-                return;
-            }
+                let mut open_flag = is_open.lock().unwrap();
+                if !*open_flag {
+                    return;
+                }
 
-            // Unmute if needed
-            let mut did_mute_guard = did_mute.lock().unwrap();
-            if *did_mute_guard {
-                set_mute(false);
-            }
-            *did_mute_guard = false;
+                // Unmute if needed
+                let mut did_mute_guard = did_mute.lock().unwrap();
+                if *did_mute_guard {
+                    set_mute(false);
+                }
+                *did_mute_guard = false;
 
-            if let Some(rec) = recorder.lock().unwrap().as_mut() {
-                let _ = rec.close();
-            }
-            *open_flag = false;
-            debug!("Microphone stream closed after {}s idle", LAZY_CLOSE_SECS);
+                if let Some(rec) = recorder.lock().unwrap().as_mut() {
+                    let _ = rec.close();
+                }
+                *open_flag = false;
+                debug!("Microphone stream closed after {}s idle", LAZY_CLOSE_SECS);
+            }).await.ok();
         });
     }
 

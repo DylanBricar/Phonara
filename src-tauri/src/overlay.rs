@@ -441,7 +441,6 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
             "show-overlay",
             serde_json::json!({
                 "state": state,
-                "highVisibility": settings.overlay_high_visibility,
                 "borderColor": sanitize_color(&settings.overlay_border_color),
                 "backgroundColor": sanitize_color(&settings.overlay_background_color),
                 "borderWidth": settings.overlay_border_width.min(10),
@@ -467,6 +466,17 @@ pub fn show_processing_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "processing");
 }
 
+/// Shows a temporary preview of the overlay with current settings (3 seconds)
+pub fn preview_overlay(app_handle: &AppHandle) {
+    show_overlay_state(app_handle, "recording");
+
+    let app_clone = app_handle.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        hide_recording_overlay(&app_clone);
+    });
+}
+
 /// Updates the overlay window position based on current settings
 pub fn update_overlay_position(app_handle: &AppHandle) {
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
@@ -489,11 +499,15 @@ pub fn hide_recording_overlay(app_handle: &AppHandle) {
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         // Emit event to trigger fade-out animation
         let _ = overlay_window.emit("hide-overlay", ());
-        // Hide the window after a short delay to allow animation to complete
-        let window_clone = overlay_window.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(300));
-            let _ = window_clone.hide();
+        // Hide the window after a short delay to allow animation to complete.
+        // Use Tauri's async runtime instead of bare std::thread::spawn to avoid
+        // calling window operations from a non-main thread (crashes on Windows).
+        let app_clone = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            if let Some(window) = app_clone.get_webview_window("recording_overlay") {
+                let _ = window.hide();
+            }
         });
     }
 }

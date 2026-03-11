@@ -348,6 +348,11 @@
         "height": {
           "label": "Hauteur de l'overlay",
           "description": "Hauteur de l'overlay d'enregistrement en pixels."
+        },
+        "preview": {
+          "label": "Aperçu de l'overlay",
+          "description": "Affiche un aperçu de 3 secondes de l'overlay avec les paramètres actuels.",
+          "button": "Aperçu"
         }
       },
       "pasteMethod": {
@@ -485,7 +490,7 @@
         "promptLabelPlaceholder": "Entrez le nom du prompt",
         "promptInstructions": "Instructions du prompt",
         "promptInstructionsPlaceholder": "Écrivez les instructions à exécuter après la transcription. Exemple : Améliorer la grammaire et la clarté du texte suivant : ${output}",
-        "promptTip": "Astuce : Utilisez <code>${output}</code> pour insérer le texte transcrit dans votre prompt.",
+        "promptTip": "Astuce : Utilisez ${output} pour insérer le texte transcrit dans votre prompt.",
         "updatePrompt": "Mettre à jour le prompt",
         "deletePrompt": "Supprimer le prompt",
         "createPrompt": "Créer le prompt",
@@ -506,7 +511,7 @@
         "namePlaceholder": "ex. Mode e-mail",
         "prompt": "Prompt",
         "promptPlaceholder": "ex. Formatez ceci comme un e-mail professionnel avec salutation et signature. Ajoutez des sauts de ligne entre les paragraphes.",
-        "promptTip": "Astuce : Utilisez <code>${output}</code> pour le texte transcrit, <code>$time_local</code> pour l'heure actuelle, <code>$date</code> pour la date actuelle, <code>$language</code> pour la langue sélectionnée.",
+        "promptTip": "Astuce : Utilisez ${output} pour le texte transcrit, $time_local pour l'heure actuelle, $date pour la date actuelle, $language pour la langue sélectionnée.",
         "model": "Modèle (optionnel)",
         "modelPlaceholder": "Sélectionner un modèle",
         "modelTip": "Sélectionnez un modèle spécifique pour cette action, ou utilisez celui par défaut de la section API.",

@@ -29,7 +29,7 @@
 }
 
 .recording-overlay.state-recording {
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--overlay-border-color, rgba(255, 255, 255, 0.18));
 }
 
 .overlay-left {
@@ -215,22 +215,3 @@
   border-color: rgba(168, 85, 247, 0.5);
 }
 
-/* High visibility mode - colored borders for better visibility */
-.recording-overlay.high-visibility {
-  border: 2px solid rgba(239, 68, 68, 0.9);
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
-}
-
-.recording-overlay.high-visibility.state-recording {
-  border-color: rgba(239, 68, 68, 0.9);
-}
-
-.recording-overlay.high-visibility.state-transcribing {
-  border-color: rgba(59, 130, 246, 0.9);
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.3);
-}
-
-.recording-overlay.high-visibility.state-processing {
-  border-color: rgba(168, 85, 247, 0.9);
-  box-shadow: 0 0 8px rgba(168, 85, 247, 0.3);
-}

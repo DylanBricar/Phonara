@@ -348,6 +348,11 @@
         "height": {
           "label": "Overlay Height",
           "description": "Height of the recording overlay in pixels."
+        },
+        "preview": {
+          "label": "Preview Overlay",
+          "description": "Show a 3-second preview of the overlay with current settings.",
+          "button": "Preview"
         }
       },
       "pasteMethod": {
@@ -485,7 +490,7 @@
         "promptLabelPlaceholder": "Enter prompt name",
         "promptInstructions": "Prompt Instructions",
         "promptInstructionsPlaceholder": "Write the instructions to run after transcription. Example: Improve grammar and clarity for the following text: ${output}",
-        "promptTip": "Tip: Use <code>${output}</code> for transcribed text, <code>$time_local</code> for current time, <code>$date</code> for current date, <code>$language</code> for selected language.",
+        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
         "updatePrompt": "Update Prompt",
         "deletePrompt": "Delete Prompt",
         "createPrompt": "Create Prompt",
@@ -506,7 +511,7 @@
         "namePlaceholder": "e.g. Email mode",
         "prompt": "Prompt",
         "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
-        "promptTip": "Tip: Use <code>${output}</code> for transcribed text, <code>$time_local</code> for current time, <code>$date</code> for current date, <code>$language</code> for selected language.",
+        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
         "model": "Model (optional)",
         "modelPlaceholder": "Select a model",
         "modelTip": "Select a specific model for this action, or use the default from the API section.",

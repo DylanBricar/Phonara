@@ -1,10 +1,40 @@
-use log::{debug, warn};
+use log::{debug, error, warn};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use specta::Type;
 use std::collections::HashMap;
+use std::sync::RwLock;
 use tauri::AppHandle;
+use tauri::Manager;
 use tauri_plugin_store::StoreExt;
+
+/// In-memory cache for application settings to avoid repeated JSON deserialization.
+/// Registered as Tauri managed state during app setup.
+pub struct SettingsCache {
+    inner: RwLock<AppSettings>,
+}
+
+impl SettingsCache {
+    pub fn new(settings: AppSettings) -> Self {
+        Self {
+            inner: RwLock::new(settings),
+        }
+    }
+
+    /// Read cached settings. Recovers from poisoned lock.
+    pub fn get(&self) -> AppSettings {
+        self.inner
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// Update the cached settings.
+    pub fn update(&self, settings: &AppSettings) {
+        let mut guard = self.inner.write().unwrap_or_else(|e| e.into_inner());
+        *guard = settings.clone();
+    }
+}
 
 pub const APPLE_INTELLIGENCE_PROVIDER_ID: &str = "apple_intelligence";
 pub const APPLE_INTELLIGENCE_DEFAULT_MODEL_ID: &str = "Apple Intelligence";
@@ -965,6 +995,18 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 }
 
 pub fn get_settings(app: &AppHandle) -> AppSettings {
+    // Fast path: read from in-memory cache (avoids JSON deserialization)
+    if let Some(cache) = app.try_state::<SettingsCache>() {
+        return cache.get();
+    }
+
+    // Slow path: cache not yet initialized (early startup), read from store
+    get_settings_from_store(app)
+}
+
+/// Read settings directly from the persistent store (bypasses cache).
+/// Used during early initialization before the cache is available.
+fn get_settings_from_store(app: &AppHandle) -> AppSettings {
     let store = app
         .store(SETTINGS_STORE_PATH)
         .expect("Failed to initialize store");
@@ -989,11 +1031,24 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
 }
 
 pub fn write_settings(app: &AppHandle, settings: AppSettings) {
-    let store = app
-        .store(SETTINGS_STORE_PATH)
-        .expect("Failed to initialize store");
+    // Update in-memory cache first (fast path for subsequent reads)
+    if let Some(cache) = app.try_state::<SettingsCache>() {
+        cache.update(&settings);
+    }
 
-    store.set("settings", serde_json::to_value(&settings).unwrap());
+    // Persist to store
+    let store = match app.store(SETTINGS_STORE_PATH) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Failed to open settings store for writing: {}", e);
+            return;
+        }
+    };
+
+    match serde_json::to_value(&settings) {
+        Ok(value) => store.set("settings", value),
+        Err(e) => error!("Failed to serialize settings: {}", e),
+    }
 }
 
 pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
@@ -1005,9 +1060,17 @@ pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
 pub fn get_stored_binding(app: &AppHandle, id: &str) -> ShortcutBinding {
     let bindings = get_bindings(app);
 
-    let binding = bindings.get(id).unwrap().clone();
-
-    binding
+    bindings
+        .get(id)
+        .cloned()
+        .unwrap_or_else(|| {
+            warn!("Binding '{}' not found in settings, using defaults", id);
+            get_default_settings()
+                .bindings
+                .get(id)
+                .cloned()
+                .expect("Binding ID must exist in defaults")
+        })
 }
 
 pub fn get_history_limit(app: &AppHandle) -> usize {

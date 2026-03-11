@@ -2,8 +2,8 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Dropdown } from "../ui/Dropdown";
 import { SettingContainer } from "../ui/SettingContainer";
-import { ToggleSwitch } from "../ui/ToggleSwitch";
 import { useSettings } from "../../hooks/useSettings";
+import { commands } from "@/bindings";
 import type { OverlayPosition } from "@/bindings";
 
 interface ShowOverlayProps {
@@ -25,7 +25,6 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
     const selectedPosition = (getSetting("overlay_position") ||
       "bottom") as OverlayPosition;
 
-    const highVisibility = getSetting("overlay_high_visibility") ?? false;
     const borderColor = (getSetting("overlay_border_color") as string) || "";
     const backgroundColor =
       (getSetting("overlay_background_color") as string) || "";
@@ -52,19 +51,6 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
         </SettingContainer>
         {selectedPosition !== "none" && (
           <>
-            <ToggleSwitch
-              checked={highVisibility}
-              onChange={(enabled) =>
-                updateSetting("overlay_high_visibility", enabled)
-              }
-              isUpdating={isUpdating("overlay_high_visibility")}
-              label={t("settings.advanced.overlay.highVisibility.label")}
-              description={t(
-                "settings.advanced.overlay.highVisibility.description",
-              )}
-              descriptionMode={descriptionMode}
-              grouped={grouped}
-            />
             <SettingContainer
               title={t("settings.advanced.overlay.borderColor.label")}
               description={t(
@@ -260,6 +246,19 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                   </button>
                 )}
               </div>
+            </SettingContainer>
+            <SettingContainer
+              title={t("settings.advanced.overlay.preview.label")}
+              description={t("settings.advanced.overlay.preview.description")}
+              descriptionMode={descriptionMode}
+              grouped={grouped}
+            >
+              <button
+                onClick={() => commands.previewOverlaySettings()}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-logo-primary/80 hover:bg-logo-primary text-white transition-colors"
+              >
+                {t("settings.advanced.overlay.preview.button")}
+              </button>
             </SettingContainer>
           </>
         )}
