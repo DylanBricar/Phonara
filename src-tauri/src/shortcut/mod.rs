@@ -1408,3 +1408,127 @@ pub fn preview_overlay_settings(app: AppHandle) -> Result<(), String> {
     crate::overlay::preview_overlay(&app);
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_theme_mode_setting(app: AppHandle, mode: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match mode.as_str() {
+        "light" => settings::ThemeMode::Light,
+        "dark" => settings::ThemeMode::Dark,
+        "system" => settings::ThemeMode::System,
+        other => {
+            warn!("Invalid theme mode '{}', defaulting to system", other);
+            settings::ThemeMode::System
+        }
+    };
+    settings.theme_mode = parsed;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_accent_color_setting(app: AppHandle, color: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    let parsed = match color.as_str() {
+        "blue" => settings::AccentColor::Blue,
+        "green" => settings::AccentColor::Green,
+        "red" => settings::AccentColor::Red,
+        "purple" => settings::AccentColor::Purple,
+        "orange" => settings::AccentColor::Orange,
+        "pink" => settings::AccentColor::Pink,
+        "teal" => settings::AccentColor::Teal,
+        "yellow" => settings::AccentColor::Yellow,
+        "system" => settings::AccentColor::System,
+        other => {
+            warn!("Invalid accent color '{}', defaulting to system", other);
+            settings::AccentColor::System
+        }
+    };
+    settings.accent_color = parsed;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_system_accent_color() -> Option<String> {
+    get_os_accent_color()
+}
+
+#[cfg(target_os = "windows")]
+fn get_os_accent_color() -> Option<String> {
+    use std::process::Command;
+    // Read Windows accent color from registry
+    let output = Command::new("reg")
+        .args([
+            "query",
+            "HKCU\\SOFTWARE\\Microsoft\\Windows\\DWM",
+            "/v",
+            "AccentColor",
+        ])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    // Parse the hex value from registry output
+    for line in text.lines() {
+        if line.contains("AccentColor") {
+            // Format: "    AccentColor    REG_DWORD    0xffRRGGBB" (ABGR format)
+            let hex = line.split_whitespace().last()?;
+            let value = u32::from_str_radix(hex.trim_start_matches("0x"), 16).ok()?;
+            // Windows stores as ABGR, convert to #RRGGBB
+            let b = (value >> 16) & 0xFF;
+            let g = (value >> 8) & 0xFF;
+            let r = value & 0xFF;
+            return Some(format!("#{:02x}{:02x}{:02x}", r, g, b));
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn get_os_accent_color() -> Option<String> {
+    use std::process::Command;
+    let output = Command::new("defaults")
+        .args(["read", "-g", "AppleAccentColor"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    // macOS accent color values: -1=Graphite, 0=Red, 1=Orange, 2=Yellow, 3=Green, 4=Blue, 5=Purple, 6=Pink
+    match text.as_str() {
+        "0" => Some("#ff3b30".into()),
+        "1" => Some("#ff9500".into()),
+        "2" => Some("#ffcc00".into()),
+        "3" => Some("#28cd41".into()),
+        "4" | "" => Some("#007aff".into()), // Blue is default
+        "5" => Some("#af52de".into()),
+        "6" => Some("#ff2d55".into()),
+        "-1" => Some("#8e8e93".into()), // Graphite
+        _ => Some("#007aff".into()),
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn get_os_accent_color() -> Option<String> {
+    // Try to read from GTK settings
+    use std::process::Command;
+    let output = Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "accent-color"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let color = text.trim_matches('\'');
+    match color {
+        "blue" => Some("#3584e4".into()),
+        "teal" => Some("#2190a4".into()),
+        "green" => Some("#3a944a".into()),
+        "yellow" => Some("#c88800".into()),
+        "orange" => Some("#ed5317".into()),
+        "red" => Some("#e62d42".into()),
+        "pink" => Some("#d56199".into()),
+        "purple" => Some("#9141ac".into()),
+        "slate" => Some("#6f8396".into()),
+        _ => None,
+    }
+}

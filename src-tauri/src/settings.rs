@@ -296,6 +296,40 @@ impl ModelUnloadTimeout {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    Light,
+    Dark,
+    System,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        ThemeMode::System
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AccentColor {
+    Blue,
+    Green,
+    Red,
+    Purple,
+    Orange,
+    Pink,
+    Teal,
+    Yellow,
+    System,
+}
+
+impl Default for AccentColor {
+    fn default() -> Self {
+        AccentColor::System
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
 pub enum SoundTheme {
     Marimba,
     Pop,
@@ -457,6 +491,10 @@ pub struct AppSettings {
     pub overlay_custom_width: u16,
     #[serde(default = "default_overlay_height")]
     pub overlay_custom_height: u16,
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
+    #[serde(default)]
+    pub accent_color: AccentColor,
 }
 
 fn default_model() -> String {
@@ -917,6 +955,8 @@ pub fn get_default_settings() -> AppSettings {
         overlay_border_width: default_overlay_border_width(),
         overlay_custom_width: default_overlay_width(),
         overlay_custom_height: default_overlay_height(),
+        theme_mode: ThemeMode::default(),
+        accent_color: AccentColor::default(),
     }
 }
 

@@ -10,6 +10,7 @@
   "sidebar": {
     "general": "General",
     "models": "Models",
+    "appearance": "Appearance",
     "advanced": "Advanced",
     "postProcessing": "Post Process",
     "history": "History",
@@ -630,6 +631,29 @@
       "pasteDelay": {
         "title": "Paste Delay",
         "description": "Delay before sending paste keystroke (in milliseconds). Increase if wrong text is being pasted."
+      }
+    },
+    "appearance": {
+      "title": "Appearance",
+      "themeMode": {
+        "title": "Theme",
+        "description": "Choose between light, dark, or system theme",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "accentColor": {
+        "title": "Accent Color",
+        "description": "Choose the main color of the interface",
+        "blue": "Blue",
+        "green": "Green",
+        "red": "Red",
+        "purple": "Purple",
+        "orange": "Orange",
+        "pink": "Pink",
+        "teal": "Teal",
+        "yellow": "Yellow",
+        "system": "System"
       }
     },
     "about": {

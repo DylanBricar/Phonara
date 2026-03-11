@@ -25,13 +25,6 @@
   line-height: 24px;
   font-weight: 400;
 
-  /* Colors - Light Theme */
-  /* --color-text: #0f0f0f;
-  --color-background: #fbfbfb;
-  --color-logo-primary: #5b9bf5;
-  --color-logo-stroke: #1e3a5f;
-  --color-text-stroke: #f6f6f6; */
-
   /* Typography settings */
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -53,14 +46,30 @@
   text-align: center;
 }
 
+/* System theme: only apply when no explicit .light or .dark class is set */
 @media (prefers-color-scheme: dark) {
-  :root {
-    /* Colors - Dark Theme */
+  :root:not(.light):not(.dark) {
     --color-text: #fbfbfb;
     --color-background: #2c2b29;
     --color-logo-primary: #6aa3f7;
     --color-logo-stroke: #b8d4fc;
   }
+}
+
+/* Explicit dark mode via class */
+:root.dark {
+  --color-text: #fbfbfb;
+  --color-background: #2c2b29;
+  --color-logo-primary: #6aa3f7;
+  --color-logo-stroke: #b8d4fc;
+}
+
+/* Explicit light mode via class (matches defaults, but useful for overriding media query) */
+:root.light {
+  --color-text: #0f0f0f;
+  --color-background: #fbfbfb;
+  --color-logo-primary: #5b9bf5;
+  --color-logo-stroke: #1e3a5f;
 }
 
 @layer utilities {

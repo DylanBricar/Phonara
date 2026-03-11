@@ -164,6 +164,8 @@ const settingUpdaters: {
     commands.changeOverlayCustomWidthSetting(value as number),
   overlay_custom_height: (value) =>
     commands.changeOverlayCustomHeightSetting(value as number),
+  theme_mode: (value) => commands.changeThemeModeSetting(value as string),
+  accent_color: (value) => commands.changeAccentColorSetting(value as string),
 };
 
 export const useSettingsStore = create<SettingsStore>()(
