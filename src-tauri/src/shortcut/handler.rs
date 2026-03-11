@@ -4,6 +4,7 @@
 //! used by both the Tauri and handy-keys implementations.
 
 use log::warn;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
@@ -15,6 +16,15 @@ use crate::transcription_coordinator::{
     is_action_binding, is_transcribe_binding, parse_action_key,
 };
 use crate::TranscriptionCoordinator;
+
+/// When true, the cancel handler ignores all subsequent Escape presses.
+/// Set synchronously in `handle_shortcut_event` the moment a cancel fires,
+/// cleared by `reset_cancel_suppression`.
+static CANCEL_SUPPRESSED: AtomicBool = AtomicBool::new(false);
+
+pub fn reset_cancel_suppression() {
+    CANCEL_SUPPRESSED.store(false, Ordering::SeqCst);
+}
 
 const CANCEL_CONFIRM_TIMEOUT_MS: u128 = 1500;
 static CANCEL_PENDING: Mutex<Option<Instant>> = Mutex::new(None);
@@ -105,8 +115,14 @@ pub fn handle_shortcut_event(
         return;
     };
 
-    // Cancel binding: requires double-press confirmation when recording
+    // Cancel binding: requires double-press confirmation when recording.
+    // Once a cancel fires, suppress ALL further cancel presses until the
+    // operation completes.  This prevents rapid Escape spam from triggering
+    // overlapping cancel paths or corrupting shared state.
     if binding_id == "cancel" {
+        if CANCEL_SUPPRESSED.load(Ordering::SeqCst) {
+            return;
+        }
         let audio_manager = app.state::<Arc<AudioRecordingManager>>();
         if audio_manager.is_recording() && is_pressed {
             let should_cancel = {
@@ -125,6 +141,9 @@ pub fn handle_shortcut_event(
                 }
             };
             if should_cancel {
+                // Immediately suppress further cancel presses — synchronous,
+                // so no async gap for rapid key repeats.
+                CANCEL_SUPPRESSED.store(true, Ordering::SeqCst);
                 action.start(app, binding_id, hotkey_string);
             } else {
                 let _ = app.emit("cancel-pending", ());

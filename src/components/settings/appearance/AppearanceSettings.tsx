@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SettingsGroup } from "../../ui/SettingsGroup";
 import { SettingContainer } from "../../ui/SettingContainer";
+import { ShowOverlay } from "../ShowOverlay";
 import { useSettings } from "../../../hooks/useSettings";
 import { useSettingsStore } from "../../../stores/settingsStore";
 import { commands } from "@/bindings";
@@ -87,13 +88,10 @@ export const AppearanceSettings: React.FC = () => {
                   key={color.id}
                   onClick={() => updateSetting("accent_color", color.id)}
                   className={`relative w-7 h-7 rounded-full transition-all ${
-                    isActive
-                      ? "ring-2 ring-offset-2 ring-offset-background"
-                      : "hover:scale-110"
+                    isActive ? "" : "hover:scale-110"
                   }`}
                   style={{
                     backgroundColor: displayColor,
-                    ringColor: displayColor,
                     boxShadow: isActive
                       ? `0 0 0 2px var(--color-background), 0 0 0 4px ${displayColor}`
                       : undefined,
@@ -127,6 +125,10 @@ export const AppearanceSettings: React.FC = () => {
             })}
           </div>
         </SettingContainer>
+      </SettingsGroup>
+
+      <SettingsGroup title={t("settings.appearance.overlay")}>
+        <ShowOverlay descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
     </div>
   );

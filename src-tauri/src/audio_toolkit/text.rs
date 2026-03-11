@@ -304,12 +304,21 @@ fn collapse_spaced_repeated_punctuation(text: &str) -> String {
     result
 }
 
+/// Returns true if the text is purely punctuation / non-alphabetic noise,
+/// i.e. it contains no actual word content.  Used to detect hallucinated
+/// chunks that are nothing but "!", "...", "¡¡¡", etc.
+fn is_punctuation_only(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.is_empty() && !trimmed.chars().any(|c| c.is_alphabetic())
+}
+
 /// Filters transcription output by removing filler words and stutter artifacts.
 ///
 /// This function cleans up raw transcription text by:
 /// 1. Removing filler words (uh, um, hmm, etc.)
 /// 2. Collapsing repeated 1-2 letter stutters (e.g., "wh wh wh" -> "wh")
 /// 3. Cleaning up excess whitespace
+/// 4. Detecting purely punctuation/noise output (hallucination) and returning empty
 ///
 /// # Arguments
 /// * `text` - The raw transcription text to filter
@@ -338,7 +347,15 @@ pub fn filter_transcription_output(text: &str) -> String {
     filtered = MULTI_SPACE_PATTERN.replace_all(&filtered, " ").to_string();
 
     // Trim leading/trailing whitespace
-    filtered.trim().to_string()
+    let filtered = filtered.trim().to_string();
+
+    // If after all filtering the result is purely punctuation / no real words,
+    // treat it as hallucinated noise and return empty.
+    if is_punctuation_only(&filtered) {
+        return String::new();
+    }
+
+    filtered
 }
 
 /// Applies explicit text replacement rules to transcribed text.
@@ -676,5 +693,29 @@ mod tests {
         }];
         let result = apply_text_replacements("I um think so", &replacements);
         assert_eq!(result, "I think so");
+    }
+
+    #[test]
+    fn test_filter_punctuation_only_hallucination() {
+        // Pure punctuation should be treated as hallucination
+        assert_eq!(filter_transcription_output("!"), "");
+        assert_eq!(filter_transcription_output("! ! ! ! !"), "");
+        assert_eq!(filter_transcription_output("..."), "");
+        assert_eq!(filter_transcription_output("? ? ?"), "");
+        assert_eq!(filter_transcription_output("!!!"), "");
+        assert_eq!(filter_transcription_output(" - "), "");
+    }
+
+    #[test]
+    fn test_filter_preserves_text_with_punctuation() {
+        // Text with real words should be preserved
+        assert_eq!(
+            filter_transcription_output("Hello!"),
+            "Hello!"
+        );
+        assert_eq!(
+            filter_transcription_output("Bonjour, comment ça va?"),
+            "Bonjour, comment ça va?"
+        );
     }
 }

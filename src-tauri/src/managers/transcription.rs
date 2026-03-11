@@ -629,6 +629,14 @@ impl TranscriptionManager {
                 debug!("Transcribing chunk {}/{} ({:.1}s)", i + 1, total_chunks, chunk_duration);
                 match self.transcribe_single(chunk, forced_language.clone()) {
                     Ok(text) if !text.is_empty() => {
+                        // Per-chunk hallucination filter: if the chunk produced only
+                        // punctuation / non-alphabetic noise (e.g. "!" or "..."),
+                        // discard it rather than accumulating garbage.
+                        use crate::audio_toolkit::text::filter_transcription_output;
+                        let filtered = filter_transcription_output(&text);
+                        if filtered.is_empty() {
+                            debug!("Chunk {} discarded as hallucinated noise: {:?}", i + 1, text);
+                        } else {
                         // After the first chunk (longest, most reliable for language
                         // detection), detect language from the text and force it for
                         // subsequent chunks to prevent Whisper auto-detection errors
@@ -645,6 +653,7 @@ impl TranscriptionManager {
                             }
                         }
                         all_results.push(text);
+                        }
                     }
                     Ok(_) => debug!("Chunk {} returned empty result", i + 1),
                     Err(e) => warn!("Chunk {} transcription failed: {}", i + 1, e),

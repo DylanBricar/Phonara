@@ -593,7 +593,11 @@ impl AudioRecordingManager {
         )
     }
 
-    /// Cancel any ongoing recording without returning audio samples
+    /// Cancel any ongoing recording without returning audio samples.
+    ///
+    /// Wraps `rec.stop()` in `catch_unwind` so that a panic inside the audio
+    /// worker (e.g. from a channel error during rapid cancellation) cannot
+    /// bring down the whole process.
     pub fn cancel_recording(&self) {
         self.is_paused.store(false, Ordering::Relaxed);
         let mut state = self.state.lock().unwrap();
@@ -603,7 +607,13 @@ impl AudioRecordingManager {
             drop(state);
 
             if let Some(rec) = self.recorder.lock().unwrap().as_ref() {
-                let _ = rec.stop(); // Discard the result
+                // Catch panics from the recorder stop (e.g. channel errors)
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _ = rec.stop();
+                }));
+                if let Err(e) = result {
+                    error!("Panic in rec.stop() during cancel_recording: {:?}", e);
+                }
             }
 
             *self.is_recording.lock().unwrap() = false;

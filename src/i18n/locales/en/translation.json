@@ -654,7 +654,8 @@
         "teal": "Teal",
         "yellow": "Yellow",
         "system": "System"
-      }
+      },
+      "overlay": "Overlay"
     },
     "about": {
       "title": "About",

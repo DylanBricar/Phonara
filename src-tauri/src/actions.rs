@@ -529,6 +529,8 @@ impl ShortcutAction for TranscribeAction {
         }
 
         if recording_started {
+            // Clear any stale suppression from a previous cancel cycle
+            crate::shortcut::handler::reset_cancel_suppression();
             shortcut::register_cancel_shortcut(app);
             shortcut::register_pause_shortcut(app);
             shortcut::register_action_shortcuts(app);

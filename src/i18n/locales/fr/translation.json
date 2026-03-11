@@ -642,7 +642,8 @@
         "teal": "Sarcelle",
         "yellow": "Jaune",
         "system": "Système"
-      }
+      },
+      "overlay": "Overlay"
     },
     "about": {
       "title": "À propos",
