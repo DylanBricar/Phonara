@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}} 设置",
-      "noSettingsNeeded": "此模型自动运行，无需配置。"
+      "noSettingsNeeded": "此模型自动运行，无需配置。",
+      "gpuAcceleration": {
+        "label": "GPU 加速",
+        "description": "使用显卡加速转录。如果遇到问题请禁用此选项（例如：部分 AMD GPU 因 Vulkan 驱动程序错误导致输出乱码）。CPU 模式较慢但更可靠。"
+      }
     },
     "models": {
       "title": "转录模型",

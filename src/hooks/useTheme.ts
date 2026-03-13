@@ -3,7 +3,6 @@ import { useSettingsStore } from "../stores/settingsStore";
 import { commands } from "@/bindings";
 import type { AccentColor, ThemeMode } from "@/bindings";
 
-/** Accent color definitions: [light-primary, light-stroke, dark-primary, dark-stroke, ui-color] */
 const ACCENT_PALETTE: Record<
   Exclude<AccentColor, "system">,
   [string, string, string, string, string]
@@ -18,7 +17,6 @@ const ACCENT_PALETTE: Record<
   yellow: ["#e6b800", "#6e5800", "#facc15", "#fef08a", "#ca8a04"],
 };
 
-/** Generate a full palette from a single hex color */
 function paletteFromHex(
   hex: string,
 ): [string, string, string, string, string] {
@@ -46,14 +44,12 @@ export function useTheme() {
     () => window.matchMedia("(prefers-color-scheme: dark)").matches,
   );
 
-  // Fetch system accent color once
   useEffect(() => {
     commands.getSystemAccentColor().then((color) => {
       if (color) setSystemAccentColor(color);
     });
   }, []);
 
-  // Track system dark/light preference changes
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const handler = (e: MediaQueryListEvent) => setSystemIsDark(e.matches);
@@ -61,14 +57,12 @@ export function useTheme() {
     return () => mq.removeEventListener("change", handler);
   }, []);
 
-  // Apply theme mode + accent color
   useEffect(() => {
     if (!settings) return;
 
     const themeMode: ThemeMode = settings.theme_mode ?? "system";
     const accentColor: AccentColor = settings.accent_color ?? "system";
 
-    // --- Theme mode ---
     const root = document.documentElement;
     root.classList.remove("light", "dark");
 
@@ -78,7 +72,6 @@ export function useTheme() {
       root.classList.add("dark");
     }
 
-    // --- Determine effective dark/light ---
     let isDark = false;
     if (themeMode === "dark") {
       isDark = true;
@@ -86,7 +79,6 @@ export function useTheme() {
       isDark = systemIsDark;
     }
 
-    // --- Accent color ---
     let palette: [string, string, string, string, string];
 
     if (accentColor === "system") {

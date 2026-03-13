@@ -35,8 +35,7 @@ export const ClamshellMicrophoneSelector: React.FC<ClamshellMicrophoneSelectorPr
           } else {
             setIsLaptop(false);
           }
-        } catch (error) {
-          console.error("Failed to check if device is laptop:", error);
+        } catch {
           setIsLaptop(false);
         }
       };
@@ -44,7 +43,6 @@ export const ClamshellMicrophoneSelector: React.FC<ClamshellMicrophoneSelectorPr
       checkIsLaptop();
     }, []);
 
-    // Only render on laptops
     if (!isLaptop) {
       return null;
     }

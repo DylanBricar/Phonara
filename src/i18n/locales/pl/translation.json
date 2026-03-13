@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "Ustawienia {{model}}",
-      "noSettingsNeeded": "Ten model działa automatycznie bez konieczności konfiguracji."
+      "noSettingsNeeded": "Ten model działa automatycznie bez konieczności konfiguracji.",
+      "gpuAcceleration": {
+        "label": "Akceleracja GPU",
+        "description": "Użyj karty graficznej do szybszej transkrypcji. Wyłącz tę opcję, jeśli wystąpią problemy (np. zniekształcony wynik na niektórych GPU AMD z powodu błędu sterownika Vulkan). Tryb CPU jest wolniejszy, ale bardziej niezawodny."
+      }
     },
     "models": {
       "title": "Modele transkrypcji",

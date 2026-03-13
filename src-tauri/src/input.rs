@@ -1,13 +1,9 @@
 use enigo::{Enigo, Keyboard, Settings};
 #[cfg(not(target_os = "windows"))]
 use enigo::Key;
-#[cfg(target_os = "windows")]
-use log::warn;
 use std::sync::Mutex;
 use tauri::AppHandle;
 
-/// Wrapper for Enigo to store in Tauri's managed state.
-/// Enigo is wrapped in a Mutex since it requires mutable access.
 pub struct EnigoState(pub Mutex<Enigo>);
 
 impl EnigoState {
@@ -18,26 +14,18 @@ impl EnigoState {
     }
 }
 
-/// Get the current mouse cursor position in global desktop coordinates.
-/// Returns None if getting the location fails.
 pub fn get_cursor_position(app_handle: &AppHandle) -> Option<(i32, i32)> {
     let cursor_pos = app_handle.cursor_position().ok()?;
     Some((cursor_pos.x.round() as i32, cursor_pos.y.round() as i32))
 }
 
-/// On Windows, use the SendInput API directly to simulate key presses.
-/// Unlike enigo, SendInput is non-blocking: if UIPI prevents injection into an
-/// admin-privilege window, it returns immediately with an error instead of
-/// freezing the entire application.
 #[cfg(target_os = "windows")]
 mod win_sendinput {
-    use log::warn;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
         KEYEVENTF_KEYUP, VK_CONTROL, VK_INSERT, VK_SHIFT, VK_V,
     };
 
-    /// Low-level helper: build a KEYBDINPUT-based INPUT struct for a virtual key.
     fn kbd_input(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
         INPUT {
             r#type: INPUT_KEYBOARD,
@@ -53,35 +41,18 @@ mod win_sendinput {
         }
     }
 
-    /// Send a sequence of key inputs via SendInput.
-    /// Returns Ok(()) on success or an error string if UIPI blocked the input.
     fn send(inputs: &[INPUT]) -> Result<(), String> {
         let sent = unsafe { SendInput(inputs, std::mem::size_of::<INPUT>() as i32) };
         if sent == 0 {
             let err = std::io::Error::last_os_error();
-            // Error 5 (ERROR_ACCESS_DENIED) is the typical UIPI rejection
-            warn!(
-                "SendInput injected 0/{} events – the target window likely has higher \
-                 privileges (UIPI). OS error: {}",
-                inputs.len(),
-                err
-            );
             return Err(format!(
                 "Paste blocked by Windows UIPI (target window may be running as administrator): {}",
                 err
             ));
         }
-        if (sent as usize) < inputs.len() {
-            warn!(
-                "SendInput only injected {}/{} events – partial UIPI block",
-                sent,
-                inputs.len()
-            );
-        }
         Ok(())
     }
 
-    /// Ctrl+V via SendInput (non-blocking).
     pub fn ctrl_v() -> Result<(), String> {
         let inputs = [
             kbd_input(VK_CONTROL.0, KEYBD_EVENT_FLAGS(0)),
@@ -92,7 +63,6 @@ mod win_sendinput {
         send(&inputs)
     }
 
-    /// Ctrl+Shift+V via SendInput (non-blocking).
     pub fn ctrl_shift_v() -> Result<(), String> {
         let inputs = [
             kbd_input(VK_CONTROL.0, KEYBD_EVENT_FLAGS(0)),
@@ -105,7 +75,6 @@ mod win_sendinput {
         send(&inputs)
     }
 
-    /// Shift+Insert via SendInput (non-blocking).
     pub fn shift_insert() -> Result<(), String> {
         let inputs = [
             kbd_input(VK_SHIFT.0, KEYBD_EVENT_FLAGS(0)),
@@ -117,32 +86,22 @@ mod win_sendinput {
     }
 }
 
-/// Sends a Ctrl+V or Cmd+V paste command using platform-specific virtual key codes.
-/// This ensures the paste works regardless of keyboard layout (e.g., Russian, AZERTY, DVORAK).
-/// Note: On Wayland, this may not work - callers should check for Wayland and use alternative methods.
-///
-/// On Windows, this uses the SendInput API directly instead of enigo to avoid
-/// blocking indefinitely when the foreground window runs with administrator
-/// privileges (UIPI restriction).
 pub fn send_paste_ctrl_v(enigo: &mut Enigo) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        let _ = enigo; // Not used on Windows; we bypass enigo in favor of SendInput
+        let _ = enigo;
         let result = win_sendinput::ctrl_v();
-        // Still sleep to give the target app time to process the paste
         std::thread::sleep(std::time::Duration::from_millis(100));
         return result;
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        // Platform-specific key definitions
         #[cfg(target_os = "macos")]
         let (modifier_key, v_key_code) = (Key::Meta, Key::Other(9));
         #[cfg(target_os = "linux")]
         let (modifier_key, v_key_code) = (Key::Control, Key::Unicode('v'));
 
-        // Press modifier + V
         enigo
             .key(modifier_key, enigo::Direction::Press)
             .map_err(|e| format!("Failed to press modifier key: {}", e))?;
@@ -160,11 +119,6 @@ pub fn send_paste_ctrl_v(enigo: &mut Enigo) -> Result<(), String> {
     }
 }
 
-/// Sends a Ctrl+Shift+V paste command.
-/// This is commonly used in terminal applications on Linux to paste without formatting.
-/// Note: On Wayland, this may not work - callers should check for Wayland and use alternative methods.
-///
-/// On Windows, uses SendInput to avoid UIPI-related freezes with admin windows.
 pub fn send_paste_ctrl_shift_v(enigo: &mut Enigo) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -176,13 +130,11 @@ pub fn send_paste_ctrl_shift_v(enigo: &mut Enigo) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        // Platform-specific key definitions
         #[cfg(target_os = "macos")]
-        let (modifier_key, v_key_code) = (Key::Meta, Key::Other(9)); // Cmd+Shift+V on macOS
+        let (modifier_key, v_key_code) = (Key::Meta, Key::Other(9));
         #[cfg(target_os = "linux")]
         let (modifier_key, v_key_code) = (Key::Control, Key::Unicode('v'));
 
-        // Press Ctrl/Cmd + Shift + V
         enigo
             .key(modifier_key, enigo::Direction::Press)
             .map_err(|e| format!("Failed to press modifier key: {}", e))?;
@@ -206,11 +158,6 @@ pub fn send_paste_ctrl_shift_v(enigo: &mut Enigo) -> Result<(), String> {
     }
 }
 
-/// Sends a Shift+Insert paste command (Windows and Linux only).
-/// This is more universal for terminal applications and legacy software.
-/// Note: On Wayland, this may not work - callers should check for Wayland and use alternative methods.
-///
-/// On Windows, uses SendInput to avoid UIPI-related freezes with admin windows.
 pub fn send_paste_shift_insert(enigo: &mut Enigo) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -222,9 +169,8 @@ pub fn send_paste_shift_insert(enigo: &mut Enigo) -> Result<(), String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        let insert_key_code = Key::Other(0x76); // XK_Insert (keycode 118 / 0x76, also used as fallback)
+        let insert_key_code = Key::Other(0x76);
 
-        // Press Shift + Insert
         enigo
             .key(Key::Shift, enigo::Direction::Press)
             .map_err(|e| format!("Failed to press Shift key: {}", e))?;
@@ -242,32 +188,12 @@ pub fn send_paste_shift_insert(enigo: &mut Enigo) -> Result<(), String> {
     }
 }
 
-/// Pastes text directly using the enigo text method.
-/// This tries to use system input methods if possible, otherwise simulates keystrokes one by one.
-///
-/// On Windows, this is wrapped in a 5-second timeout to prevent indefinite blocking
-/// when the foreground window has higher privileges (UIPI).
 pub fn paste_text_direct(enigo: &mut Enigo, text: &str) -> Result<(), String> {
-    // On Windows, enigo.text() can also block on admin windows.
-    // We can't easily replace it with SendInput for arbitrary Unicode, so
-    // measure the duration and warn if it took too long.
     #[cfg(target_os = "windows")]
     {
-        let start = std::time::Instant::now();
-
         let result = enigo
             .text(text)
             .map_err(|e| format!("Failed to send text directly: {}", e));
-
-        let elapsed = start.elapsed();
-        if elapsed.as_secs() >= 5 {
-            warn!(
-                "Direct text paste (enigo) was blocked for {:.1}s – the target window \
-                 likely has higher privileges (UIPI). The app may appear frozen until \
-                 the target window is switched away from.",
-                elapsed.as_secs_f64()
-            );
-        }
 
         return result;
     }

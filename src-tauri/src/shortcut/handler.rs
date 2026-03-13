@@ -1,9 +1,3 @@
-//! Shared shortcut event handling logic
-//!
-//! This module contains the common logic for handling shortcut events,
-//! used by both the Tauri and handy-keys implementations.
-
-use log::warn;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -17,9 +11,6 @@ use crate::transcription_coordinator::{
 };
 use crate::TranscriptionCoordinator;
 
-/// When true, the cancel handler ignores all subsequent Escape presses.
-/// Set synchronously in `handle_shortcut_event` the moment a cancel fires,
-/// cleared by `reset_cancel_suppression`.
 static CANCEL_SUPPRESSED: AtomicBool = AtomicBool::new(false);
 
 pub fn reset_cancel_suppression() {
@@ -35,19 +26,6 @@ pub fn reset_cancel_confirmation() {
     }
 }
 
-/// Handle a shortcut event from either implementation.
-///
-/// This function contains the shared logic for:
-/// - Looking up the action in ACTION_MAP
-/// - Handling the cancel binding (only fires when recording)
-/// - Handling push-to-talk mode (start on press, stop on release)
-/// - Handling toggle mode (toggle state on press only)
-///
-/// # Arguments
-/// * `app` - The Tauri app handle
-/// * `binding_id` - The ID of the binding (e.g., "transcribe", "cancel")
-/// * `hotkey_string` - The string representation of the hotkey
-/// * `is_pressed` - Whether this is a key press (true) or release (false)
 pub fn handle_shortcut_event(
     app: &AppHandle,
     binding_id: &str,
@@ -56,17 +34,13 @@ pub fn handle_shortcut_event(
 ) {
     let settings = get_settings(app);
 
-    // Transcribe bindings are handled by the coordinator.
     if is_transcribe_binding(binding_id) {
         if let Some(coordinator) = app.try_state::<TranscriptionCoordinator>() {
             coordinator.send_input(binding_id, hotkey_string, is_pressed, settings.push_to_talk);
-        } else {
-            warn!("TranscriptionCoordinator is not initialized");
         }
         return;
     }
 
-    // Action bindings (1-9): only fires when recording and key is pressed
     if is_action_binding(binding_id) {
         if is_pressed {
             if let Some(key) = parse_action_key(binding_id) {
@@ -78,7 +52,6 @@ pub fn handle_shortcut_event(
         return;
     }
 
-    // Pause binding: toggle pause when recording and key is pressed
     if binding_id == "pause" {
         if is_pressed {
             let audio_manager = app.state::<Arc<AudioRecordingManager>>();
@@ -90,7 +63,6 @@ pub fn handle_shortcut_event(
         return;
     }
 
-    // Show History: open main window and navigate to the History tab
     if binding_id == "show_history" {
         if is_pressed {
             crate::show_main_window(app);
@@ -99,7 +71,6 @@ pub fn handle_shortcut_event(
         return;
     }
 
-    // Copy Latest History: copy the most recent transcription to clipboard
     if binding_id == "copy_latest_history" {
         if is_pressed {
             crate::tray::copy_last_transcript(app);
@@ -108,17 +79,9 @@ pub fn handle_shortcut_event(
     }
 
     let Some(action) = ACTION_MAP.get(binding_id) else {
-        warn!(
-            "No action defined in ACTION_MAP for shortcut ID '{}'. Shortcut: '{}', Pressed: {}",
-            binding_id, hotkey_string, is_pressed
-        );
         return;
     };
 
-    // Cancel binding: requires double-press confirmation when recording.
-    // Once a cancel fires, suppress ALL further cancel presses until the
-    // operation completes.  This prevents rapid Escape spam from triggering
-    // overlapping cancel paths or corrupting shared state.
     if binding_id == "cancel" {
         if CANCEL_SUPPRESSED.load(Ordering::SeqCst) {
             return;
@@ -141,8 +104,6 @@ pub fn handle_shortcut_event(
                 }
             };
             if should_cancel {
-                // Immediately suppress further cancel presses — synchronous,
-                // so no async gap for rapid key repeats.
                 CANCEL_SUPPRESSED.store(true, Ordering::SeqCst);
                 action.start(app, binding_id, hotkey_string);
             } else {
@@ -152,7 +113,6 @@ pub fn handle_shortcut_event(
         return;
     }
 
-    // Remaining bindings (e.g. "test") use simple start/stop on press/release.
     if is_pressed {
         action.start(app, binding_id, hotkey_string);
     } else {

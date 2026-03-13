@@ -33,7 +33,6 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
     { value: "pop", label: "Pop" },
   ];
 
-  // Show Custom option if custom sounds are configured or legacy files exist
   if (customSounds.start || customSounds.stop || customStartSound || customStopSound) {
     options.push({ value: "custom", label: t("settings.sound.soundTheme.custom") });
   }
@@ -59,11 +58,6 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
         if (result.status === "ok") {
           await checkCustomSounds();
           await refreshSettings();
-        } else {
-          console.error(
-            `Failed to set custom ${soundType} sound:`,
-            result.error,
-          );
         }
       }
     },

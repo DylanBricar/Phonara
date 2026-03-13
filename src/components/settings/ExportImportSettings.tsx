@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { commands } from "@/bindings";
@@ -13,6 +13,8 @@ interface ExportImportSettingsProps {
 export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
   grouped = false,
 }) => {
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => { clearTimeout(statusTimerRef.current); }, []);
   const { t } = useTranslation();
   const { refreshSettings } = useSettings();
   const [status, setStatus] = useState<string | null>(null);

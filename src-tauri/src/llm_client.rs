@@ -1,20 +1,11 @@
 use crate::settings::PostProcessProvider;
-use log::debug;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Resolves the effective LLM base URL for a provider.
-/// If the `PHONARA_CUSTOM_LLM_BASE_URL` environment variable is set, it takes precedence
-/// over the provider's configured base URL. This is useful when running a local LLM
-/// service on a dynamic port.
 fn resolve_base_url(provider: &PostProcessProvider) -> String {
     if let Ok(env_url) = std::env::var("PHONARA_CUSTOM_LLM_BASE_URL") {
         if !env_url.is_empty() {
-            debug!(
-                "Using custom LLM base URL from env: {} (overriding {})",
-                env_url, provider.base_url
-            );
             return env_url.trim_end_matches('/').to_string();
         }
     }
@@ -64,11 +55,9 @@ struct ChatMessageResponse {
     content: Option<String>,
 }
 
-/// Build headers for API requests based on provider type
 fn build_headers(provider: &PostProcessProvider, api_key: &str) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
 
-    // Common headers
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
         REFERER,
@@ -80,7 +69,6 @@ fn build_headers(provider: &PostProcessProvider, api_key: &str) -> Result<Header
     );
     headers.insert("X-Title", HeaderValue::from_static("Phonara"));
 
-    // Provider-specific auth headers
     if !api_key.is_empty() {
         if provider.id == "anthropic" {
             headers.insert(
@@ -101,18 +89,7 @@ fn build_headers(provider: &PostProcessProvider, api_key: &str) -> Result<Header
     Ok(headers)
 }
 
-/// Create an HTTP client with provider-specific headers
-fn create_client(provider: &PostProcessProvider, api_key: &str) -> Result<reqwest::Client, String> {
-    let headers = build_headers(provider, api_key)?;
-    reqwest::Client::builder()
-        .default_headers(headers)
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))
-}
 
-/// Send a chat completion request to an OpenAI-compatible API
-/// Returns Ok(Some(content)) on success, Ok(None) if response has no content,
-/// or Err on actual errors (HTTP, parsing, etc.)
 pub async fn send_chat_completion(
     provider: &PostProcessProvider,
     api_key: String,
@@ -122,9 +99,6 @@ pub async fn send_chat_completion(
     send_chat_completion_with_schema(provider, api_key, model, prompt, None, None).await
 }
 
-/// Send a chat completion request with structured output support
-/// When json_schema is provided, uses structured outputs mode
-/// system_prompt is used as the system message when provided
 pub async fn send_chat_completion_with_schema(
     provider: &PostProcessProvider,
     api_key: String,
@@ -133,7 +107,6 @@ pub async fn send_chat_completion_with_schema(
     system_prompt: Option<String>,
     json_schema: Option<Value>,
 ) -> Result<Option<String>, String> {
-    // Route Gemini requests to the dedicated Gemini client
     if provider.id == "gemini" {
         let sys = system_prompt.unwrap_or_default();
         match crate::gemini_client::generate_text(&api_key, model, &sys, &user_content).await {
@@ -146,14 +119,10 @@ pub async fn send_chat_completion_with_schema(
     let base_url = resolve_base_url(provider);
     let url = format!("{}/chat/completions", base_url);
 
-    debug!("Sending chat completion request to: {}", url);
+    let headers = build_headers(provider, &api_key)?;
 
-    let client = create_client(provider, &api_key)?;
-
-    // Build messages vector
     let mut messages = Vec::new();
 
-    // Add system prompt if provided
     if let Some(system) = system_prompt {
         messages.push(ChatMessage {
             role: "system".to_string(),
@@ -161,13 +130,11 @@ pub async fn send_chat_completion_with_schema(
         });
     }
 
-    // Add user message
     messages.push(ChatMessage {
         role: "user".to_string(),
         content: user_content,
     });
 
-    // Build response_format if schema is provided
     let response_format = json_schema.map(|schema| ResponseFormat {
         format_type: "json_schema".to_string(),
         json_schema: JsonSchema {
@@ -183,8 +150,9 @@ pub async fn send_chat_completion_with_schema(
         response_format,
     };
 
-    let response = client
+    let response = crate::http_client::client()
         .post(&url)
+        .headers(headers)
         .json(&request_body)
         .send()
         .await
@@ -213,13 +181,10 @@ pub async fn send_chat_completion_with_schema(
         .and_then(|choice| choice.message.content.clone()))
 }
 
-/// Fetch available models from an OpenAI-compatible API
-/// Returns a list of model IDs
 pub async fn fetch_models(
     provider: &PostProcessProvider,
     api_key: String,
 ) -> Result<Vec<String>, String> {
-    // Gemini uses a different API format for listing models
     if provider.id == "gemini" {
         return fetch_gemini_models(&api_key).await;
     }
@@ -227,12 +192,11 @@ pub async fn fetch_models(
     let base_url = resolve_base_url(provider);
     let url = format!("{}/models", base_url);
 
-    debug!("Fetching models from: {}", url);
+    let headers = build_headers(provider, &api_key)?;
 
-    let client = create_client(provider, &api_key)?;
-
-    let response = client
+    let response = crate::http_client::client()
         .get(&url)
+        .headers(headers)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch models: {}", e))?;
@@ -256,7 +220,6 @@ pub async fn fetch_models(
 
     let mut models = Vec::new();
 
-    // Handle OpenAI format: { data: [ { id: "..." }, ... ] }
     if let Some(data) = parsed.get("data").and_then(|d| d.as_array()) {
         for entry in data {
             if let Some(id) = entry.get("id").and_then(|i| i.as_str()) {
@@ -266,7 +229,6 @@ pub async fn fetch_models(
             }
         }
     }
-    // Handle array format: [ "model1", "model2", ... ]
     else if let Some(array) = parsed.as_array() {
         for entry in array {
             if let Some(model) = entry.as_str() {
@@ -281,8 +243,7 @@ pub async fn fetch_models(
 async fn fetch_gemini_models(api_key: &str) -> Result<Vec<String>, String> {
     let url = "https://generativelanguage.googleapis.com/v1beta/models";
 
-    let client = reqwest::Client::new();
-    let response = client
+    let response = crate::http_client::client()
         .get(url)
         .header("x-goog-api-key", api_key)
         .send()
@@ -310,7 +271,6 @@ async fn fetch_gemini_models(api_key: &str) -> Result<Vec<String>, String> {
     if let Some(data) = parsed.get("models").and_then(|d| d.as_array()) {
         for entry in data {
             if let Some(name) = entry.get("name").and_then(|n| n.as_str()) {
-                // Gemini returns "models/gemini-2.5-flash" - strip the prefix
                 let model_id = name.strip_prefix("models/").unwrap_or(name);
                 if model_id.contains("gemini") {
                     models.push(model_id.to_string());

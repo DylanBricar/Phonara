@@ -4,9 +4,6 @@ use crate::settings::OverlayPosition;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 
 #[cfg(not(target_os = "macos"))]
-use log::debug;
-
-#[cfg(not(target_os = "macos"))]
 use tauri::WebviewWindowBuilder;
 
 #[cfg(target_os = "macos")]
@@ -48,7 +45,6 @@ const OVERLAY_BOTTOM_OFFSET: f64 = 40.0;
 fn update_gtk_layer_shell_anchors(overlay_window: &tauri::webview::WebviewWindow) {
     let window_clone = overlay_window.clone();
     let _ = overlay_window.run_on_main_thread(move || {
-        // Try to get the GTK window from the Tauri webview
         if let Ok(gtk_window) = window_clone.gtk_window() {
             let settings = settings::get_settings(window_clone.app_handle());
             match settings.overlay_position {
@@ -65,12 +61,8 @@ fn update_gtk_layer_shell_anchors(overlay_window: &tauri::webview::WebviewWindow
     });
 }
 
-/// Initializes GTK layer shell for Linux overlay window
-/// Returns true if layer shell was successfully initialized, false otherwise
 #[cfg(target_os = "linux")]
 fn init_gtk_layer_shell(overlay_window: &tauri::webview::WebviewWindow) -> bool {
-    // On KDE Wayland, layer-shell init has shown protocol instability.
-    // Fall back to regular always-on-top overlay behavior (as in v0.7.1).
     let is_wayland = env::var("WAYLAND_DISPLAY").is_ok()
         || env::var("XDG_SESSION_TYPE")
             .map(|v| v.eq_ignore_ascii_case("wayland"))
@@ -80,7 +72,6 @@ fn init_gtk_layer_shell(overlay_window: &tauri::webview::WebviewWindow) -> bool 
         .unwrap_or(false)
         || env::var("KDE_SESSION_VERSION").is_ok();
     if is_wayland && is_kde {
-        debug!("Skipping GTK layer shell init on KDE Wayland");
         return false;
     }
 
@@ -88,9 +79,7 @@ fn init_gtk_layer_shell(overlay_window: &tauri::webview::WebviewWindow) -> bool 
         return false;
     }
 
-    // Try to get the GTK window from the Tauri webview
     if let Ok(gtk_window) = overlay_window.gtk_window() {
-        // Initialize layer shell
         gtk_window.init_layer_shell();
         gtk_window.set_layer(Layer::Overlay);
         gtk_window.set_keyboard_mode(KeyboardMode::None);
@@ -103,9 +92,6 @@ fn init_gtk_layer_shell(overlay_window: &tauri::webview::WebviewWindow) -> bool 
     false
 }
 
-/// Forces a window to be topmost using Win32 API (Windows only)
-/// This is more reliable than Tauri's set_always_on_top which can be overridden.
-/// Also ensures the window never steals focus from the active application.
 #[cfg(target_os = "windows")]
 fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -113,22 +99,15 @@ fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
         SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
     };
 
-    // Clone because run_on_main_thread takes 'static
     let overlay_clone = overlay_window.clone();
 
-    // Make sure the Win32 call happens on the UI thread
     let _ = overlay_clone.clone().run_on_main_thread(move || {
         if let Ok(hwnd) = overlay_clone.hwnd() {
             unsafe {
-                // Add WS_EX_NOACTIVATE to prevent focus stealing when overlay appears
-                // WS_EX_TOOLWINDOW hides it from the taskbar and Alt-Tab
-                // Note: We do NOT use WS_EX_TRANSPARENT as that makes the window
-                // click-through, which would prevent pause/cancel button interaction
                 let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
                 let new_style = ex_style | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
                 SetWindowLongW(hwnd, GWL_EXSTYLE, new_style as i32);
 
-                // Force Z-order: make this window topmost without changing size/pos or stealing focus
                 let _ = SetWindowPos(
                     hwnd,
                     Some(HWND_TOPMOST),
@@ -206,8 +185,6 @@ fn get_monitor_with_cursor(app_handle: &AppHandle) -> Option<tauri::Monitor> {
 
         #[cfg(target_os = "macos")]
         {
-            // Fallback for mixed-DPI setups where cursor and monitor coordinates may differ
-            // between logical and physical spaces depending on backend reporting.
             for monitor in &monitors {
                 let scale = monitor.scale_factor();
                 let pos = monitor.position();
@@ -254,9 +231,6 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
         let wa_w = work_area.size.width as f64 / scale;
         let wa_h = work_area.size.height as f64 / scale;
 
-        // Validate work_area: on macOS, work_area() can return bogus values
-        // for external monitors. Detect this by checking if work_area extends
-        // beyond the monitor bounds.
         let wa_bottom = wa_y + wa_h;
         let monitor_bottom = monitor_y + monitor_height;
         let work_area_valid =
@@ -265,11 +239,6 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
         let (area_x, area_y, area_w, area_h) = if work_area_valid {
             (wa_x, wa_y, wa_w, wa_h)
         } else {
-            log::debug!(
-                "work_area invalid for monitor (wa_bottom={:.0} > monitor_bottom={:.0}), using monitor bounds with safe offset",
-                wa_bottom, monitor_bottom
-            );
-            // Use monitor bounds with a safe top offset for the macOS menu bar (~25px)
             let menu_bar_offset = 25.0;
             (
                 monitor_x,
@@ -290,26 +259,17 @@ fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
             }
         };
 
-        log::debug!(
-            "Overlay position: ({:.0}, {:.0}) on monitor (scale={}, area=({:.0},{:.0},{:.0},{:.0}), wa_valid={})",
-            x, y, scale, area_x, area_y, area_w, area_h, work_area_valid
-        );
-
         return Some((x, y));
     }
     None
 }
 
-/// Creates the recording overlay window and keeps it hidden by default
 #[cfg(not(target_os = "macos"))]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
     let position = calculate_overlay_position(app_handle);
 
-    // On Linux (Wayland), monitor detection often fails, but we don't need exact coordinates
-    // for Layer Shell as we use anchors. On other platforms, we require a position.
     #[cfg(not(target_os = "linux"))]
     if position.is_none() {
-        debug!("Failed to determine overlay position, not creating overlay window");
         return;
     }
 
@@ -341,28 +301,16 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
         Ok(_window) => {
             #[cfg(target_os = "linux")]
             {
-                // Try to initialize GTK layer shell, ignore errors if compositor doesn't support it
-                if init_gtk_layer_shell(&_window) {
-                    debug!("GTK layer shell initialized for overlay window");
-                } else {
-                    debug!("GTK layer shell not available, falling back to regular window");
-                }
+                init_gtk_layer_shell(&_window);
             }
-
-            debug!("Recording overlay window created successfully (hidden)");
         }
-        Err(e) => {
-            debug!("Failed to create recording overlay window: {}", e);
-        }
+        Err(_) => {}
     }
 }
 
-/// Creates the recording overlay panel and keeps it hidden by default (macOS)
 #[cfg(target_os = "macos")]
 pub fn create_recording_overlay(app_handle: &AppHandle) {
     if let Some((x, y)) = calculate_overlay_position(app_handle) {
-        // PanelBuilder creates a Tauri window then converts it to NSPanel.
-        // The window remains registered, so get_webview_window() still works.
         match PanelBuilder::<_, RecordingOverlayPanel>::new(app_handle, "recording_overlay")
             .url(WebviewUrl::App("src/overlay/index.html".into()))
             .title("Recording")
@@ -394,7 +342,6 @@ pub fn create_recording_overlay(app_handle: &AppHandle) {
     }
 }
 
-/// Validates a CSS color string (only allows hex colors like #rrggbb or #rgb)
 fn sanitize_color(color: &Option<String>) -> Option<String> {
     color.as_ref().and_then(|c| {
         let trimmed = c.trim();
@@ -410,7 +357,6 @@ fn sanitize_color(color: &Option<String>) -> Option<String> {
 }
 
 fn get_overlay_dimensions(settings: &settings::AppSettings) -> (f64, f64) {
-    // Clamp dimensions to safe bounds (120-500px width, 30-80px height)
     let w = (settings.overlay_custom_width.max(120).min(500) as f64) + 10.0;
     let h = (settings.overlay_custom_height.max(30).min(80) as f64) + 4.0;
     (w, h)
@@ -426,7 +372,6 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         let (w, h) = get_overlay_dimensions(&settings);
-        // Ensure overlay size is correct for the current monitor's DPI scale
         let _ = overlay_window.set_size(tauri::Size::Logical(tauri::LogicalSize {
             width: w,
             height: h,
@@ -451,22 +396,18 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     }
 }
 
-/// Shows the recording overlay window with fade-in animation
 pub fn show_recording_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "recording");
 }
 
-/// Shows the transcribing overlay window
 pub fn show_transcribing_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "transcribing");
 }
 
-/// Shows the processing overlay window
 pub fn show_processing_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "processing");
 }
 
-/// Shows a temporary preview of the overlay with current settings (3 seconds)
 pub fn preview_overlay(app_handle: &AppHandle) {
     show_overlay_state(app_handle, "recording");
 
@@ -477,7 +418,6 @@ pub fn preview_overlay(app_handle: &AppHandle) {
     });
 }
 
-/// Updates the overlay window position based on current settings
 pub fn update_overlay_position(app_handle: &AppHandle) {
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         #[cfg(target_os = "linux")]
@@ -492,16 +432,9 @@ pub fn update_overlay_position(app_handle: &AppHandle) {
     }
 }
 
-/// Hides the recording overlay window with fade-out animation
 pub fn hide_recording_overlay(app_handle: &AppHandle) {
-    // Always hide the overlay regardless of settings - if setting was changed while recording,
-    // we still want to hide it properly
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        // Emit event to trigger fade-out animation
         let _ = overlay_window.emit("hide-overlay", ());
-        // Hide the window after a short delay to allow animation to complete.
-        // Use Tauri's async runtime instead of bare std::thread::spawn to avoid
-        // calling window operations from a non-main thread (crashes on Windows).
         let app_clone = app_handle.clone();
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(300)).await;
@@ -534,10 +467,8 @@ pub fn emit_recording_paused(app_handle: &AppHandle, paused: bool) {
 }
 
 pub fn emit_levels(app_handle: &AppHandle, levels: &Vec<f32>) {
-    // emit levels to main app
     let _ = app_handle.emit("mic-level", levels);
 
-    // also emit to the recording overlay if it's open
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         let _ = overlay_window.emit("mic-level", levels);
     }

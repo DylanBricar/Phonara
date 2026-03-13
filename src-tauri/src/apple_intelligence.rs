@@ -1,7 +1,6 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 
-// Define the response structure from Swift
 #[repr(C)]
 pub struct AppleLLMResponse {
     pub response: *mut c_char,
@@ -9,18 +8,15 @@ pub struct AppleLLMResponse {
     pub error_message: *mut c_char,
 }
 
-// Link to the Swift functions
 extern "C" {
     pub fn is_apple_intelligence_available() -> c_int;
     pub fn free_apple_llm_response(response: *mut AppleLLMResponse);
 }
 
-// Safe wrapper functions
 pub fn check_apple_intelligence_availability() -> bool {
     unsafe { is_apple_intelligence_available() == 1 }
 }
 
-// Link to the Swift function for system prompt support
 extern "C" {
     pub fn process_text_with_system_prompt_apple(
         system_prompt: *const c_char,
@@ -29,7 +25,6 @@ extern "C" {
     ) -> *mut AppleLLMResponse;
 }
 
-/// Process text with Apple Intelligence using separate system prompt and user content
 pub fn process_text_with_system_prompt(
     system_prompt: &str,
     user_content: &str,
@@ -66,7 +61,6 @@ pub fn process_text_with_system_prompt(
         Err(error_msg)
     };
 
-    // Clean up the response
     unsafe { free_apple_llm_response(response_ptr) };
 
     result

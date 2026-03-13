@@ -1,7 +1,6 @@
 use anyhow::Result;
 use base64::Engine;
 use hound::{WavSpec, WavWriter};
-use log::debug;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
@@ -87,13 +86,6 @@ pub async fn transcribe_audio(api_key: &str, model: &str, audio_samples: &[f32])
     let wav_bytes = encode_samples_to_wav(audio_samples)?;
     let audio_base64 = base64::engine::general_purpose::STANDARD.encode(&wav_bytes);
 
-    debug!(
-        "Gemini transcribe: {} samples, {} bytes WAV, {} bytes base64",
-        audio_samples.len(),
-        wav_bytes.len(),
-        audio_base64.len()
-    );
-
     let url = format!("{}/{}:generateContent", GEMINI_API_BASE, model);
 
     let request = GenerateContentRequest {
@@ -125,8 +117,7 @@ pub async fn transcribe_audio(api_key: &str, model: &str, audio_samples: &[f32])
         HeaderValue::from_str(api_key).map_err(|e| anyhow::anyhow!("Invalid API key: {}", e))?,
     );
 
-    let client = reqwest::Client::new();
-    let response = client
+    let response = crate::http_client::client()
         .post(&url)
         .headers(headers)
         .json(&request)
@@ -161,7 +152,6 @@ pub async fn transcribe_audio(api_key: &str, model: &str, audio_samples: &[f32])
         .and_then(|p| p.text)
         .unwrap_or_default();
 
-    debug!("Gemini transcription result: {}", text);
     Ok(text.trim().to_string())
 }
 
@@ -171,13 +161,6 @@ pub async fn generate_text(
     system_prompt: &str,
     user_text: &str,
 ) -> Result<String> {
-    debug!(
-        "Gemini generate_text: model={}, prompt_len={}, text_len={}",
-        model,
-        system_prompt.len(),
-        user_text.len()
-    );
-
     let url = format!("{}/{}:generateContent", GEMINI_API_BASE, model);
 
     let request = GenerateContentRequest {
@@ -202,8 +185,7 @@ pub async fn generate_text(
         HeaderValue::from_str(api_key).map_err(|e| anyhow::anyhow!("Invalid API key: {}", e))?,
     );
 
-    let client = reqwest::Client::new();
-    let response = client
+    let response = crate::http_client::client()
         .post(&url)
         .headers(headers)
         .json(&request)
@@ -238,6 +220,5 @@ pub async fn generate_text(
         .and_then(|p| p.text)
         .unwrap_or_default();
 
-    debug!("Gemini text generation result length: {}", text.len());
     Ok(text.trim().to_string())
 }

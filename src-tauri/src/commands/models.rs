@@ -41,7 +41,6 @@ pub async fn delete_model(
     transcription_manager: State<'_, Arc<TranscriptionManager>>,
     model_id: String,
 ) -> Result<(), String> {
-    // If deleting the active model, unload it and clear the setting
     let settings = get_settings(&app_handle);
     if settings.selected_model == model_id {
         transcription_manager
@@ -66,7 +65,6 @@ pub async fn set_active_model(
     transcription_manager: State<'_, Arc<TranscriptionManager>>,
     model_id: String,
 ) -> Result<(), String> {
-    // Check if model exists and is available
     let model_info = model_manager
         .get_model_info(&model_id)
         .ok_or_else(|| format!("Model not found: {}", model_id))?;
@@ -75,12 +73,10 @@ pub async fn set_active_model(
         return Err(format!("Model not downloaded: {}", model_id));
     }
 
-    // Load the model in the transcription manager
     transcription_manager
         .load_model(&model_id)
         .map_err(|e| e.to_string())?;
 
-    // Update settings
     let mut settings = get_settings(&app_handle);
     settings.selected_model = model_id.clone();
     write_settings(&app_handle, settings);
@@ -108,7 +104,6 @@ pub async fn get_transcription_model_status(
 pub async fn is_model_loading(
     transcription_manager: State<'_, Arc<TranscriptionManager>>,
 ) -> Result<bool, String> {
-    // Check if transcription manager has a loaded model
     let current_model = transcription_manager.get_current_model();
     Ok(current_model.is_none())
 }

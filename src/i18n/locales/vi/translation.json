@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "Cài đặt {{model}}",
-      "noSettingsNeeded": "Mô hình này hoạt động tự động mà không cần cấu hình."
+      "noSettingsNeeded": "Mô hình này hoạt động tự động mà không cần cấu hình.",
+      "gpuAcceleration": {
+        "label": "Tăng tốc GPU",
+        "description": "Sử dụng card đồ họa để chuyển đổi giọng nói nhanh hơn. Tắt tùy chọn này nếu bạn gặp sự cố (ví dụ: đầu ra bị lỗi trên một số GPU AMD do lỗi trình điều khiển Vulkan). Chế độ CPU chậm hơn nhưng đáng tin cậy hơn."
+      }
     },
     "models": {
       "title": "Mô hình chuyển đổi",

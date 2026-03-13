@@ -33,8 +33,6 @@ function App() {
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(
     null,
   );
-  // Track if this is a returning user who just needs to grant permissions
-  // (vs a new user who needs full onboarding including model selection)
   const [isReturningUser, setIsReturningUser] = useState(false);
   const [currentSection, setCurrentSection] =
     useState<SidebarSection>("general");
@@ -53,30 +51,24 @@ function App() {
     checkOnboardingStatus();
   }, []);
 
-  // Initialize RTL direction when language changes
   useEffect(() => {
     initializeRTL(i18n.language);
   }, [i18n.language]);
 
-  // Initialize Enigo, shortcuts, and refresh audio devices when main app loads
   useEffect(() => {
     if (onboardingStep === "done" && !hasCompletedPostOnboardingInit.current) {
       hasCompletedPostOnboardingInit.current = true;
       Promise.all([
         commands.initializeEnigo(),
         commands.initializeShortcuts(),
-      ]).catch((e) => {
-        console.warn("Failed to initialize:", e);
-      });
+      ]).catch(() => {});
       refreshAudioDevices();
       refreshOutputDevices();
     }
   }, [onboardingStep, refreshAudioDevices, refreshOutputDevices]);
 
-  // Handle keyboard shortcuts for debug mode toggle
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check for Ctrl+Shift+D (Windows/Linux) or Cmd+Shift+D (macOS)
       const isDebugShortcut =
         event.shiftKey &&
         event.key.toLowerCase() === "d" &&
@@ -89,16 +81,13 @@ function App() {
       }
     };
 
-    // Add event listener when component mounts
     document.addEventListener("keydown", handleKeyDown);
 
-    // Cleanup event listener when component unmounts
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [settings?.debug_mode, updateSetting]);
 
-  // Listen for backend navigation events (e.g., "Show History" shortcut)
   useEffect(() => {
     const unlisten = listen<string>("navigate-to-section", (event) => {
       const section = event.payload as SidebarSection;
@@ -111,7 +100,6 @@ function App() {
     };
   }, []);
 
-  // Listen for model loading failures and show a toast
   useEffect(() => {
     const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {
       if (event.payload.event_type === "loading_failed") {
@@ -134,8 +122,7 @@ function App() {
   const revealMainWindowForPermissions = async () => {
     try {
       await commands.showMainWindowCommand();
-    } catch (e) {
-      console.warn("Failed to show main window for permission onboarding:", e);
+    } catch {
     }
   };
 
@@ -144,13 +131,11 @@ function App() {
       const appIdentifier = await getIdentifier();
       const isDevFlavor = appIdentifier.endsWith(".dev");
 
-      // Check if they have any models available
       const result = await commands.hasAnyModelsAvailable();
       const hasModels = result.status === "ok" && result.data;
       const currentPlatform = platform();
 
       if (hasModels) {
-        // Returning user - check if they need to grant permissions first
         setIsReturningUser(true);
 
         if (currentPlatform === "macos" && !isDevFlavor) {
@@ -164,8 +149,7 @@ function App() {
               setOnboardingStep("accessibility");
               return;
             }
-          } catch (e) {
-            console.warn("Failed to check macOS permissions:", e);
+          } catch {
           }
         }
 
@@ -181,35 +165,28 @@ function App() {
               setOnboardingStep("accessibility");
               return;
             }
-          } catch (e) {
-            console.warn("Failed to check Windows microphone permissions:", e);
+          } catch {
           }
         }
 
         setOnboardingStep("done");
       } else {
-        // New user - dev flavor skips permissions (can't grant to debug binary)
         setIsReturningUser(false);
         setOnboardingStep(isDevFlavor ? "model" : "accessibility");
       }
-    } catch (error) {
-      console.error("Failed to check onboarding status:", error);
+    } catch {
       setOnboardingStep("accessibility");
     }
   };
 
   const handleAccessibilityComplete = () => {
-    // Returning users already have models, skip to main app
-    // New users need to select a model
     setOnboardingStep(isReturningUser ? "done" : "model");
   };
 
   const handleModelSelected = () => {
-    // Transition to main app - user has started a download
     setOnboardingStep("done");
   };
 
-  // Still checking onboarding status
   if (onboardingStep === null) {
     return null;
   }
@@ -239,13 +216,11 @@ function App() {
           },
         }}
       />
-      {/* Main content area that takes remaining space */}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
           activeSection={currentSection}
           onSectionChange={setCurrentSection}
         />
-        {/* Scrollable content area */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto">
             <div className="flex flex-col items-center p-4 gap-4">
@@ -255,7 +230,6 @@ function App() {
           </div>
         </div>
       </div>
-      {/* Fixed footer at bottom */}
       <Footer />
     </div>
   );

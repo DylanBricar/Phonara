@@ -31,7 +31,6 @@ export const DebugSettings: React.FC = () => {
         <PasteDelay descriptionMode="tooltip" grouped={true} />
         <AlwaysOnMicrophone descriptionMode="tooltip" grouped={true} />
         <ClamshellMicrophoneSelector descriptionMode="tooltip" grouped={true} />
-        {/* Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration */}
         {!isLinux && (
           <ShortcutInput
             shortcutId="cancel"

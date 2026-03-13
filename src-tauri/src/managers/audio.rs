@@ -2,20 +2,13 @@ use crate::audio_toolkit::{list_input_devices, vad::SmoothedVad, AudioRecorder, 
 use crate::helpers::clamshell;
 use crate::settings::{get_settings, AppSettings};
 use crate::utils;
-use log::{debug, error, info};
+use log::error;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tauri::Manager;
 
 fn set_mute(mute: bool) {
-    // Expected behavior:
-    // - Windows: works on most systems using standard audio drivers.
-    // - Linux: works on many systems (PipeWire, PulseAudio, ALSA),
-    //   but some distros may lack the tools used.
-    // - macOS: works on most standard setups via AppleScript.
-    // If unsupported, fails silently.
-
     #[cfg(target_os = "windows")]
     {
         unsafe {
@@ -36,8 +29,6 @@ fn set_mute(mute: bool) {
                 };
             }
 
-            // Initialize the COM library for this thread.
-            // If already initialized (e.g., by another library like Tauri), this does nothing.
             let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
 
             let all_devices: IMMDeviceEnumerator =
@@ -59,8 +50,6 @@ fn set_mute(mute: bool) {
         let mute_val = if mute { "1" } else { "0" };
         let amixer_state = if mute { "mute" } else { "unmute" };
 
-        // Try multiple backends to increase compatibility
-        // 1. PipeWire (wpctl)
         if Command::new("wpctl")
             .args(["set-mute", "@DEFAULT_AUDIO_SINK@", mute_val])
             .output()
@@ -70,7 +59,6 @@ fn set_mute(mute: bool) {
             return;
         }
 
-        // 2. PulseAudio (pactl)
         if Command::new("pactl")
             .args(["set-sink-mute", "@DEFAULT_SINK@", mute_val])
             .output()
@@ -80,7 +68,6 @@ fn set_mute(mute: bool) {
             return;
         }
 
-        // 3. ALSA (amixer)
         let _ = Command::new("amixer")
             .args(["set", "Master", amixer_state])
             .output();
@@ -97,8 +84,6 @@ fn set_mute(mute: bool) {
     }
 }
 
-/// Checks if the system is already muted by the user before we apply our own mute.
-/// Returns true if the system output is muted or volume is 0.
 #[cfg(target_os = "macos")]
 fn is_system_already_muted() -> bool {
     use std::process::Command;
@@ -161,8 +146,6 @@ fn is_system_already_muted() -> bool {
 
 const WHISPER_SAMPLE_RATE: usize = 16000;
 
-/* ──────────────────────────────────────────────────────────────── */
-
 #[derive(Clone, Debug)]
 pub enum RecordingState {
     Idle,
@@ -175,8 +158,6 @@ pub enum MicrophoneMode {
     OnDemand,
 }
 
-/* ──────────────────────────────────────────────────────────────── */
-
 fn create_audio_recorder(
     vad_path: &str,
     app_handle: &tauri::AppHandle,
@@ -186,8 +167,6 @@ fn create_audio_recorder(
         .map_err(|e| anyhow::anyhow!("Failed to create SileroVad: {}", e))?;
     let smoothed_vad = SmoothedVad::new(Box::new(silero), 15, 15, 2);
 
-    // Recorder with VAD plus a spectrum-level callback that forwards updates to
-    // the frontend.
     let recorder = AudioRecorder::new()
         .map_err(|e| anyhow::anyhow!("Failed to create AudioRecorder: {}", e))?
         .with_vad(Box::new(smoothed_vad))
@@ -208,10 +187,6 @@ fn create_audio_recorder(
     Ok(recorder)
 }
 
-/* ──────────────────────────────────────────────────────────────── */
-
-/// Duration to keep the mic stream open after recording stops in OnDemand mode.
-/// This eliminates Bluetooth microphone activation latency for subsequent recordings.
 const LAZY_CLOSE_SECS: u64 = 30;
 
 #[derive(Clone)]
@@ -225,15 +200,10 @@ pub struct AudioRecordingManager {
     is_recording: Arc<Mutex<bool>>,
     is_paused: Arc<AtomicBool>,
     did_mute: Arc<Mutex<bool>>,
-    /// Monotonic counter incremented each time a lazy-close is scheduled.
-    /// If the value changes before the timer fires, the close is cancelled
-    /// (because a new recording started in the meantime).
     lazy_close_gen: Arc<AtomicU64>,
 }
 
 impl AudioRecordingManager {
-    /* ---------- construction ------------------------------------------------ */
-
     pub fn new(app: &tauri::AppHandle) -> Result<Self, anyhow::Error> {
         let settings = get_settings(app);
         let mode = if settings.always_on_microphone {
@@ -255,7 +225,6 @@ impl AudioRecordingManager {
             lazy_close_gen: Arc::new(AtomicU64::new(0)),
         };
 
-        // Always-on?  Open immediately.
         if matches!(mode, MicrophoneMode::AlwaysOn) {
             manager.start_microphone_stream()?;
         }
@@ -263,8 +232,6 @@ impl AudioRecordingManager {
         Ok(manager)
     }
 
-    /// Creates a manager in on-demand mode without opening the microphone.
-    /// Used as a fallback when no microphone is available at startup.
     pub fn new_without_mic(app: &tauri::AppHandle) -> Self {
         Self {
             state: Arc::new(Mutex::new(RecordingState::Idle)),
@@ -280,10 +247,7 @@ impl AudioRecordingManager {
         }
     }
 
-    /* ---------- helper methods --------------------------------------------- */
-
     fn get_effective_microphone_device(&self, settings: &AppSettings) -> Option<cpal::Device> {
-        // Check if we're in clamshell mode and have a clamshell microphone configured
         let use_clamshell_mic = if let Ok(is_clamshell) = clamshell::is_clamshell() {
             is_clamshell && settings.clamshell_microphone.is_some()
         } else {
@@ -296,58 +260,42 @@ impl AudioRecordingManager {
             settings.selected_microphone.as_ref()?
         };
 
-        // Find the device by name
         match list_input_devices() {
             Ok(devices) => devices
                 .into_iter()
                 .find(|d| d.name == *device_name)
                 .map(|d| d.device),
-            Err(e) => {
-                debug!("Failed to list devices, using default: {}", e);
-                None
-            }
+            Err(_) => None,
         }
     }
 
-    /* ---------- microphone life-cycle -------------------------------------- */
-
-    /// Applies mute if mute_while_recording is enabled and stream is open.
-    /// Skips muting (and later unmuting) if the system was already muted by the user.
     pub fn apply_mute(&self) {
         let settings = get_settings(&self.app_handle);
         let mut did_mute_guard = self.did_mute.lock().unwrap();
 
         if settings.mute_while_recording && *self.is_open.lock().unwrap() {
             if is_system_already_muted() {
-                debug!("System already muted by user, skipping app mute");
                 return;
             }
             set_mute(true);
             *did_mute_guard = true;
-            debug!("Mute applied");
         }
     }
 
-    /// Removes mute if it was applied
     pub fn remove_mute(&self) {
         let mut did_mute_guard = self.did_mute.lock().unwrap();
         if *did_mute_guard {
             set_mute(false);
             *did_mute_guard = false;
-            debug!("Mute removed");
         }
     }
 
     pub fn start_microphone_stream(&self) -> Result<(), anyhow::Error> {
         let mut open_flag = self.is_open.lock().unwrap();
         if *open_flag {
-            debug!("Microphone stream already active");
             return Ok(());
         }
 
-        let start_time = Instant::now();
-
-        // Don't mute immediately - caller will handle muting after audio feedback
         let mut did_mute_guard = self.did_mute.lock().unwrap();
         *did_mute_guard = false;
 
@@ -369,7 +317,6 @@ impl AudioRecordingManager {
             )?);
         }
 
-        // Get the selected device from settings, considering clamshell mode
         let settings = get_settings(&self.app_handle);
         let selected_device = self.get_effective_microphone_device(&settings);
 
@@ -379,10 +326,6 @@ impl AudioRecordingManager {
         }
 
         *open_flag = true;
-        info!(
-            "Microphone stream initialized in {:?}",
-            start_time.elapsed()
-        );
         Ok(())
     }
 
@@ -399,7 +342,6 @@ impl AudioRecordingManager {
         *did_mute_guard = false;
 
         if let Some(rec) = self.recorder.lock().unwrap().as_mut() {
-            // If still recording, stop first.
             if *self.is_recording.lock().unwrap() {
                 let _ = rec.stop();
                 *self.is_recording.lock().unwrap() = false;
@@ -408,12 +350,8 @@ impl AudioRecordingManager {
         }
 
         *open_flag = false;
-        debug!("Microphone stream stopped");
     }
 
-    /// Schedules a delayed microphone stream close for OnDemand mode.
-    /// If a new recording starts before the timer fires, the close is cancelled.
-    /// Uses tokio task instead of spawning a dedicated OS thread per close.
     fn schedule_lazy_close(&self) {
         let gen = self.lazy_close_gen.fetch_add(1, Ordering::SeqCst) + 1;
         let gen_arc = Arc::clone(&self.lazy_close_gen);
@@ -425,15 +363,11 @@ impl AudioRecordingManager {
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(LAZY_CLOSE_SECS)).await;
 
-            // If generation changed, a new recording happened — skip close
             if gen_arc.load(Ordering::SeqCst) != gen {
-                debug!("Lazy close cancelled (new recording started)");
                 return;
             }
 
-            // Run blocking lock operations on a blocking thread
             tokio::task::spawn_blocking(move || {
-                // Don't close if currently recording
                 if *is_recording.lock().unwrap() {
                     return;
                 }
@@ -443,7 +377,6 @@ impl AudioRecordingManager {
                     return;
                 }
 
-                // Unmute if needed
                 let mut did_mute_guard = did_mute.lock().unwrap();
                 if *did_mute_guard {
                     set_mute(false);
@@ -454,12 +387,9 @@ impl AudioRecordingManager {
                     let _ = rec.close();
                 }
                 *open_flag = false;
-                debug!("Microphone stream closed after {}s idle", LAZY_CLOSE_SECS);
             }).await.ok();
         });
     }
-
-    /* ---------- mode switching --------------------------------------------- */
 
     pub fn update_mode(&self, new_mode: MicrophoneMode) -> Result<(), anyhow::Error> {
         let mode_guard = self.mode.lock().unwrap();
@@ -474,7 +404,6 @@ impl AudioRecordingManager {
             }
             (MicrophoneMode::OnDemand, MicrophoneMode::AlwaysOn) => {
                 drop(mode_guard);
-                // Cancel any pending lazy close when switching to always-on
                 self.lazy_close_gen.fetch_add(1, Ordering::SeqCst);
                 self.start_microphone_stream()?;
             }
@@ -485,17 +414,9 @@ impl AudioRecordingManager {
         Ok(())
     }
 
-    /* ---------- recording --------------------------------------------------- */
-
     pub fn toggle_pause(&self) -> bool {
         let prev = self.is_paused.fetch_xor(true, Ordering::Relaxed);
-        let new_state = !prev;
-        if new_state {
-            debug!("Recording paused");
-        } else {
-            debug!("Recording resumed");
-        }
-        new_state
+        !prev
     }
 
     pub fn try_start_recording(&self, binding_id: &str) -> bool {
@@ -503,9 +424,7 @@ impl AudioRecordingManager {
         let mut state = self.state.lock().unwrap();
 
         if let RecordingState::Idle = *state {
-            // Ensure microphone is open in on-demand mode
             if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
-                // Cancel any pending lazy close
                 self.lazy_close_gen.fetch_add(1, Ordering::SeqCst);
                 if let Err(e) = self.start_microphone_stream() {
                     error!("Failed to open microphone stream: {e}");
@@ -519,7 +438,6 @@ impl AudioRecordingManager {
                     *state = RecordingState::Recording {
                         binding_id: binding_id.to_string(),
                     };
-                    debug!("Recording started for binding {binding_id}");
                     return true;
                 }
             }
@@ -531,7 +449,6 @@ impl AudioRecordingManager {
     }
 
     pub fn update_selected_device(&self) -> Result<(), anyhow::Error> {
-        // If currently open, restart the microphone stream to use the new device
         if *self.is_open.lock().unwrap() {
             self.stop_microphone_stream();
             self.start_microphone_stream()?;
@@ -565,16 +482,11 @@ impl AudioRecordingManager {
 
                 *self.is_recording.lock().unwrap() = false;
 
-                // In on-demand mode, schedule a lazy close instead of stopping immediately.
-                // This keeps the mic stream warm for ~30 seconds so subsequent recordings
-                // don't incur Bluetooth microphone activation latency.
                 if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
                     self.schedule_lazy_close();
                 }
 
-                // Pad if very short
                 let s_len = samples.len();
-                // debug!("Got {} samples", s_len);
                 if s_len < WHISPER_SAMPLE_RATE && s_len > 0 {
                     let mut padded = samples;
                     padded.resize(WHISPER_SAMPLE_RATE * 5 / 4, 0.0);
@@ -593,11 +505,6 @@ impl AudioRecordingManager {
         )
     }
 
-    /// Cancel any ongoing recording without returning audio samples.
-    ///
-    /// Wraps `rec.stop()` in `catch_unwind` so that a panic inside the audio
-    /// worker (e.g. from a channel error during rapid cancellation) cannot
-    /// bring down the whole process.
     pub fn cancel_recording(&self) {
         self.is_paused.store(false, Ordering::Relaxed);
         let mut state = self.state.lock().unwrap();
@@ -607,7 +514,6 @@ impl AudioRecordingManager {
             drop(state);
 
             if let Some(rec) = self.recorder.lock().unwrap().as_ref() {
-                // Catch panics from the recorder stop (e.g. channel errors)
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     let _ = rec.stop();
                 }));
@@ -618,7 +524,6 @@ impl AudioRecordingManager {
 
             *self.is_recording.lock().unwrap() = false;
 
-            // In on-demand mode, schedule a lazy close
             if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
                 self.schedule_lazy_close();
             }

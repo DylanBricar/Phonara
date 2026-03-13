@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "Nastavení {{model}}",
-      "noSettingsNeeded": "Tento model funguje automaticky bez nutnosti konfigurace."
+      "noSettingsNeeded": "Tento model funguje automaticky bez nutnosti konfigurace.",
+      "gpuAcceleration": {
+        "label": "Akcelerace GPU",
+        "description": "Použijte grafickou kartu pro rychlejší přepis. Vypněte tuto možnost, pokud zaznamenáte problémy (např. zkomolený výstup na některých GPU AMD kvůli chybě ovladače Vulkan). Režim CPU je pomalejší, ale spolehlivější."
+      }
     },
     "models": {
       "title": "Modely přepisu",

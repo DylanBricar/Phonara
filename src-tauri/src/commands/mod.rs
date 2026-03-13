@@ -2,6 +2,7 @@ pub mod audio;
 pub mod gemini;
 pub mod history;
 pub mod models;
+pub mod openai;
 pub mod transcription;
 
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
@@ -67,7 +68,6 @@ pub fn get_log_dir_path(app: AppHandle) -> Result<String, String> {
 pub fn set_log_level(app: AppHandle, level: LogLevel) -> Result<(), String> {
     let tauri_log_level: tauri_plugin_log::LogLevel = level.into();
     let log_level: log::Level = tauri_log_level.into();
-    // Update the file log level atomic so the filter picks up the new level
     crate::FILE_LOG_LEVEL.store(
         log_level.to_level_filter() as u8,
         std::sync::atomic::Ordering::Relaxed,
@@ -98,7 +98,6 @@ pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
 #[specta::specta]
 #[tauri::command]
 pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), String> {
-    // Validate the path exists and is a directory
     let dir_path = std::path::Path::new(&path);
     if !dir_path.exists() {
         return Err("Directory does not exist".to_string());
@@ -107,7 +106,6 @@ pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), Stri
         return Err("Path is not a directory".to_string());
     }
 
-    // Validate the directory is writable by attempting to create a temp file
     let test_file = dir_path.join(".phonara_write_test");
     match std::fs::write(&test_file, b"test") {
         Ok(_) => {
@@ -118,12 +116,9 @@ pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), Stri
         }
     }
 
-    // Save to settings
     let mut settings = get_settings(&app);
     settings.custom_recordings_directory = Some(path.clone());
     write_settings(&app, settings);
-
-    log::info!("Custom recordings directory set to: {}", path);
 
     Ok(())
 }
@@ -134,8 +129,6 @@ pub fn clear_recordings_directory(app: AppHandle) -> Result<(), String> {
     let mut settings = get_settings(&app);
     settings.custom_recordings_directory = None;
     write_settings(&app, settings);
-
-    log::info!("Custom recordings directory cleared, using default");
 
     Ok(())
 }
@@ -184,29 +177,38 @@ pub fn open_app_data_dir(app: AppHandle) -> Result<(), String> {
 #[specta::specta]
 #[tauri::command]
 pub fn export_settings(app: AppHandle, path: String) -> Result<(), String> {
-    let settings = get_settings(&app);
+    let mut settings = get_settings(&app);
+    settings.gemini_api_key = None;
+    settings.openai_api_key = None;
+    settings.post_process_api_keys.clear();
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     std::fs::write(&path, json)
         .map_err(|e| format!("Failed to write file: {}", e))?;
-    log::info!("Settings exported to {}", path);
     Ok(())
 }
+
+const MAX_IMPORT_FILE_SIZE: u64 = 1_048_576;
 
 #[specta::specta]
 #[tauri::command]
 pub fn import_settings(app: AppHandle, path: String) -> Result<(), String> {
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+    if metadata.len() > MAX_IMPORT_FILE_SIZE {
+        return Err("Settings file too large".to_string());
+    }
     let json = std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read file: {}", e))?;
-    let settings: AppSettings = serde_json::from_str(&json)
+    let mut settings: AppSettings = serde_json::from_str(&json)
         .map_err(|e| format!("Invalid settings file: {}", e))?;
+    settings.gemini_api_key = None;
+    settings.openai_api_key = None;
+    settings.post_process_api_keys.clear();
     write_settings(&app, settings);
-    log::info!("Settings imported from {}", path);
     Ok(())
 }
 
-/// Get the language code from the current OS keyboard input method.
-/// Returns a language code (e.g., "en", "fr", "de") or None if detection fails.
 #[specta::specta]
 #[tauri::command]
 pub fn get_language_from_os_input() -> Option<String> {
@@ -224,9 +226,7 @@ fn get_os_input_language() -> Option<String> {
         let hwnd = GetForegroundWindow();
         let thread_id = GetWindowThreadProcessId(hwnd, None);
         let layout = GetKeyboardLayout(thread_id);
-        // The low word of the keyboard layout handle is the language identifier (LANGID)
         let lang_id = (layout.0 as u32) & 0xFFFF;
-        // Primary language is the low 10 bits
         let primary_lang = lang_id & 0x3FF;
         keyboard_lang_id_to_code(primary_lang)
     }
@@ -235,18 +235,14 @@ fn get_os_input_language() -> Option<String> {
 #[cfg(target_os = "macos")]
 fn get_os_input_language() -> Option<String> {
     use std::process::Command;
-    // Use defaults to read the current input source
     let output = Command::new("defaults")
         .args(["read", "com.apple.HIToolbox", "AppleSelectedInputSources"])
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
-    // Look for "KeyboardLayout Name" pattern - extract language from it
-    // The input source ID typically contains the language code
     for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.contains("KeyboardLayout Name") {
-            // Extract the value after "="
             if let Some(name) = trimmed.split('=').nth(1) {
                 let name = name.trim().trim_matches('"').trim_matches(';').trim();
                 return input_source_to_lang(name);
@@ -259,13 +255,11 @@ fn get_os_input_language() -> Option<String> {
 #[cfg(target_os = "linux")]
 fn get_os_input_language() -> Option<String> {
     use std::process::Command;
-    // Try setxkbmap on X11
     if let Ok(output) = Command::new("setxkbmap").args(["-query"]).output() {
         let text = String::from_utf8_lossy(&output.stdout);
         for line in text.lines() {
             if line.starts_with("layout:") {
                 let layout = line.trim_start_matches("layout:").trim();
-                // Take first layout if multiple
                 let primary = layout.split(',').next().unwrap_or(layout).trim();
                 return xkb_layout_to_lang(primary);
             }
@@ -276,7 +270,6 @@ fn get_os_input_language() -> Option<String> {
 
 #[cfg(target_os = "windows")]
 fn keyboard_lang_id_to_code(primary_lang: u32) -> Option<String> {
-    // Windows primary language IDs (SUBLANG-neutral)
     match primary_lang {
         0x09 => Some("en".into()),
         0x0C => Some("fr".into()),
@@ -327,7 +320,6 @@ fn keyboard_lang_id_to_code(primary_lang: u32) -> Option<String> {
 #[cfg(target_os = "macos")]
 fn input_source_to_lang(name: &str) -> Option<String> {
     let lower = name.to_lowercase();
-    // Common macOS keyboard layout names
     if lower.contains("french") || lower == "azerty" {
         Some("fr".into())
     } else if lower.contains("german") || lower == "qwertz" {
@@ -415,8 +407,6 @@ fn xkb_layout_to_lang(layout: &str) -> Option<String> {
     }
 }
 
-/// Check if Apple Intelligence is available on this device.
-/// Called by the frontend when the user selects Apple Intelligence provider.
 #[specta::specta]
 #[tauri::command]
 pub fn check_apple_intelligence_available() -> bool {
@@ -430,61 +420,38 @@ pub fn check_apple_intelligence_available() -> bool {
     }
 }
 
-/// Try to initialize Enigo (keyboard/mouse simulation).
-/// On macOS, this will return an error if accessibility permissions are not granted.
 #[specta::specta]
 #[tauri::command]
 pub fn initialize_enigo(app: AppHandle) -> Result<(), String> {
     use crate::input::EnigoState;
 
-    // Check if already initialized
     if app.try_state::<EnigoState>().is_some() {
-        log::debug!("Enigo already initialized");
         return Ok(());
     }
 
-    // Try to initialize
     match EnigoState::new() {
         Ok(enigo_state) => {
             app.manage(enigo_state);
-            log::info!("Enigo initialized successfully after permission grant");
             Ok(())
         }
         Err(e) => {
-            if cfg!(target_os = "macos") {
-                log::warn!(
-                    "Failed to initialize Enigo: {} (accessibility permissions may not be granted)",
-                    e
-                );
-            } else {
-                log::warn!("Failed to initialize Enigo: {}", e);
-            }
             Err(format!("Failed to initialize input system: {}", e))
         }
     }
 }
 
-/// Marker state to track if shortcuts have been initialized.
 pub struct ShortcutsInitialized;
 
-/// Initialize keyboard shortcuts.
-/// On macOS, this should be called after accessibility permissions are granted.
-/// This is idempotent - calling it multiple times is safe.
 #[specta::specta]
 #[tauri::command]
 pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
-    // Check if already initialized
     if app.try_state::<ShortcutsInitialized>().is_some() {
-        log::debug!("Shortcuts already initialized");
         return Ok(());
     }
 
-    // Initialize shortcuts
     crate::shortcut::init_shortcuts(&app);
 
-    // Mark as initialized
     app.manage(ShortcutsInitialized);
 
-    log::info!("Shortcuts initialized successfully");
     Ok(())
 }

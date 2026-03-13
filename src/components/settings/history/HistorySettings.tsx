@@ -11,12 +11,9 @@ import {
   RefreshCw,
   Loader2,
 } from "lucide-react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { readFile } from "@tauri-apps/plugin-fs";
 import { commands, type HistoryEntry } from "@/bindings";
 import { formatDateTime } from "@/utils/dateFormat";
-import { useOsType } from "@/hooks/useOsType";
 import { useModelStore } from "@/stores/modelStore";
 
 interface OpenRecordingsButtonProps {
@@ -42,7 +39,6 @@ const OpenRecordingsButton: React.FC<OpenRecordingsButtonProps> = ({
 
 export const HistorySettings: React.FC = () => {
   const { t } = useTranslation();
-  const osType = useOsType();
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -52,8 +48,7 @@ export const HistorySettings: React.FC = () => {
       if (result.status === "ok") {
         setHistoryEntries(result.data);
       }
-    } catch (error) {
-      console.error("Failed to load history entries:", error);
+    } catch {
     } finally {
       setLoading(false);
     }
@@ -61,42 +56,25 @@ export const HistorySettings: React.FC = () => {
 
   useEffect(() => {
     loadHistoryEntries();
-
-    // Listen for history update events
-    const setupListener = async () => {
-      const unlisten = await listen("history-updated", () => {
-        console.log("History updated, reloading entries...");
-        loadHistoryEntries();
-      });
-
-      // Return cleanup function
-      return unlisten;
-    };
-
-    let unlistenPromise = setupListener();
-
+    const unlistenPromise = listen("history-updated", () => {
+      loadHistoryEntries();
+    });
     return () => {
-      unlistenPromise.then((unlisten) => {
-        if (unlisten) {
-          unlisten();
-        }
-      });
+      unlistenPromise.then((fn) => fn());
     };
   }, [loadHistoryEntries]);
 
   const toggleSaved = useCallback(async (id: number) => {
     try {
       await commands.toggleHistoryEntrySaved(id);
-    } catch (error) {
-      console.error("Failed to toggle saved status:", error);
+    } catch {
     }
   }, []);
 
   const copyToClipboard = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch (error) {
-      console.error("Failed to copy to clipboard:", error);
+    } catch {
     }
   }, []);
 
@@ -105,38 +83,30 @@ export const HistorySettings: React.FC = () => {
       try {
         const result = await commands.getAudioFilePath(fileName);
         if (result.status === "ok") {
-          if (osType === "linux") {
-            const fileData = await readFile(result.data);
-            const blob = new Blob([fileData], { type: "audio/wav" });
-
-            return URL.createObjectURL(blob);
+          const binaryStr = atob(result.data);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) {
+            bytes[i] = binaryStr.charCodeAt(i);
           }
-
-          return convertFileSrc(result.data, "asset");
+          const blob = new Blob([bytes], { type: "audio/wav" });
+          return URL.createObjectURL(blob);
         }
         return null;
-      } catch (error) {
-        console.error("Failed to get audio file path:", error);
+      } catch {
         return null;
       }
     },
-    [osType],
+    [],
   );
 
   const deleteAudioEntry = useCallback(async (id: number) => {
-    try {
-      await commands.deleteHistoryEntry(id);
-    } catch (error) {
-      console.error("Failed to delete audio entry:", error);
-      throw error;
-    }
+    await commands.deleteHistoryEntry(id);
   }, []);
 
   const openRecordingsFolder = async () => {
     try {
       await commands.openRecordingsFolder();
-    } catch (error) {
-      console.error("Failed to open recordings folder:", error);
+    } catch {
     }
   };
 
@@ -256,18 +226,23 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(({
     onToggleSaved(entry.id);
   }, [onToggleSaved, entry.id]);
 
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    return () => { clearTimeout(copiedTimerRef.current); };
+  }, []);
+
   const handleCopyText = useCallback(() => {
     onCopyText(entry.post_processed_text ?? entry.transcription_text);
     setShowCopied(true);
-    setTimeout(() => setShowCopied(false), 2000);
+    clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setShowCopied(false), 2000);
   }, [onCopyText, entry.post_processed_text, entry.transcription_text]);
 
   const handleDeleteEntry = async () => {
     try {
       await deleteAudio(entry.id);
-    } catch (error) {
-      console.error("Failed to delete entry:", error);
-      alert("Failed to delete entry. Please try again.");
+    } catch {
     }
   };
 
@@ -276,8 +251,7 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(({
     setReprocessing(true);
     try {
       await commands.reprocessHistoryEntry(entry.id, modelId);
-    } catch (error) {
-      console.error("Failed to reprocess entry:", error);
+    } catch {
     } finally {
       setReprocessing(false);
     }

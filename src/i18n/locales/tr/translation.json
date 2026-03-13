@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}} Ayarları",
-      "noSettingsNeeded": "Bu model yapılandırma gerektirmeden otomatik olarak çalışır."
+      "noSettingsNeeded": "Bu model yapılandırma gerektirmeden otomatik olarak çalışır.",
+      "gpuAcceleration": {
+        "label": "GPU Hızlandırma",
+        "description": "Daha hızlı transkripsiyon için grafik kartınızı kullanın. Sorun yaşarsanız bu seçeneği devre dışı bırakın (ör. bazı AMD GPU'larda Vulkan sürücü hatası nedeniyle bozuk çıktı). CPU modu daha yavaş ama daha güvenilirdir."
+      }
     },
     "models": {
       "title": "Transkripsiyon Modelleri",

@@ -7,12 +7,16 @@ pub mod cli;
 mod clipboard;
 mod commands;
 pub mod gemini_client;
+mod http_client;
+pub mod openai_client;
 mod helpers;
 mod input;
 mod llm_client;
 mod managers;
 mod overlay;
 mod settings;
+mod settings_defaults;
+mod settings_types;
 mod shortcut;
 mod signal_handle;
 mod transcription_coordinator;
@@ -46,11 +50,7 @@ use tauri_plugin_log::{Builder as LogBuilder, RotationStrategy, Target, TargetKi
 
 use crate::settings::get_settings;
 
-// Global atomic to store the file log level filter
-// We use u8 to store the log::LevelFilter as a number
 pub static FILE_LOG_LEVEL: AtomicU8 = AtomicU8::new(log::LevelFilter::Debug as u8);
-
-// Cached tray visibility flag to avoid store access in on_window_event (which can deadlock)
 pub static TRAY_ICON_ENABLED: AtomicBool = AtomicBool::new(true);
 
 fn level_filter_from_u8(value: u8) -> log::LevelFilter {
@@ -128,65 +128,40 @@ fn should_force_show_permissions_window(app: &AppHandle) -> bool {
 
         let status = commands::audio::get_windows_microphone_permission_status();
         if status.supported && status.overall_access == commands::audio::PermissionAccess::Denied {
-            log::info!(
-                "Windows microphone permissions are denied; forcing main window visible for onboarding"
-            );
             return true;
         }
     }
 
-    let _ = app; // suppress unused warning on non-Windows
+    let _ = app;
     false
 }
 
 fn initialize_core_logic(app_handle: &AppHandle) {
-    // Note: Enigo (keyboard/mouse simulation) is NOT initialized here.
-    // The frontend is responsible for calling the `initialize_enigo` command
-    // after onboarding completes. This avoids triggering permission dialogs
-    // on macOS before the user is ready.
-
-    // Initialize the managers
     let recording_manager = Arc::new(match AudioRecordingManager::new(app_handle) {
         Ok(manager) => manager,
-        Err(e) => {
-            log::warn!(
-                "Failed to initialize recording manager (no microphone?): {}. \
-                 The app will start but recording won't work until a microphone is connected.",
-                e
-            );
-            // Try again without always-on mode by creating a minimal manager
-            // that will attempt to open the mic on-demand when user starts recording
+        Err(_) => {
             AudioRecordingManager::new_without_mic(app_handle)
         }
     });
     let model_manager =
-        Arc::new(ModelManager::new(app_handle).expect("Failed to initialize model manager"));
+        Arc::new(ModelManager::new(app_handle).expect("model manager init failed"));
     let transcription_manager = Arc::new(
         TranscriptionManager::new(app_handle, model_manager.clone())
-            .expect("Failed to initialize transcription manager"),
+            .expect("transcription manager init failed"),
     );
     let history_manager =
-        Arc::new(HistoryManager::new(app_handle).expect("Failed to initialize history manager"));
+        Arc::new(HistoryManager::new(app_handle).expect("history manager init failed"));
 
-    // Add managers to Tauri's managed state
     app_handle.manage(recording_manager.clone());
     app_handle.manage(model_manager.clone());
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
 
-    // Note: Shortcuts are NOT initialized here.
-    // The frontend is responsible for calling the `initialize_shortcuts` command
-    // after permissions are confirmed (on macOS) or after onboarding completes.
-    // This matches the pattern used for Enigo initialization.
-
     #[cfg(unix)]
-    let signals = Signals::new(&[SIGUSR1, SIGUSR2]).unwrap();
-    // Set up signal handlers for toggling transcription
+    let signals = Signals::new(&[SIGUSR1, SIGUSR2]).expect("failed to register unix signals");
     #[cfg(unix)]
     signal_handle::setup_signal_handler(app_handle.clone(), signals);
 
-    // Apply macOS Accessory policy if starting hidden and tray is available.
-    // If the tray icon is disabled, keep the dock icon so the user can reopen.
     #[cfg(target_os = "macos")]
     {
         let settings = settings::get_settings(app_handle);
@@ -194,10 +169,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
         }
     }
-    // Get the current theme to set the appropriate initial icon
     let initial_theme = tray::get_current_theme(app_handle);
-
-    // Choose the appropriate initial icon based on theme
     let initial_icon_path = tray::get_icon_path(initial_theme, tray::TrayIconState::Idle);
 
     let tray = TrayIconBuilder::new()
@@ -206,9 +178,9 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                 app_handle
                     .path()
                     .resolve(initial_icon_path, tauri::path::BaseDirectory::Resource)
-                    .unwrap(),
+                    .expect("failed to resolve tray icon path"),
             )
-            .unwrap(),
+            .expect("failed to load tray icon image"),
         )
         .show_menu_on_left_click(true)
         .icon_as_template(true)
@@ -234,19 +206,14 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             "unload_model" => {
                 let transcription_manager = app.state::<Arc<TranscriptionManager>>();
                 if !transcription_manager.is_model_loaded() {
-                    log::warn!("No model is currently loaded.");
                     return;
                 }
-                match transcription_manager.unload_model() {
-                    Ok(()) => log::info!("Model unloaded via tray."),
-                    Err(e) => log::error!("Failed to unload model via tray: {}", e),
+                if let Err(e) = transcription_manager.unload_model() {
+                    log::error!("Failed to unload model via tray: {}", e);
                 }
             }
             "cancel" => {
-                use crate::utils::cancel_current_operation;
-
-                // Use centralized cancellation that handles all operations
-                cancel_current_operation(app);
+                crate::utils::cancel_current_operation(app);
             }
             "quit" => {
                 app.exit(0);
@@ -254,38 +221,31 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             _ => {}
         })
         .build(app_handle)
-        .unwrap();
+        .expect("failed to build tray icon");
     app_handle.manage(tray);
 
-    // Initialize tray menu with idle state
     utils::update_tray_menu(app_handle, &utils::TrayIconState::Idle, None);
 
-    // Apply show_tray_icon setting and cache it in the atomic flag
     let settings = settings::get_settings(app_handle);
     TRAY_ICON_ENABLED.store(settings.show_tray_icon, Ordering::Relaxed);
     if !settings.show_tray_icon {
         tray::set_tray_visibility(app_handle, false);
     }
 
-    // Refresh tray menu when model state changes
     let app_handle_for_listener = app_handle.clone();
     app_handle.listen("model-state-changed", move |_| {
         tray::update_tray_menu(&app_handle_for_listener, &tray::TrayIconState::Idle, None);
     });
 
-    // Get the autostart manager and configure based on user setting
     let autostart_manager = app_handle.autolaunch();
     let settings = settings::get_settings(&app_handle);
 
     if settings.autostart_enabled {
-        // Enable autostart if user has opted in
         let _ = autostart_manager.enable();
     } else {
-        // Disable autostart if user has opted out
         let _ = autostart_manager.disable();
     }
 
-    // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
 }
 
@@ -310,8 +270,6 @@ fn show_main_window_command(app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(cli_args: CliArgs) {
-    // Parse console logging directives from RUST_LOG, falling back to info-level logging
-    // when the variable is unset
     let console_filter = build_console_filter();
 
     let specta_builder = Builder::<tauri::Wry>::new().commands(collect_commands![
@@ -354,6 +312,7 @@ pub fn run(cli_args: CliArgs) {
         shortcut::update_custom_words,
         shortcut::update_text_replacements,
         shortcut::change_whisper_initial_prompt_setting,
+        shortcut::change_whisper_use_gpu_setting,
         shortcut::suspend_binding,
         shortcut::resume_binding,
         shortcut::change_mute_while_recording_setting,
@@ -439,33 +398,33 @@ pub fn run(cli_args: CliArgs) {
         commands::history::reprocess_history_entry,
         commands::gemini::change_gemini_api_key_setting,
         commands::gemini::change_gemini_model_setting,
+        commands::openai::change_openai_api_key_setting,
+        commands::openai::change_openai_model_setting,
         helpers::clamshell::is_laptop,
     ]);
 
-    #[cfg(debug_assertions)] // <- Only export on non-release builds
+    #[cfg(debug_assertions)]
     specta_builder
         .export(
             Typescript::default().bigint(BigIntExportBehavior::Number),
             "../src/bindings.ts",
         )
-        .expect("Failed to export typescript bindings");
+        .expect("failed to export typescript bindings");
 
     let builder = tauri::Builder::default()
         .device_event_filter(tauri::DeviceEventFilter::Always)
         .plugin(tauri_plugin_dialog::init())
         .plugin(
             LogBuilder::new()
-                .level(log::LevelFilter::Trace) // Set to most verbose level globally
+                .level(log::LevelFilter::Trace)
                 .max_file_size(500_000)
                 .rotation_strategy(RotationStrategy::KeepOne)
                 .clear_targets()
                 .targets([
-                    // Console output respects RUST_LOG environment variable
                     Target::new(TargetKind::Stdout).filter({
                         let console_filter = console_filter.clone();
                         move |metadata| console_filter.enabled(metadata)
                     }),
-                    // File logs respect the user's settings (stored in FILE_LOG_LEVEL atomic)
                     Target::new(TargetKind::LogDir {
                         file_name: Some("phonara".into()),
                     })
@@ -512,18 +471,15 @@ pub fn run(cli_args: CliArgs) {
         .setup(move |app| {
             let mut settings = get_settings(&app.handle());
 
-            // CLI --debug flag overrides debug_mode and log level (runtime-only, not persisted)
             if cli_args.debug {
                 settings.debug_mode = true;
                 settings.log_level = settings::LogLevel::Trace;
             }
 
-            // Initialize the settings cache for fast reads (avoids repeated JSON deserialization)
             app.manage(settings::SettingsCache::new(settings.clone()));
 
             let tauri_log_level: tauri_plugin_log::LogLevel = settings.log_level.into();
             let file_log_level: log::Level = tauri_log_level.into();
-            // Store the file log level in the atomic for the filter to use
             FILE_LOG_LEVEL.store(file_log_level.to_level_filter() as u8, Ordering::Relaxed);
             let app_handle = app.handle().clone();
             app.manage(TranscriptionCoordinator::new(app_handle.clone()));
@@ -531,19 +487,13 @@ pub fn run(cli_args: CliArgs) {
 
             initialize_core_logic(&app_handle);
 
-            // Hide tray icon if --no-tray was passed
             if cli_args.no_tray {
                 tray::set_tray_visibility(&app_handle, false);
             }
 
-            // Show main window only if not starting hidden.
-            // CLI --start-hidden flag overrides the setting.
-            // But if permission onboarding is required, always show the window.
             let should_hide = settings.start_hidden || cli_args.start_hidden;
             let should_force_show = should_force_show_permissions_window(&app_handle);
 
-            // If start_hidden but tray is disabled, we must show the window
-            // anyway. Without a tray icon, the dock is the only way back in.
             let tray_available = settings.show_tray_icon && !cli_args.no_tray;
             if should_force_show || !should_hide || !tray_available {
                 show_main_window(&app_handle);
@@ -562,7 +512,6 @@ pub fn run(cli_args: CliArgs) {
                         TRAY_ICON_ENABLED.load(Ordering::Relaxed)
                             && !window.app_handle().state::<CliArgs>().no_tray;
                     if tray_visible {
-                        // Tray is available: hide the dock icon, app lives in the tray
                         let res = window
                             .app_handle()
                             .set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -570,24 +519,21 @@ pub fn run(cli_args: CliArgs) {
                             log::error!("Failed to set activation policy: {}", e);
                         }
                     }
-                    // No tray: keep the dock icon visible so the user can reopen
                 }
             }
-            tauri::WindowEvent::ThemeChanged(theme) => {
-                log::info!("Theme changed to: {:?}", theme);
-                // Update tray icon to match new theme, maintaining idle state
+            tauri::WindowEvent::ThemeChanged(_theme) => {
                 utils::change_tray_icon(&window.app_handle(), utils::TrayIconState::Idle);
             }
             _ => {}
         })
         .invoke_handler(specta_builder.invoke_handler())
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
+        .expect("failed to build tauri application")
         .run(|app, event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = &event {
                 show_main_window(app);
             }
-            let _ = (app, event); // suppress unused warnings on non-macOS
+            let _ = (app, event);
         });
 }

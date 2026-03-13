@@ -31,22 +31,16 @@ export const KeyboardImplementationSelector: React.FC<
       const result = await commands.changeKeyboardImplementationSetting(value);
 
       if (result.status === "error") {
-        console.error(
-          "Failed to update keyboard implementation:",
-          result.error,
-        );
         toast.error(String(result.error));
         return;
       }
 
-      // If any bindings were reset due to incompatibility, notify the user
       if (result.data.reset_bindings.length > 0) {
         toast.warning(t("settings.debug.keyboardImplementation.bindingsReset"));
       }
 
       await refreshSettings();
     } catch (error) {
-      console.error("Failed to update keyboard implementation:", error);
       toast.error(String(error));
     }
   };

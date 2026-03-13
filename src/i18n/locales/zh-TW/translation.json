@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}} 設定",
-      "noSettingsNeeded": "此模型自動運行，無需設定"
+      "noSettingsNeeded": "此模型自動運行，無需設定",
+      "gpuAcceleration": {
+        "label": "GPU 加速",
+        "description": "使用顯示卡加速轉錄。如果遇到問題請停用此選項（例如：部分 AMD GPU 因 Vulkan 驅動程式錯誤導致輸出亂碼）。CPU 模式較慢但更穩定。"
+      }
     },
     "general": {
       "title": "一般",

@@ -36,8 +36,7 @@ export const TextDisplay: React.FC<TextDisplayProps> = ({
       if (onCopy) {
         onCopy(value);
       }
-    } catch (err) {
-      console.error("Failed to copy to clipboard:", err);
+    } catch {
     }
   };
 

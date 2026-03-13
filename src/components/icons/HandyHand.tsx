@@ -4,6 +4,7 @@ const HandyHand = ({
 }: {
   width?: number | string;
   height?: number | string;
+  className?: string;
 }) => (
   <svg
     width={width || 126}

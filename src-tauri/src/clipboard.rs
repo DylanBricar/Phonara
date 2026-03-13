@@ -3,7 +3,6 @@ use crate::input::{self, EnigoState};
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
 use enigo::{Direction, Enigo, Key, Keyboard};
-use log::{info, warn};
 use std::process::Command;
 #[cfg(target_os = "linux")]
 use std::sync::OnceLock;
@@ -14,66 +13,46 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 #[cfg(target_os = "linux")]
 use crate::utils::{is_kde_wayland, is_wayland};
 
-/// Represents the original clipboard content before we overwrite it for pasting.
-/// Supports both text and image data so we can restore either type. (Fix for #921)
 enum SavedClipboardContent {
     Text(String),
     Image(arboard::ImageData<'static>),
     Empty,
 }
 
-/// Saves the current clipboard content (text or image) using arboard.
-/// Falls back gracefully if the clipboard is empty or contains unsupported formats.
 fn save_clipboard_content() -> SavedClipboardContent {
     let mut clipboard = match arboard::Clipboard::new() {
         Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to open arboard clipboard for saving: {}", e);
+        Err(_) => {
             return SavedClipboardContent::Empty;
         }
     };
 
-    // Try text first since it's most common
     if let Ok(text) = clipboard.get_text() {
         if !text.is_empty() {
             return SavedClipboardContent::Text(text);
         }
     }
 
-    // Try image (fix for #921 - previously images were lost)
     if let Ok(img) = clipboard.get_image() {
-        info!("Saved clipboard image ({}x{}) for later restoration", img.width, img.height);
         return SavedClipboardContent::Image(img.to_owned_img());
     }
 
     SavedClipboardContent::Empty
 }
 
-/// Restores previously saved clipboard content.
 fn restore_clipboard_content(saved: SavedClipboardContent) {
     match saved {
         SavedClipboardContent::Text(text) => {
-            match arboard::Clipboard::new() {
-                Ok(mut clipboard) => {
-                    let _ = clipboard.set_text(&text);
-                }
-                Err(e) => warn!("Failed to open arboard clipboard for restore: {}", e),
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(&text);
             }
         }
         SavedClipboardContent::Image(img) => {
-            match arboard::Clipboard::new() {
-                Ok(mut clipboard) => {
-                    if let Err(e) = clipboard.set_image(img) {
-                        warn!("Failed to restore clipboard image: {}", e);
-                    } else {
-                        info!("Restored clipboard image successfully");
-                    }
-                }
-                Err(e) => warn!("Failed to open arboard clipboard for image restore: {}", e),
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_image(img);
             }
         }
         SavedClipboardContent::Empty => {
-            // Nothing to restore; clear the clipboard so transcription text doesn't linger
             if let Ok(mut clipboard) = arboard::Clipboard::new() {
                 let _ = clipboard.clear();
             }
@@ -81,8 +60,6 @@ fn restore_clipboard_content(saved: SavedClipboardContent) {
     }
 }
 
-/// Writes text to the clipboard and verifies it was written correctly.
-/// Retries up to `max_retries` times on failure. (Fix for #502)
 fn write_and_verify_clipboard(
     app_handle: &AppHandle,
     text: &str,
@@ -92,10 +69,8 @@ fn write_and_verify_clipboard(
     let clipboard = app_handle.clipboard();
 
     for attempt in 0..=max_retries {
-        // Write text to clipboard
         #[cfg(target_os = "linux")]
         let write_result = if use_wl_copy {
-            info!("Using wl-copy for clipboard write on Wayland");
             write_clipboard_via_wl_copy(text)
         } else {
             clipboard
@@ -110,42 +85,27 @@ fn write_and_verify_clipboard(
 
         if let Err(e) = write_result {
             if attempt < max_retries {
-                warn!("Clipboard write attempt {} failed: {}, retrying...", attempt + 1, e);
                 std::thread::sleep(Duration::from_millis(30));
                 continue;
             }
             return Err(e);
         }
 
-        // Small delay before verification to let the clipboard settle
         std::thread::sleep(Duration::from_millis(10));
 
-        // Verify the write succeeded by reading back
         let readback = clipboard.read_text().unwrap_or_default();
         if readback == text {
-            if attempt > 0 {
-                info!("Clipboard write succeeded on attempt {}", attempt + 1);
-            }
             return Ok(());
         }
 
         if attempt < max_retries {
-            warn!(
-                "Clipboard verification failed on attempt {} (expected len={}, got len={}), retrying...",
-                attempt + 1,
-                text.len(),
-                readback.len()
-            );
             std::thread::sleep(Duration::from_millis(30));
         }
     }
 
-    // Final attempt failed verification but the write itself succeeded — proceed anyway
-    warn!("Clipboard verification failed after all retries, proceeding with paste anyway");
     Ok(())
 }
 
-/// Pastes text using the clipboard: saves current content, writes text, sends paste keystroke, restores clipboard.
 fn paste_via_clipboard(
     enigo: &mut Enigo,
     text: &str,
@@ -153,17 +113,13 @@ fn paste_via_clipboard(
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
 ) -> Result<(), String> {
-    // Save current clipboard content including images (fix for #921)
     let saved_content = save_clipboard_content();
 
-    // Release modifier keys before pasting to avoid shortcut bleed-through
-    // (e.g., Option still held from Option+Space shortcut)
     let _ = enigo.key(Key::Shift, Direction::Release);
     let _ = enigo.key(Key::Alt, Direction::Release);
     let _ = enigo.key(Key::Control, Direction::Release);
     let _ = enigo.key(Key::Meta, Direction::Release);
 
-    // Write text to clipboard with verification and retry (fix for #502)
     #[cfg(target_os = "linux")]
     let use_wl_copy = is_wayland() && is_wl_copy_available();
 
@@ -172,19 +128,17 @@ fn paste_via_clipboard(
         text,
         #[cfg(target_os = "linux")]
         use_wl_copy,
-        2, // max retries
+        2,
     )?;
 
     std::thread::sleep(Duration::from_millis(paste_delay_ms));
 
-    // Send paste key combo
     #[cfg(target_os = "linux")]
     let key_combo_sent = try_send_key_combo_linux(paste_method)?;
 
     #[cfg(not(target_os = "linux"))]
     let key_combo_sent = false;
 
-    // Fall back to enigo if no native tool handled it
     if !key_combo_sent {
         match paste_method {
             PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo)?,
@@ -194,15 +148,11 @@ fn paste_via_clipboard(
         }
     }
 
-    // Wait for paste to complete before restoring clipboard
-    // Increased delays slightly to reduce race conditions (fix for #502)
     #[cfg(target_os = "macos")]
     std::thread::sleep(std::time::Duration::from_millis(200));
     #[cfg(not(target_os = "macos"))]
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    // Restore original clipboard content (text or image)
-    // On Wayland with wl-copy, prefer wl-copy for text restoration; otherwise use arboard
     #[cfg(target_os = "linux")]
     {
         let use_wl_for_restore = use_wl_copy
@@ -222,37 +172,27 @@ fn paste_via_clipboard(
     Ok(())
 }
 
-/// Attempts to send a key combination using Linux-native tools.
-/// Returns `Ok(true)` if a native tool handled it, `Ok(false)` to fall back to enigo.
 #[cfg(target_os = "linux")]
 fn try_send_key_combo_linux(paste_method: &PasteMethod) -> Result<bool, String> {
     if is_wayland() {
-        // Wayland: prefer wtype (but not on KDE), then dotool, then ydotool
-        // Note: wtype doesn't work on KDE (no zwp_virtual_keyboard_manager_v1 support)
         if !is_kde_wayland() && is_wtype_available() {
-            info!("Using wtype for key combo");
             send_key_combo_via_wtype(paste_method)?;
             return Ok(true);
         }
         if is_dotool_available() {
-            info!("Using dotool for key combo");
             send_key_combo_via_dotool(paste_method)?;
             return Ok(true);
         }
         if is_ydotool_available() {
-            info!("Using ydotool for key combo");
             send_key_combo_via_ydotool(paste_method)?;
             return Ok(true);
         }
     } else {
-        // X11: prefer xdotool, then ydotool
         if is_xdotool_available() {
-            info!("Using xdotool for key combo");
             send_key_combo_via_xdotool(paste_method)?;
             return Ok(true);
         }
         if is_ydotool_available() {
-            info!("Using ydotool for key combo");
             send_key_combo_via_ydotool(paste_method)?;
             return Ok(true);
         }
@@ -261,35 +201,27 @@ fn try_send_key_combo_linux(paste_method: &PasteMethod) -> Result<bool, String> 
     Ok(false)
 }
 
-/// Attempts to type text directly using Linux-native tools.
-/// Returns `Ok(true)` if a native tool handled it, `Ok(false)` to fall back to enigo.
 #[cfg(target_os = "linux")]
 fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<bool, String> {
-    // If user specified a tool, try only that one
     if preferred_tool != TypingTool::Auto {
         return match preferred_tool {
             TypingTool::Wtype if is_wtype_available() => {
-                info!("Using user-specified wtype");
                 type_text_via_wtype(text)?;
                 Ok(true)
             }
             TypingTool::Kwtype if is_kwtype_available() => {
-                info!("Using user-specified kwtype");
                 type_text_via_kwtype(text)?;
                 Ok(true)
             }
             TypingTool::Dotool if is_dotool_available() => {
-                info!("Using user-specified dotool");
                 type_text_via_dotool(text)?;
                 Ok(true)
             }
             TypingTool::Ydotool if is_ydotool_available() => {
-                info!("Using user-specified ydotool");
                 type_text_via_ydotool(text)?;
                 Ok(true)
             }
             TypingTool::Xdotool if is_xdotool_available() => {
-                info!("Using user-specified xdotool");
                 type_text_via_xdotool(text)?;
                 Ok(true)
             }
@@ -300,40 +232,29 @@ fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<boo
         };
     }
 
-    // Auto mode - existing fallback chain
     if is_wayland() {
-        // KDE Wayland: prefer kwtype (uses KDE Fake Input protocol, supports umlauts)
         if is_kde_wayland() && is_kwtype_available() {
-            info!("Using kwtype for direct text input on KDE Wayland");
             type_text_via_kwtype(text)?;
             return Ok(true);
         }
-        // Wayland: prefer wtype, then dotool, then ydotool
-        // Note: wtype doesn't work on KDE (no zwp_virtual_keyboard_manager_v1 support)
         if !is_kde_wayland() && is_wtype_available() {
-            info!("Using wtype for direct text input");
             type_text_via_wtype(text)?;
             return Ok(true);
         }
         if is_dotool_available() {
-            info!("Using dotool for direct text input");
             type_text_via_dotool(text)?;
             return Ok(true);
         }
         if is_ydotool_available() {
-            info!("Using ydotool for direct text input");
             type_text_via_ydotool(text)?;
             return Ok(true);
         }
     } else {
-        // X11: prefer xdotool, then ydotool
         if is_xdotool_available() {
-            info!("Using xdotool for direct text input");
             type_text_via_xdotool(text)?;
             return Ok(true);
         }
         if is_ydotool_available() {
-            info!("Using ydotool for direct text input");
             type_text_via_ydotool(text)?;
             return Ok(true);
         }
@@ -342,8 +263,6 @@ fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<boo
     Ok(false)
 }
 
-/// Returns the list of available typing tools on this system.
-/// Always includes "auto" as the first entry.
 #[cfg(target_os = "linux")]
 pub fn get_available_typing_tools() -> Vec<String> {
     let mut tools = vec!["auto".to_string()];
@@ -365,8 +284,6 @@ pub fn get_available_typing_tools() -> Vec<String> {
     tools
 }
 
-/// Cache tool availability checks using OnceLock to avoid repeated subprocess probes.
-/// Tools are either installed or not for the lifetime of the app, so checking once is sufficient.
 #[cfg(target_os = "linux")]
 fn check_tool_available(tool_name: &str) -> bool {
     Command::new("which")
@@ -412,11 +329,10 @@ fn is_wl_copy_available() -> bool {
     *AVAILABLE.get_or_init(|| check_tool_available("wl-copy"))
 }
 
-/// Type text directly via wtype on Wayland.
 #[cfg(target_os = "linux")]
 fn type_text_via_wtype(text: &str) -> Result<(), String> {
     let output = Command::new("wtype")
-        .arg("--") // Protect against text starting with -
+        .arg("--")
         .arg(text)
         .output()
         .map_err(|e| format!("Failed to execute wtype: {}", e))?;
@@ -429,7 +345,6 @@ fn type_text_via_wtype(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Type text directly via xdotool on X11.
 #[cfg(target_os = "linux")]
 fn type_text_via_xdotool(text: &str) -> Result<(), String> {
     let output = Command::new("xdotool")
@@ -448,7 +363,6 @@ fn type_text_via_xdotool(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Type text directly via dotool (works on both Wayland and X11 via uinput).
 #[cfg(target_os = "linux")]
 fn type_text_via_dotool(text: &str) -> Result<(), String> {
     use std::io::Write;
@@ -460,9 +374,6 @@ fn type_text_via_dotool(text: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to spawn dotool: {}", e))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        // dotool uses "type <text>" command via stdin.
-        // Sanitize newlines to prevent command injection — dotool interprets
-        // each line as a separate command (e.g., "key ctrl+c" could be injected).
         let sanitized = text.replace('\n', " ").replace('\r', " ");
         writeln!(stdin, "type {}", sanitized)
             .map_err(|e| format!("Failed to write to dotool stdin: {}", e))?;
@@ -480,7 +391,6 @@ fn type_text_via_dotool(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Type text directly via ydotool (uinput-based, requires ydotoold daemon).
 #[cfg(target_os = "linux")]
 fn type_text_via_ydotool(text: &str) -> Result<(), String> {
     let output = Command::new("ydotool")
@@ -498,7 +408,6 @@ fn type_text_via_ydotool(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Type text directly via kwtype (KDE Wayland virtual keyboard, uses KDE Fake Input protocol).
 #[cfg(target_os = "linux")]
 fn type_text_via_kwtype(text: &str) -> Result<(), String> {
     let output = Command::new("kwtype")
@@ -515,9 +424,6 @@ fn type_text_via_kwtype(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Write text to clipboard via wl-copy (Wayland clipboard tool).
-/// Uses Stdio::null() to avoid blocking on repeated calls — wl-copy forks a
-/// daemon that inherits piped fds, causing read_to_end to hang indefinitely.
 #[cfg(target_os = "linux")]
 fn write_clipboard_via_wl_copy(text: &str) -> Result<(), String> {
     use std::process::Stdio;
@@ -536,7 +442,6 @@ fn write_clipboard_via_wl_copy(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Send a key combination (e.g., Ctrl+V) via wtype on Wayland.
 #[cfg(target_os = "linux")]
 fn send_key_combo_via_wtype(paste_method: &PasteMethod) -> Result<(), String> {
     let args: Vec<&str> = match paste_method {
@@ -559,7 +464,6 @@ fn send_key_combo_via_wtype(paste_method: &PasteMethod) -> Result<(), String> {
     Ok(())
 }
 
-/// Send a key combination (e.g., Ctrl+V) via dotool.
 #[cfg(target_os = "linux")]
 fn send_key_combo_via_dotool(paste_method: &PasteMethod) -> Result<(), String> {
     let command;
@@ -584,11 +488,8 @@ fn send_key_combo_via_dotool(paste_method: &PasteMethod) -> Result<(), String> {
     Ok(())
 }
 
-/// Send a key combination (e.g., Ctrl+V) via ydotool (requires ydotoold daemon).
 #[cfg(target_os = "linux")]
 fn send_key_combo_via_ydotool(paste_method: &PasteMethod) -> Result<(), String> {
-    // ydotool uses Linux input event keycodes with format <keycode>:<pressed>
-    // where pressed is 1 for down, 0 for up. Keycodes: ctrl=29, shift=42, v=47, insert=110
     let args: Vec<&str> = match paste_method {
         PasteMethod::CtrlV => vec!["key", "29:1", "47:1", "47:0", "29:0"],
         PasteMethod::ShiftInsert => vec!["key", "42:1", "110:1", "110:0", "42:0"],
@@ -609,7 +510,6 @@ fn send_key_combo_via_ydotool(paste_method: &PasteMethod) -> Result<(), String> 
     Ok(())
 }
 
-/// Send a key combination (e.g., Ctrl+V) via xdotool on X11.
 #[cfg(target_os = "linux")]
 fn send_key_combo_via_xdotool(paste_method: &PasteMethod) -> Result<(), String> {
     let key_combo = match paste_method {
@@ -634,11 +534,7 @@ fn send_key_combo_via_xdotool(paste_method: &PasteMethod) -> Result<(), String> 
     Ok(())
 }
 
-/// Pastes text by invoking an external script.
-/// The script receives the text to paste as a single argument.
 fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String> {
-    info!("Pasting via external script: {}", script_path);
-
     let output = Command::new(script_path)
         .arg(text)
         .output()
@@ -659,7 +555,6 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
     Ok(())
 }
 
-/// Types text directly by simulating individual key presses.
 fn paste_direct(
     enigo: &mut Enigo,
     text: &str,
@@ -670,7 +565,6 @@ fn paste_direct(
         if try_direct_typing_linux(text, typing_tool)? {
             return Ok(());
         }
-        info!("Falling back to enigo for direct text input");
     }
 
     input::paste_text_direct(enigo, text)
@@ -728,19 +622,12 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;
 
-    // Append trailing space if setting is enabled
     let text = if settings.append_trailing_space {
         format!("{} ", text)
     } else {
         text
     };
 
-    info!(
-        "Using paste method: {:?}, delay: {}ms",
-        paste_method, paste_delay_ms
-    );
-
-    // Get the managed Enigo instance
     let enigo_state = app_handle
         .try_state::<EnigoState>()
         .ok_or("Enigo state not initialized")?;
@@ -749,11 +636,8 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         .lock()
         .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
 
-    // Perform the paste operation
     match paste_method {
-        PasteMethod::None => {
-            info!("PasteMethod::None selected - skipping paste action");
-        }
+        PasteMethod::None => {}
         PasteMethod::Direct => {
             paste_direct(
                 &mut enigo,
@@ -786,7 +670,6 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         send_return_key(&mut enigo, settings.auto_submit_key)?;
     }
 
-    // After pasting, optionally copy to clipboard based on settings
     if settings.clipboard_handling == ClipboardHandling::CopyToClipboard {
         let clipboard = app_handle.clipboard();
         clipboard

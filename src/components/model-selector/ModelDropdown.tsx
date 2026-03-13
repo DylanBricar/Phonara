@@ -11,6 +11,7 @@ interface ModelDropdownProps {
   currentModelId: string;
   onModelSelect: (modelId: string) => void;
   hasGeminiKey?: boolean;
+  hasOpenaiKey?: boolean;
 }
 
 const ModelDropdown: React.FC<ModelDropdownProps> = ({
@@ -18,10 +19,14 @@ const ModelDropdown: React.FC<ModelDropdownProps> = ({
   currentModelId,
   onModelSelect,
   hasGeminiKey = false,
+  hasOpenaiKey = false,
 }) => {
   const { t } = useTranslation();
   const downloadedModels = models.filter(
-    (m) => m.is_downloaded && (m.id !== "gemini-api" || hasGeminiKey),
+    (m) =>
+      m.is_downloaded &&
+      (m.id !== "gemini-api" || hasGeminiKey) &&
+      (m.id !== "openai-api" || hasOpenaiKey),
   );
 
   const handleModelClick = (modelId: string) => {

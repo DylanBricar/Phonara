@@ -45,8 +45,7 @@ export const LogDirectory: React.FC<LogDirectoryProps> = ({
     if (!logDir) return;
     try {
       await commands.openLogDir();
-    } catch (openError) {
-      console.error("Failed to open log directory:", openError);
+    } catch {
     }
   };
 

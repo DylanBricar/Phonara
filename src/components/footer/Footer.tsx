@@ -12,8 +12,7 @@ const Footer: React.FC = () => {
       try {
         const appVersion = await getVersion();
         setVersion(appVersion);
-      } catch (error) {
-        console.error("Failed to get app version:", error);
+      } catch {
         setVersion("0.1.2");
       }
     };
@@ -28,7 +27,6 @@ const Footer: React.FC = () => {
           <ModelSelector />
         </div>
 
-        {/* Update Status */}
         <div className="flex items-center gap-1">
           <UpdateChecker />
           <span>•</span>

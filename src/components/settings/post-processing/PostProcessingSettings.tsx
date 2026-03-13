@@ -138,8 +138,7 @@ const PostProcessingActionsComponent: React.FC = () => {
       }
       await refreshSettings();
       setEditingAction(null);
-    } catch (error) {
-      console.error("Failed to save action:", error);
+    } catch {
     }
   };
 
@@ -150,8 +149,7 @@ const PostProcessingActionsComponent: React.FC = () => {
       if (editingAction?.key === key) {
         setEditingAction(null);
       }
-    } catch (error) {
-      console.error("Failed to delete action:", error);
+    } catch {
     }
   };
 

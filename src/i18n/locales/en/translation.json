@@ -80,6 +80,22 @@
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
+      },
+      "openai-api": {
+        "name": "OpenAI API",
+        "description": "Cloud-based transcription via OpenAI. Requires API key and internet."
+      },
+      "whisper-large-v3-fr": {
+        "name": "Whisper Large V3 French",
+        "description": "Best accuracy for French. Fine-tuned on 2500h+ French audio."
+      },
+      "whisper-large-v3-fr-distil": {
+        "name": "Whisper French Distil",
+        "description": "Fast French model. 16 decoder layers, 1.9x faster than full."
+      },
+      "whisper-distil-fr": {
+        "name": "Whisper French Lite",
+        "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
       }
     },
     "errors": {
@@ -140,7 +156,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}} Settings",
-      "noSettingsNeeded": "This model works automatically with no configuration needed."
+      "noSettingsNeeded": "This model works automatically with no configuration needed.",
+      "gpuAcceleration": {
+        "label": "GPU Acceleration",
+        "description": "Use your graphics card for faster transcription. Disable this if you experience issues (e.g. garbled output on some AMD GPUs due to a Vulkan driver bug). CPU mode is slower but more reliable."
+      }
     },
     "longAudioModel": {
       "title": "Long Audio Model",
@@ -549,6 +569,32 @@
       "modelDescription": "Select which Gemini model to use for transcription",
       "apiKeyRequired": "API Key Required",
       "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
       "save": "Save",
       "cancel": "Cancel"
     },

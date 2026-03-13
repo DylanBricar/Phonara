@@ -38,7 +38,6 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
         },
       ];
 
-      // Add Shift+Insert and Ctrl+Shift+V options for Windows and Linux only
       if (osType === "windows" || osType === "linux") {
         options.push(
           {
@@ -56,7 +55,6 @@ export const PasteMethodSetting: React.FC<PasteMethodProps> = React.memo(
         );
       }
 
-      // External script is only available on Linux
       if (osType === "linux") {
         options.push({
           value: "external_script",

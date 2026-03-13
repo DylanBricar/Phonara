@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "Configuración de {{model}}",
-      "noSettingsNeeded": "Este modelo funciona automáticamente sin necesidad de configuración."
+      "noSettingsNeeded": "Este modelo funciona automáticamente sin necesidad de configuración.",
+      "gpuAcceleration": {
+        "label": "Aceleración GPU",
+        "description": "Usa tu tarjeta gráfica para una transcripción más rápida. Desactiva esta opción si experimentas problemas (ej.: salida distorsionada en algunas GPU AMD debido a un error del controlador Vulkan). El modo CPU es más lento pero más fiable."
+      }
     },
     "models": {
       "title": "Modelos de Transcripción",

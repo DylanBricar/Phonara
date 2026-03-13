@@ -35,7 +35,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
   }
 
   if (progress.length === 1) {
-    // Single progress bar
     const item = progress[0];
     const percentage = Math.max(0, Math.min(100, item.percentage));
 
@@ -52,7 +51,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
               <span className="me-2">{item.label}</span>
             )}
             {showSpeed && item.speed !== undefined && item.speed > 0 ? (
-              // eslint-disable-next-line i18next/no-literal-string
               <span>{item.speed.toFixed(1)}MB/s</span>
             ) : showSpeed ? (
               <span>Downloading...</span>
@@ -63,7 +61,6 @@ const ProgressBar: React.FC<ProgressBarProps> = ({
     );
   }
 
-  // Multiple progress bars
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <div className="flex gap-1">

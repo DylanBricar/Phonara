@@ -18,7 +18,6 @@ import { LANGUAGES } from "../../lib/constants/languages";
 import Badge from "../ui/Badge";
 import { Button } from "../ui/Button";
 
-// Get display text for model's language support
 const getLanguageDisplayText = (
   supportedLanguages: string[],
   t: (key: string, options?: Record<string, unknown>) => string,
@@ -51,7 +50,7 @@ interface ModelCardProps {
   onDelete?: (modelId: string) => void;
   onCancel?: (modelId: string) => void;
   downloadProgress?: number;
-  downloadSpeed?: number; // MB/s
+  downloadSpeed?: number;
   showRecommended?: boolean;
 }
 
@@ -74,7 +73,6 @@ const ModelCard: React.FC<ModelCardProps> = ({
   const isClickable =
     status === "available" || status === "active" || status === "downloadable";
 
-  // Get translated model name and description
   const displayName = getTranslatedModelName(model, t);
   const displayDescription = getTranslatedModelDescription(model, t);
 
@@ -128,7 +126,6 @@ const ModelCard: React.FC<ModelCardProps> = ({
         .filter(Boolean)
         .join(" ")}
     >
-      {/* Top section: name/description + score bars */}
       <div className="flex justify-between items-center w-full">
         <div className="flex flex-col items-start flex-1 min-w-0">
           <div className="flex items-center gap-3 flex-wrap">
@@ -192,7 +189,6 @@ const ModelCard: React.FC<ModelCardProps> = ({
 
       <hr className="w-full border-mid-gray/20" />
 
-      {/* Bottom row: tags + action buttons (full width) */}
       <div className="flex items-center gap-3 w-full -mb-0.5 mt-0.5 h-5">
         {model.supported_languages.length > 0 && (
           <div
@@ -236,7 +232,6 @@ const ModelCard: React.FC<ModelCardProps> = ({
         )}
       </div>
 
-      {/* Download/extract progress */}
       {status === "downloading" && downloadProgress !== undefined && (
         <div className="w-full mt-3">
           <div className="w-full h-1.5 bg-mid-gray/20 rounded-full overflow-hidden">

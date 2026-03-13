@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}} 설정",
-      "noSettingsNeeded": "이 모델은 별도의 설정 없이 자동으로 작동합니다."
+      "noSettingsNeeded": "이 모델은 별도의 설정 없이 자동으로 작동합니다.",
+      "gpuAcceleration": {
+        "label": "GPU 가속",
+        "description": "그래픽 카드를 사용하여 더 빠르게 전사합니다. 문제가 발생하면 이 옵션을 비활성화하세요 (예: 일부 AMD GPU에서 Vulkan 드라이버 버그로 인한 깨진 출력). CPU 모드는 느리지만 더 안정적입니다."
+      }
     },
     "general": {
       "title": "일반",

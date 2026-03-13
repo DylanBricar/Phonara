@@ -1,6 +1,3 @@
-// CI-only mock TranscriptionManager - avoids whisper/Vulkan dependencies.
-// This file is copied over transcription.rs during CI tests.
-// Existing tests don't exercise transcription, so this is safe.
 
 use crate::managers::model::ModelManager;
 use anyhow::Result;

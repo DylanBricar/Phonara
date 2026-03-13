@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}} 設定",
-      "noSettingsNeeded": "このモデルは設定不要で自動的に動作します。"
+      "noSettingsNeeded": "このモデルは設定不要で自動的に動作します。",
+      "gpuAcceleration": {
+        "label": "GPUアクセラレーション",
+        "description": "グラフィックカードを使用して文字起こしを高速化します。問題が発生した場合はこのオプションを無効にしてください（例：一部のAMD GPUでVulkanドライバーのバグにより出力が文字化けする場合）。CPUモードは低速ですが、より安定しています。"
+      }
     },
     "models": {
       "title": "転写モデル",

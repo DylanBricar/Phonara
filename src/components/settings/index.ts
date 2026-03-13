@@ -1,4 +1,3 @@
-// Settings section components
 export { GeneralSettings } from "./general/GeneralSettings";
 export { AdvancedSettings } from "./advanced/AdvancedSettings";
 export { DebugSettings } from "./debug/DebugSettings";
@@ -8,7 +7,6 @@ export { PostProcessingSettings } from "./post-processing/PostProcessingSettings
 export { ModelsSettings } from "./models/ModelsSettings";
 export { AppearanceSettings } from "./appearance/AppearanceSettings";
 
-// Individual setting components
 export { MicrophoneSelector } from "./MicrophoneSelector";
 export { ClamshellMicrophoneSelector } from "./ClamshellMicrophoneSelector";
 export { OutputDeviceSelector } from "./OutputDeviceSelector";

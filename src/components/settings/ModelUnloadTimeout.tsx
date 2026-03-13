@@ -62,8 +62,7 @@ export const ModelUnloadTimeoutSetting: React.FC<ModelUnloadTimeoutProps> = ({
     try {
       await commands.setModelUnloadTimeout(newTimeout);
       updateSetting("model_unload_timeout", newTimeout);
-    } catch (error) {
-      console.error("Failed to update model unload timeout:", error);
+    } catch {
     }
   };
 

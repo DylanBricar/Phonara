@@ -43,8 +43,7 @@ export const AppDataDirectory: React.FC<AppDataDirectoryProps> = ({
     if (!appDirPath) return;
     try {
       await commands.openAppDataDir();
-    } catch (openError) {
-      console.error("Failed to open app data directory:", openError);
+    } catch {
     }
   };
 

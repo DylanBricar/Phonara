@@ -31,8 +31,7 @@ export const LogLevelSelector: React.FC<LogLevelSelectorProps> = ({
 
     try {
       await updateSetting("log_level", value as LogLevel);
-    } catch (error) {
-      console.error("Failed to update log level:", error);
+    } catch {
     }
   };
 

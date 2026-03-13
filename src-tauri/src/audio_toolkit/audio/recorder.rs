@@ -66,7 +66,7 @@ impl AudioRecorder {
 
     pub fn open(&mut self, device: Option<Device>) -> Result<(), Box<dyn std::error::Error>> {
         if self.worker_handle.is_some() {
-            return Ok(()); // already open
+            return Ok(());
         }
 
         let (sample_tx, sample_rx) = mpsc::channel::<Vec<f32>>();
@@ -82,7 +82,6 @@ impl AudioRecorder {
 
         let thread_device = device.clone();
         let vad = self.vad.clone();
-        // Move the optional level callback into the worker thread
         let level_cb = self.level_cb.clone();
         let pause_flag = self.pause_flag.clone();
 
@@ -145,9 +144,7 @@ impl AudioRecorder {
                 return;
             }
 
-            // keep the stream alive while we process samples
             run_consumer(sample_rate, vad, sample_rx, cmd_rx, level_cb, pause_flag);
-            // stream is dropped here, after run_consumer returns
         });
 
         self.device = Some(device);
@@ -169,7 +166,7 @@ impl AudioRecorder {
         if let Some(tx) = &self.cmd_tx {
             tx.send(Cmd::Stop(resp_tx))?;
         }
-        Ok(resp_rx.recv()?) // wait for the samples
+        Ok(resp_rx.recv()?)
     }
 
     pub fn close(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -199,10 +196,8 @@ impl AudioRecorder {
             output_buffer.clear();
 
             if channels == 1 {
-                // Direct conversion without intermediate Vec
                 output_buffer.extend(data.iter().map(|&sample| sample.to_sample::<f32>()));
             } else {
-                // Convert to mono directly
                 let frame_count = data.len() / channels;
                 output_buffer.reserve(frame_count);
 
@@ -216,9 +211,6 @@ impl AudioRecorder {
                 }
             }
 
-            // Move the buffer into the channel (zero-copy) instead of cloning.
-            // The next callback iteration will start with an empty Vec that
-            // quickly re-allocates to the same capacity.
             let buf = std::mem::take(&mut output_buffer);
             if sample_tx.send(buf).is_err() {
                 log::error!("Failed to send samples");
@@ -239,7 +231,6 @@ impl AudioRecorder {
         let supported_configs = device.supported_input_configs()?;
         let mut best_config: Option<cpal::SupportedStreamConfigRange> = None;
 
-        // Try to find a config that supports 16kHz, prioritizing better formats
         for config_range in supported_configs {
             if config_range.min_sample_rate().0 <= constants::WHISPER_SAMPLE_RATE
                 && config_range.max_sample_rate().0 >= constants::WHISPER_SAMPLE_RATE
@@ -247,7 +238,6 @@ impl AudioRecorder {
                 match best_config {
                     None => best_config = Some(config_range),
                     Some(ref current) => {
-                        // Prioritize F32 > I16 > I32 > others
                         let score = |fmt: cpal::SampleFormat| match fmt {
                             cpal::SampleFormat::F32 => 4,
                             cpal::SampleFormat::I16 => 3,
@@ -267,7 +257,6 @@ impl AudioRecorder {
             return Ok(config.with_sample_rate(cpal::SampleRate(constants::WHISPER_SAMPLE_RATE)));
         }
 
-        // If no config supports 16kHz, fall back to default
         Ok(device.default_input_config()?)
     }
 }
@@ -289,15 +278,14 @@ fn run_consumer(
     let mut processed_samples = Vec::<f32>::new();
     let mut recording = false;
 
-    // ---------- spectrum visualisation setup ---------------------------- //
     const BUCKETS: usize = 25;
     const WINDOW_SIZE: usize = 512;
     let mut visualizer = AudioVisualiser::new(
         in_sample_rate,
         WINDOW_SIZE,
         BUCKETS,
-        150.0,  // vocal_min_hz
-        2500.0, // vocal_max_hz
+        150.0,
+        2500.0,
     );
 
     fn handle_frame(
@@ -324,17 +312,15 @@ fn run_consumer(
     loop {
         let raw = match sample_rx.recv() {
             Ok(s) => s,
-            Err(_) => break, // stream closed
+            Err(_) => break,
         };
 
-        // ---------- spectrum processing ---------------------------------- //
         if let Some(buckets) = visualizer.feed(&raw) {
             if let Some(cb) = &level_cb {
                 cb(buckets);
             }
         }
 
-        // ---------- existing pipeline ------------------------------------ //
         let is_paused = pause_flag
             .as_ref()
             .map_or(false, |f| f.load(Ordering::Relaxed));
@@ -344,14 +330,13 @@ fn run_consumer(
             });
         }
 
-        // non-blocking check for a command
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 Cmd::Start => {
                     processed_samples.clear();
                     recording = true;
-                    frame_resampler.reset(); // Reset resampler state from previous recording
-                    visualizer.reset(); // Reset visualization buffer
+                    frame_resampler.reset();
+                    visualizer.reset();
                     if let Some(v) = &vad {
                         v.lock().unwrap().reset();
                     }
@@ -359,7 +344,6 @@ fn run_consumer(
                 Cmd::Stop(reply_tx) => {
                     recording = false;
 
-                    // Drain any audio chunks that were captured but not yet consumed
                     while let Ok(remaining) = sample_rx.try_recv() {
                         frame_resampler.push(&remaining, &mut |frame: &[f32]| {
                             handle_frame(frame, true, &vad, &mut processed_samples)

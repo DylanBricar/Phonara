@@ -37,12 +37,10 @@ export const TypingToolSetting: React.FC<TypingToolProps> = React.memo(
         });
     }, [osType]);
 
-    // Only show this setting on Linux
     if (osType !== "linux") {
       return null;
     }
 
-    // Only show if paste method is "direct"
     const pasteMethod = getSetting("paste_method");
     if (pasteMethod !== "direct") {
       return null;

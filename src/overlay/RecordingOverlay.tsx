@@ -164,7 +164,6 @@ const AudioBars: React.FC = () => {
       if (isMounted) {
         unlisten = unlistenFn;
       } else {
-        // Component unmounted before listener was set up
         unlistenFn();
       }
     })();
@@ -213,7 +212,6 @@ const RecordingOverlay: React.FC = () => {
       const unlistenShow = await listen<ShowOverlayPayload>("show-overlay", async (event) => {
         await syncLanguageFromSettings();
         const payload = event.payload;
-        // Support both old string payload and new object payload
         const overlayState = typeof payload === "string" ? payload as OverlayState : payload.state;
         setState(overlayState);
         const styles: Record<string, string> = {};

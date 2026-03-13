@@ -12,7 +12,6 @@ interface UpdateCheckerProps {
 
 const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const { t } = useTranslation();
-  // Update checking state
   const [isChecking, setIsChecking] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
@@ -29,7 +28,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
   const contentLengthRef = useRef(0);
 
   useEffect(() => {
-    // Wait for settings to load before doing anything
     if (!settingsLoaded) return;
 
     if (!updateChecksEnabled) {
@@ -44,7 +42,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
 
     checkForUpdates();
 
-    // Listen for update check events
     const updateUnlisten = listen("check-for-updates", () => {
       handleManualUpdateCheck();
     });
@@ -57,7 +54,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
     };
   }, [settingsLoaded, updateChecksEnabled]);
 
-  // Update checking functions
   const checkForUpdates = async () => {
     if (!updateChecksEnabled || isChecking) return;
 
@@ -81,8 +77,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
           }, 3000);
         }
       }
-    } catch (error) {
-      console.error("Failed to check for updates:", error);
+    } catch {
     } finally {
       setIsChecking(false);
       isManualCheckRef.current = false;
@@ -105,7 +100,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
       const update = await check();
 
       if (!update) {
-        console.log("No update available during install attempt");
         return;
       }
 
@@ -129,8 +123,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
         }
       });
       await relaunch();
-    } catch (error) {
-      console.error("Failed to install update:", error);
+    } catch {
     } finally {
       setIsInstalling(false);
       setDownloadProgress(0);
@@ -139,7 +132,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
     }
   };
 
-  // Update status functions
   const getUpdateStatusText = () => {
     if (!updateChecksEnabled) {
       return t("footer.updateCheckingDisabled");

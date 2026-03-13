@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Cog,
@@ -9,9 +9,10 @@ import {
   Cpu,
   Palette,
 } from "lucide-react";
+import type { LucideProps } from "lucide-react";
 import PhonaraTextLogo from "./icons/PhonaraTextLogo";
 import HandyHand from "./icons/HandyHand";
-import { useSettings } from "../hooks/useSettings";
+import { useSettingsStore } from "../stores/settingsStore";
 import {
   GeneralSettings,
   AdvancedSettings,
@@ -25,19 +26,11 @@ import {
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
 
-interface IconProps {
-  width?: number | string;
-  height?: number | string;
-  size?: number | string;
-  className?: string;
-  [key: string]: any;
-}
-
 interface SectionConfig {
   labelKey: string;
-  icon: React.ComponentType<IconProps>;
+  icon: React.ComponentType<LucideProps>;
   component: React.ComponentType;
-  enabled: (settings: any) => boolean;
+  debugOnly?: boolean;
 }
 
 export const SECTIONS_CONFIG = {
@@ -45,49 +38,42 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.general",
     icon: HandyHand,
     component: GeneralSettings,
-    enabled: () => true,
   },
   models: {
     labelKey: "sidebar.models",
     icon: Cpu,
     component: ModelsSettings,
-    enabled: () => true,
   },
   appearance: {
     labelKey: "sidebar.appearance",
     icon: Palette,
     component: AppearanceSettings,
-    enabled: () => true,
   },
   advanced: {
     labelKey: "sidebar.advanced",
     icon: Cog,
     component: AdvancedSettings,
-    enabled: () => true,
   },
   postprocessing: {
     labelKey: "sidebar.postProcessing",
     icon: Sparkles,
     component: PostProcessingSettings,
-    enabled: () => true,
   },
   history: {
     labelKey: "sidebar.history",
     icon: History,
     component: HistorySettings,
-    enabled: () => true,
   },
   debug: {
     labelKey: "sidebar.debug",
     icon: FlaskConical,
     component: DebugSettings,
-    enabled: (settings) => settings?.debug_mode ?? false,
+    debugOnly: true,
   },
   about: {
     labelKey: "sidebar.about",
     icon: Info,
     component: AboutSettings,
-    enabled: () => true,
   },
 } as const satisfies Record<string, SectionConfig>;
 
@@ -101,23 +87,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSectionChange,
 }) => {
   const { t } = useTranslation();
-  const { settings } = useSettings();
+  const debugMode = useSettingsStore((state) => state.settings?.debug_mode ?? false);
 
-  const availableSections = Object.entries(SECTIONS_CONFIG)
-    .filter(([_, config]) => config.enabled(settings))
-    .map(([id, config]) => ({ id: id as SidebarSection, ...config }));
+  const availableSections = useMemo(
+    () =>
+      Object.entries(SECTIONS_CONFIG)
+        .filter(([, config]) => !("debugOnly" in config && config.debugOnly) || debugMode)
+        .map(([id, config]) => ({ id: id as SidebarSection, ...config })),
+    [debugMode],
+  );
 
   return (
-    <div className="flex flex-col w-48 h-full border-e border-mid-gray/20 items-center px-2">
+    <nav className="flex flex-col w-48 h-full border-e border-mid-gray/20 items-center px-2">
       <PhonaraTextLogo width={120} className="m-4 flex justify-center" />
-      <div className="flex flex-col w-full items-center gap-1 pt-2 border-t border-mid-gray/20">
+      <div className="flex flex-col w-full items-center gap-1 pt-2 border-t border-mid-gray/20" role="tablist">
         {availableSections.map((section) => {
           const Icon = section.icon;
           const isActive = activeSection === section.id;
 
           return (
-            <div
+            <button
               key={section.id}
+              role="tab"
+              aria-selected={isActive}
               className={`flex gap-2 items-center p-2 w-full rounded-lg cursor-pointer transition-colors ${
                 isActive
                   ? "bg-logo-primary/80"
@@ -126,16 +118,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => onSectionChange(section.id)}
             >
               <Icon width={24} height={24} className="shrink-0" />
-              <p
+              <span
                 className="text-sm font-medium truncate"
                 title={t(section.labelKey)}
               >
                 {t(section.labelKey)}
-              </p>
-            </div>
+              </span>
+            </button>
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 };

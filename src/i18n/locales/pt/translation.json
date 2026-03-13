@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "Configurações de {{model}}",
-      "noSettingsNeeded": "Este modelo funciona automaticamente sem necessidade de configuração."
+      "noSettingsNeeded": "Este modelo funciona automaticamente sem necessidade de configuração.",
+      "gpuAcceleration": {
+        "label": "Aceleração GPU",
+        "description": "Use sua placa de vídeo para uma transcrição mais rápida. Desative esta opção se tiver problemas (ex.: saída ilegível em algumas GPUs AMD devido a um bug do driver Vulkan). O modo CPU é mais lento, mas mais confiável."
+      }
     },
     "general": {
       "title": "Geral",

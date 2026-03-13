@@ -33,7 +33,6 @@ fn custom_sound_exists_for_type(app: &AppHandle, sound_type: &str) -> bool {
             return true;
         }
     }
-    // Fall back to legacy check
     app.path()
         .resolve(
             format!("custom_{}.wav", sound_type),
@@ -58,7 +57,6 @@ pub fn set_custom_sound_path(
     sound_type: String,
     path: String,
 ) -> Result<(), String> {
-    // Validate file exists and has a supported extension
     let file_path = std::path::Path::new(&path);
     if !file_path.exists() {
         return Err(format!("File not found: {}", path));
@@ -81,7 +79,6 @@ pub fn set_custom_sound_path(
         "stop" => settings.custom_stop_sound = Some(path),
         _ => return Err(format!("Invalid sound type: {}", sound_type)),
     }
-    // Automatically switch to Custom theme when setting a custom sound
     settings.sound_theme = crate::settings::SoundTheme::Custom;
     write_settings(&app, settings);
     Ok(())
@@ -96,7 +93,6 @@ pub fn clear_custom_sound_path(app: AppHandle, sound_type: String) -> Result<(),
         "stop" => settings.custom_stop_sound = None,
         _ => return Err(format!("Invalid sound type: {}", sound_type)),
     }
-    // If both custom sounds are cleared, revert to default theme
     if settings.custom_start_sound.is_none() && settings.custom_stop_sound.is_none() {
         settings.sound_theme = crate::settings::SoundTheme::Marimba;
     }
@@ -221,12 +217,10 @@ pub fn open_microphone_privacy_settings() -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub fn update_microphone_mode(app: AppHandle, always_on: bool) -> Result<(), String> {
-    // Update settings
     let mut settings = get_settings(&app);
     settings.always_on_microphone = always_on;
     write_settings(&app, settings);
 
-    // Update the audio manager mode
     let rm = app.state::<Arc<AudioRecordingManager>>();
     let new_mode = if always_on {
         MicrophoneMode::AlwaysOn
@@ -260,7 +254,7 @@ pub fn get_available_microphones() -> Result<Vec<AudioDevice>, String> {
     result.extend(devices.into_iter().map(|d| AudioDevice {
         index: d.index,
         name: d.name,
-        is_default: false, // The explicit default is handled separately
+        is_default: false,
     }));
 
     Ok(result)
@@ -277,7 +271,6 @@ pub fn set_selected_microphone(app: AppHandle, device_name: String) -> Result<()
     };
     write_settings(&app, settings);
 
-    // Update the audio manager to use the new device
     let rm = app.state::<Arc<AudioRecordingManager>>();
     rm.update_selected_device()
         .map_err(|e| format!("Failed to update selected device: {}", e))?;
@@ -309,7 +302,7 @@ pub fn get_available_output_devices() -> Result<Vec<AudioDevice>, String> {
     result.extend(devices.into_iter().map(|d| AudioDevice {
         index: d.index,
         name: d.name,
-        is_default: false, // The explicit default is handled separately
+        is_default: false,
     }));
 
     Ok(result)

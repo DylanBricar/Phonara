@@ -4,10 +4,6 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use strsim::levenshtein;
 
-/// Builds an n-gram string by cleaning and concatenating words
-///
-/// Strips punctuation from each word, lowercases, and joins without spaces.
-/// This allows matching "Charge B" against "ChargeBee".
 fn build_ngram(words: &[&str]) -> String {
     words
         .iter()
@@ -19,19 +15,6 @@ fn build_ngram(words: &[&str]) -> String {
         .concat()
 }
 
-/// Finds the best matching custom word for a candidate string
-///
-/// Uses Levenshtein distance and Soundex phonetic matching to find
-/// the best match above the given threshold.
-///
-/// # Arguments
-/// * `candidate` - The cleaned/lowercased candidate string to match
-/// * `custom_words` - Original custom words (for returning the replacement)
-/// * `custom_words_nospace` - Custom words with spaces removed, lowercased (for comparison)
-/// * `threshold` - Maximum similarity score to accept
-///
-/// # Returns
-/// The best matching custom word and its score, if any match was found
 fn find_best_match<'a>(
     candidate: &str,
     custom_words: &'a [String],
@@ -46,17 +29,13 @@ fn find_best_match<'a>(
     let mut best_score = f64::MAX;
 
     for (i, custom_word_nospace) in custom_words_nospace.iter().enumerate() {
-        // Skip if lengths are too different (optimization + prevents over-matching)
-        // Use percentage-based check: max 25% length difference (prevents n-grams from
-        // matching significantly shorter custom words, e.g., "openaigpt" vs "openai")
         let len_diff = (candidate.len() as i32 - custom_word_nospace.len() as i32).abs() as f64;
         let max_len = candidate.len().max(custom_word_nospace.len()) as f64;
-        let max_allowed_diff = (max_len * 0.25).max(2.0); // At least 2 chars difference allowed
+        let max_allowed_diff = (max_len * 0.25).max(2.0);
         if len_diff > max_allowed_diff {
             continue;
         }
 
-        // Calculate Levenshtein distance (normalized by length)
         let levenshtein_dist = levenshtein(candidate, custom_word_nospace);
         let max_len = candidate.len().max(custom_word_nospace.len()) as f64;
         let levenshtein_score = if max_len > 0.0 {
@@ -65,17 +44,14 @@ fn find_best_match<'a>(
             1.0
         };
 
-        // Calculate phonetic similarity using Soundex
         let phonetic_match = soundex(candidate, custom_word_nospace);
 
-        // Combine scores: favor phonetic matches, but also consider string similarity
         let combined_score = if phonetic_match {
-            levenshtein_score * 0.3 // Give significant boost to phonetic matches
+            levenshtein_score * 0.3
         } else {
             levenshtein_score
         };
 
-        // Accept if the score is good enough (configurable threshold)
         if combined_score < threshold && combined_score < best_score {
             best_match = Some(&custom_words[i]);
             best_score = combined_score;
@@ -85,30 +61,13 @@ fn find_best_match<'a>(
     best_match.map(|m| (m, best_score))
 }
 
-/// Applies custom word corrections to transcribed text using fuzzy matching
-///
-/// This function corrects words in the input text by finding the best matches
-/// from a list of custom words using a combination of:
-/// - Levenshtein distance for string similarity
-/// - Soundex phonetic matching for pronunciation similarity
-/// - N-gram matching for multi-word speech artifacts (e.g., "Charge B" -> "ChargeBee")
-///
-/// # Arguments
-/// * `text` - The input text to correct
-/// * `custom_words` - List of custom words to match against
-/// * `threshold` - Maximum similarity score to accept (0.0 = exact match, 1.0 = any match)
-///
-/// # Returns
-/// The corrected text with custom words applied
 pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -> String {
     if custom_words.is_empty() {
         return text.to_string();
     }
 
-    // Pre-compute lowercase versions to avoid repeated allocations
     let custom_words_lower: Vec<String> = custom_words.iter().map(|w| w.to_lowercase()).collect();
 
-    // Pre-compute versions with spaces removed for n-gram comparison
     let custom_words_nospace: Vec<String> = custom_words_lower
         .iter()
         .map(|w| w.replace(' ', ""))
@@ -121,7 +80,6 @@ pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -
     while i < words.len() {
         let mut matched = false;
 
-        // Try n-grams from longest (3) to shortest (1) - greedy matching
         for n in (1..=3).rev() {
             if i + n > words.len() {
                 continue;
@@ -133,11 +91,9 @@ pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -
             if let Some((replacement, _score)) =
                 find_best_match(&ngram, custom_words, &custom_words_nospace, threshold)
             {
-                // Extract punctuation from first and last words of the n-gram
                 let (prefix, _) = extract_punctuation(ngram_words[0]);
                 let (_, suffix) = extract_punctuation(ngram_words[n - 1]);
 
-                // Preserve case from first word
                 let corrected = preserve_case_pattern(ngram_words[0], replacement);
 
                 result.push(format!("{}{}{}", prefix, corrected, suffix));
@@ -156,7 +112,6 @@ pub fn apply_custom_words(text: &str, custom_words: &[String], threshold: f64) -
     result.join(" ")
 }
 
-/// Preserves the case pattern of the original word when applying a replacement
 fn preserve_case_pattern(original: &str, replacement: &str) -> String {
     if original.chars().all(|c| c.is_uppercase()) {
         replacement.to_uppercase()
@@ -171,7 +126,6 @@ fn preserve_case_pattern(original: &str, replacement: &str) -> String {
     }
 }
 
-/// Extracts punctuation prefix and suffix from a word
 fn extract_punctuation(word: &str) -> (&str, &str) {
     let prefix_end = word.chars().take_while(|c| !c.is_alphanumeric()).count();
     let suffix_start = word
@@ -195,7 +149,6 @@ fn extract_punctuation(word: &str) -> (&str, &str) {
     (prefix, suffix)
 }
 
-/// Filler words to remove from transcriptions
 const FILLER_WORDS: &[&str] = &[
     "uh", "um", "uhm", "umm", "uhh", "uhhh", "ah", "eh", "hmm", "hm", "mmm", "mm", "mh", "ha",
     "ehh",
@@ -203,8 +156,6 @@ const FILLER_WORDS: &[&str] = &[
 
 static MULTI_SPACE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s{2,}").unwrap());
 
-/// Collapses repeated words (3+ repetitions) to a single instance.
-/// E.g., "wh wh wh wh" -> "wh", "I I I I" -> "I", "the the the" -> "the"
 fn collapse_stutters(text: &str) -> String {
     let words: Vec<&str> = text.split_whitespace().collect();
     if words.is_empty() {
@@ -220,13 +171,11 @@ fn collapse_stutters(text: &str) -> String {
 
 
         if word_lower.chars().all(|c| c.is_alphabetic()) {
-            // Count consecutive repetitions (case-insensitive)
             let mut count = 1;
             while i + count < words.len() && words[i + count].to_lowercase() == word_lower {
                 count += 1;
             }
 
-            // If 3+ repetitions, collapse to single instance
             if count >= 3 {
                 result.push(word);
                 i += count;
@@ -243,19 +192,56 @@ fn collapse_stutters(text: &str) -> String {
     result.join(" ")
 }
 
-/// Pre-compiled filler word patterns (built lazily)
+fn normalize_word(w: &str) -> String {
+    w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+        .to_lowercase()
+}
+
+fn collapse_repeated_phrases(text: &str) -> String {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let n = words.len();
+    if n < 6 {
+        return text.to_string();
+    }
+
+    let normalized: Vec<String> = words.iter().map(|w| normalize_word(w)).collect();
+
+    for phrase_len in (2..=n / 3).rev() {
+        for start in 0..phrase_len {
+            if start + phrase_len * 2 > n {
+                continue;
+            }
+            let phrase = &normalized[start..start + phrase_len];
+            let mut reps = 1;
+            let mut pos = start + phrase_len;
+            while pos + phrase_len <= n {
+                if normalized[pos..pos + phrase_len] == *phrase {
+                    reps += 1;
+                    pos += phrase_len;
+                } else {
+                    break;
+                }
+            }
+            if reps >= 3 {
+                let mut result: Vec<&str> = words[..start + phrase_len].to_vec();
+                result.extend_from_slice(&words[pos..]);
+                return result.join(" ");
+            }
+        }
+    }
+
+    text.to_string()
+}
+
 static FILLER_PATTERNS: Lazy<Vec<Regex>> = Lazy::new(|| {
     FILLER_WORDS
         .iter()
         .map(|word| {
-            // Match filler word with word boundaries, optionally followed by comma or period
             Regex::new(&format!(r"(?i)\b{}\b[,.]?", regex::escape(word))).unwrap()
         })
         .collect()
 });
 
-/// Collapse runs of the same non-alphanumeric character repeated 4+ times.
-/// E.g. "Hello!!!!!!!!!!" → "Hello!", "text......" → "text."
 fn collapse_repeated_chars(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -268,11 +254,8 @@ fn collapse_repeated_chars(text: &str) -> String {
                 chars.next();
                 count += 1;
             }
-            // If 4+ repeats, it's a hallucination — keep at most 1
             if count >= 4 {
-                // already pushed one above, skip the rest
             } else {
-                // Push the remaining occurrences (less than 4 total)
                 for _ in 1..count {
                     result.push(ch);
                 }
@@ -283,17 +266,11 @@ fn collapse_repeated_chars(text: &str) -> String {
     result
 }
 
-/// Collapse spaced-out repeated punctuation like "! ! ! ! !" or ". . . ."
-/// If the same punctuation character appears 4+ times separated by spaces,
-/// strip the whole sequence.
 fn collapse_spaced_repeated_punctuation(text: &str) -> String {
     let mut result = text.to_string();
-    // Check common hallucination punctuation characters
     for ch in ['!', '?', '.', ',', ';', '-', '*', '#'] {
-        let spaced = format!("{ch} {ch} {ch} {ch}"); // 4+ spaced repeats
+        let spaced = format!("{ch} {ch} {ch} {ch}");
         if result.contains(&spaced) {
-            // Remove all occurrences of "X " followed by more X's
-            // by repeatedly replacing "X X" with "X" until stable
             let double = format!("{ch} {ch}");
             let single = format!("{ch}");
             while result.contains(&double) {
@@ -304,53 +281,29 @@ fn collapse_spaced_repeated_punctuation(text: &str) -> String {
     result
 }
 
-/// Returns true if the text is purely punctuation / non-alphabetic noise,
-/// i.e. it contains no actual word content.  Used to detect hallucinated
-/// chunks that are nothing but "!", "...", "¡¡¡", etc.
 fn is_punctuation_only(text: &str) -> bool {
     let trimmed = text.trim();
     !trimmed.is_empty() && !trimmed.chars().any(|c| c.is_alphabetic())
 }
 
-/// Filters transcription output by removing filler words and stutter artifacts.
-///
-/// This function cleans up raw transcription text by:
-/// 1. Removing filler words (uh, um, hmm, etc.)
-/// 2. Collapsing repeated 1-2 letter stutters (e.g., "wh wh wh" -> "wh")
-/// 3. Cleaning up excess whitespace
-/// 4. Detecting purely punctuation/noise output (hallucination) and returning empty
-///
-/// # Arguments
-/// * `text` - The raw transcription text to filter
-///
-/// # Returns
-/// The filtered text with filler words and stutters removed
 pub fn filter_transcription_output(text: &str) -> String {
     let mut filtered = text.to_string();
 
-    // Remove filler words
     for pattern in FILLER_PATTERNS.iter() {
         filtered = pattern.replace_all(&filtered, "").to_string();
     }
 
-    // Collapse repeated 1-2 letter words (stutter artifacts like "wh wh wh wh")
     filtered = collapse_stutters(&filtered);
 
-    // Remove hallucinated repeated characters (e.g. "!!!!!!", "......", "??????")
-    // Any single non-alphanumeric character repeated 4+ times is collapsed to 1
+    filtered = collapse_repeated_phrases(&filtered);
     filtered = collapse_repeated_chars(&filtered);
 
-    // Remove spaced-out hallucinations like "! ! ! ! !" or ". . . . ."
     filtered = collapse_spaced_repeated_punctuation(&filtered);
 
-    // Clean up multiple spaces to single space
     filtered = MULTI_SPACE_PATTERN.replace_all(&filtered, " ").to_string();
 
-    // Trim leading/trailing whitespace
     let filtered = filtered.trim().to_string();
 
-    // If after all filtering the result is purely punctuation / no real words,
-    // treat it as hallucinated noise and return empty.
     if is_punctuation_only(&filtered) {
         return String::new();
     }
@@ -358,20 +311,6 @@ pub fn filter_transcription_output(text: &str) -> String {
     filtered
 }
 
-/// Applies explicit text replacement rules to transcribed text.
-///
-/// Unlike `apply_custom_words` which uses fuzzy/phonetic matching, this function
-/// performs exact string replacement. Each rule specifies a "find" string and a
-/// "replace" string, with an optional case-sensitivity flag.
-///
-/// Replacements are applied in order, so earlier rules can affect later ones.
-///
-/// # Arguments
-/// * `text` - The input text to apply replacements to
-/// * `replacements` - Ordered list of replacement rules
-///
-/// # Returns
-/// The text with all matching replacements applied
 pub fn apply_text_replacements(text: &str, replacements: &[TextReplacement]) -> String {
     if replacements.is_empty() {
         return text.to_string();
@@ -387,9 +326,6 @@ pub fn apply_text_replacements(text: &str, replacements: &[TextReplacement]) -> 
         if replacement.case_sensitive {
             result = result.replace(&replacement.find, &replacement.replace);
         } else {
-            // Case-insensitive replacement without regex:
-            // Find all occurrences by searching in the lowercased version,
-            // then replace in the original string from right to left to preserve indices.
             let lower_result = result.to_lowercase();
             let lower_find = replacement.find.to_lowercase();
             let find_len = replacement.find.len();
@@ -401,7 +337,6 @@ pub fn apply_text_replacements(text: &str, replacements: &[TextReplacement]) -> 
                 start += pos + find_len;
             }
 
-            // Replace from right to left so indices remain valid
             for &pos in positions.iter().rev() {
                 result.replace_range(pos..pos + find_len, &replacement.replace);
             }
@@ -565,7 +500,6 @@ mod tests {
 
     #[test]
     fn test_apply_custom_words_ngram_with_spaces_in_custom() {
-        // Custom word with space should also match against split words
         let text = "using Mac Book Pro";
         let custom_words = vec!["MacBook Pro".to_string()];
         let result = apply_custom_words(text, &custom_words, 0.5);
@@ -574,7 +508,6 @@ mod tests {
 
     #[test]
     fn test_filter_stutter_longer_words() {
-        // Parakeet v3 can produce long repeated words (PR #976)
         let text = "hello hello hello hello world";
         let result = filter_transcription_output(text);
         assert_eq!(result, "hello world");
@@ -589,12 +522,9 @@ mod tests {
 
     #[test]
     fn test_apply_custom_words_trailing_number_not_doubled() {
-        // Verify that trailing non-alpha chars (like numbers) aren't double-counted
-        // between build_ngram stripping them and extract_punctuation capturing them
         let text = "use GPT4 for this";
         let custom_words = vec!["GPT-4".to_string()];
         let result = apply_custom_words(text, &custom_words, 0.5);
-        // Should NOT produce "GPT-44" (double-counting the trailing 4)
         assert!(
             !result.contains("GPT-44"),
             "got double-counted result: {}",
@@ -624,7 +554,6 @@ mod tests {
             apply_text_replacements("The API is great", &replacements),
             "The Application Programming Interface is great"
         );
-        // Should NOT match lowercase "api"
         assert_eq!(
             apply_text_replacements("The api is great", &replacements),
             "The api is great"
@@ -685,7 +614,6 @@ mod tests {
 
     #[test]
     fn test_text_replacements_delete() {
-        // Replace with empty string to delete text
         let replacements = vec![TextReplacement {
             find: "um ".to_string(),
             replace: "".to_string(),
@@ -697,7 +625,6 @@ mod tests {
 
     #[test]
     fn test_filter_punctuation_only_hallucination() {
-        // Pure punctuation should be treated as hallucination
         assert_eq!(filter_transcription_output("!"), "");
         assert_eq!(filter_transcription_output("! ! ! ! !"), "");
         assert_eq!(filter_transcription_output("..."), "");
@@ -708,7 +635,6 @@ mod tests {
 
     #[test]
     fn test_filter_preserves_text_with_punctuation() {
-        // Text with real words should be preserved
         assert_eq!(
             filter_transcription_output("Hello!"),
             "Hello!"

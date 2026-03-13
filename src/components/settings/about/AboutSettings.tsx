@@ -19,8 +19,7 @@ export const AboutSettings: React.FC = () => {
       try {
         const appVersion = await getVersion();
         setVersion(appVersion);
-      } catch (error) {
-        console.error("Failed to get app version:", error);
+      } catch {
         setVersion("0.1.2");
       }
     };
@@ -31,8 +30,7 @@ export const AboutSettings: React.FC = () => {
   const handleDonateClick = async () => {
     try {
       await openUrl("https://github.com/DylanBricar/Phonara");
-    } catch (error) {
-      console.error("Failed to open donate link:", error);
+    } catch {
     }
   };
 

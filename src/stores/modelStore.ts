@@ -15,10 +15,9 @@ interface DownloadStats {
   startTime: number;
   lastUpdate: number;
   totalDownloaded: number;
-  speed: number; // MB/s
+  speed: number;
 }
 
-// Using Record instead of Set/Map for Immer compatibility
 interface ModelsStore {
   models: ModelInfo[];
   currentModel: string;
@@ -32,7 +31,6 @@ interface ModelsStore {
   isFirstRun: boolean;
   initialized: boolean;
 
-  // Actions
   initialize: () => Promise<void>;
   loadModels: () => Promise<void>;
   loadCurrentModel: () => Promise<void>;
@@ -46,7 +44,6 @@ interface ModelsStore {
   isModelExtracting: (modelId: string) => boolean;
   getDownloadProgress: (modelId: string) => DownloadProgress | undefined;
 
-  // Internal setters
   setModels: (models: ModelInfo[]) => void;
   setCurrentModel: (modelId: string) => void;
   setError: (error: string | null) => void;
@@ -67,7 +64,6 @@ export const useModelStore = create<ModelsStore>()(
     isFirstRun: false,
     initialized: false,
 
-    // Internal setters
     setModels: (models) => set({ models }),
     setCurrentModel: (currentModel) => set({ currentModel }),
     setError: (error) => set({ error }),
@@ -79,7 +75,6 @@ export const useModelStore = create<ModelsStore>()(
         if (result.status === "ok") {
           set({ models: result.data, error: null });
 
-          // Sync downloading state from backend
           set(
             produce((state) => {
               const backendDownloading: Record<string, true> = {};
@@ -89,13 +84,10 @@ export const useModelStore = create<ModelsStore>()(
                   backendDownloading[m.id] = true;
                 });
 
-              // Merge: keep frontend state if downloading, add backend state
               Object.keys(backendDownloading).forEach((id) => {
                 state.downloadingModels[id] = true;
               });
 
-              // Remove models that backend says are NOT downloading AND
-              // frontend doesn't have progress for (completed/cancelled)
               Object.keys(state.downloadingModels).forEach((id) => {
                 if (!backendDownloading[id] && !state.downloadProgress[id]) {
                   delete state.downloadingModels[id];
@@ -119,8 +111,7 @@ export const useModelStore = create<ModelsStore>()(
         if (result.status === "ok") {
           set({ currentModel: result.data });
         }
-      } catch (err) {
-        console.error("Failed to load current model:", err);
+      } catch {
       }
     },
 
@@ -133,8 +124,7 @@ export const useModelStore = create<ModelsStore>()(
           return !hasModels;
         }
         return false;
-      } catch (err) {
-        console.error("Failed to check model availability:", err);
+      } catch {
         return false;
       }
     },
@@ -210,7 +200,6 @@ export const useModelStore = create<ModelsStore>()(
             }),
           );
 
-          // Reload models to sync with backend state
           await get().loadModels();
           return true;
         } else {
@@ -262,15 +251,12 @@ export const useModelStore = create<ModelsStore>()(
 
       const { loadModels, loadCurrentModel, checkFirstRun } = get();
 
-      // Load initial data
       await Promise.all([loadModels(), loadCurrentModel(), checkFirstRun()]);
 
-      // Set up event listeners
       listen<DownloadProgress>("model-download-progress", (event) => {
         const progress = event.payload;
         const now = Date.now();
 
-        // Single atomic state update for both progress and download stats
         set(
           produce((state) => {
             state.downloadProgress[progress.model_id] = progress;

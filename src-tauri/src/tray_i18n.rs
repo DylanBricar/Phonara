@@ -15,19 +15,15 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
-// Include the auto-generated TrayStrings struct and TRANSLATIONS static
 include!(concat!(env!("OUT_DIR"), "/tray_translations.rs"));
 
-/// Get the language code from a locale string (e.g., "en-US" -> "en")
 fn get_language_code(locale: &str) -> &str {
     locale.split(['-', '_']).next().unwrap_or("en")
 }
 
-/// Get localized tray menu strings based on the system locale
 pub fn get_tray_translations(locale: Option<String>) -> TrayStrings {
     let lang = locale.as_deref().map(get_language_code).unwrap_or("en");
 
-    // Try requested language, fall back to English
     TRANSLATIONS
         .get(lang)
         .or_else(|| TRANSLATIONS.get("en"))

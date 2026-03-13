@@ -135,7 +135,11 @@
   "settings": {
     "modelSettings": {
       "title": "{{model}}-Einstellungen",
-      "noSettingsNeeded": "Dieses Modell funktioniert automatisch ohne Konfiguration."
+      "noSettingsNeeded": "Dieses Modell funktioniert automatisch ohne Konfiguration.",
+      "gpuAcceleration": {
+        "label": "GPU-Beschleunigung",
+        "description": "Nutzt Ihre Grafikkarte für schnellere Transkription. Deaktivieren Sie diese Option bei Problemen (z.B. fehlerhafte Ausgabe bei einigen AMD-GPUs aufgrund eines Vulkan-Treiber-Bugs). Der CPU-Modus ist langsamer, aber zuverlässiger."
+      }
     },
     "models": {
       "title": "Transkriptionsmodelle",

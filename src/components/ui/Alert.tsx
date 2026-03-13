@@ -5,7 +5,6 @@ type AlertVariant = "error" | "warning" | "info" | "success";
 
 interface AlertProps {
   variant?: AlertVariant;
-  /** When true, removes rounded corners for use inside containers */
   contained?: boolean;
   children: React.ReactNode;
   className?: string;

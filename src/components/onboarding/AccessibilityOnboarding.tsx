@@ -74,7 +74,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     return microphoneStatus.overall_access !== "denied";
   }, []);
 
-  // Check platform and permission status on mount
   useEffect(() => {
     const currentPlatform = platform();
     const nextPlatform: PermissionPlatform =
@@ -86,7 +85,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
 
     setPermissionPlatform(nextPlatform);
 
-    // Skip immediately on unsupported platforms
     if (nextPlatform === "other") {
       onComplete();
       return;
@@ -106,8 +104,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
                 commands.initializeEnigo(),
                 commands.initializeShortcuts(),
               ]);
-            } catch (e) {
-              console.warn("Failed to initialize after permission grant:", e);
+            } catch {
             }
           }
 
@@ -121,8 +118,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           if (accessibilityGranted && microphoneGranted) {
             await completeOnboarding();
           }
-        } catch (error) {
-          console.error("Failed to check macOS permissions:", error);
+        } catch {
           toast.error(t("onboarding.permissions.errors.checkFailed"));
           setPermissions({
             accessibility: "needed",
@@ -133,7 +129,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         return;
       }
 
-      // Windows
       try {
         const microphoneGranted = await hasWindowsMicrophoneAccess();
 
@@ -145,8 +140,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         if (microphoneGranted) {
           await completeOnboarding();
         }
-      } catch (error) {
-        console.warn("Failed to check Windows microphone permissions:", error);
+      } catch {
         setPermissions({
           accessibility: "granted",
           microphone: "granted",
@@ -158,7 +152,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     checkInitial();
   }, [completeOnboarding, hasWindowsMicrophoneAccess, onComplete, t]);
 
-  // Polling for permissions after user clicks a button
   const startPolling = useCallback(() => {
     if (pollingRef.current || permissionPlatform === null) return;
 
@@ -195,9 +188,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
             Promise.all([
               commands.initializeEnigo(),
               commands.initializeShortcuts(),
-            ]).catch((e) => {
-              console.warn("Failed to initialize after permission grant:", e);
-            });
+            ]).catch(() => {});
           }
 
           if (microphoneGranted && prev.microphone !== "granted") {
@@ -216,8 +207,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         }
 
         errorCountRef.current = 0;
-      } catch (error) {
-        console.error("Error checking permissions:", error);
+      } catch {
         errorCountRef.current += 1;
 
         if (errorCountRef.current >= MAX_POLLING_ERRORS) {
@@ -231,7 +221,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     }, 1000);
   }, [completeOnboarding, hasWindowsMicrophoneAccess, permissionPlatform, t]);
 
-  // Cleanup polling and timeouts on unmount
   useEffect(() => {
     return () => {
       if (pollingRef.current) {
@@ -248,8 +237,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
       await requestAccessibilityPermission();
       setPermissions((prev) => ({ ...prev, accessibility: "waiting" }));
       startPolling();
-    } catch (error) {
-      console.error("Failed to request accessibility permission:", error);
+    } catch {
       toast.error(t("onboarding.permissions.errors.requestFailed"));
     }
   };
@@ -264,8 +252,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
 
       setPermissions((prev) => ({ ...prev, microphone: "waiting" }));
       startPolling();
-    } catch (error) {
-      console.error("Failed to request microphone permission:", error);
+    } catch {
       toast.error(t("onboarding.permissions.errors.requestFailed"));
     }
   };
@@ -277,7 +264,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
       permissions.microphone === "checking") ||
     (isWindows && permissions.microphone === "checking");
 
-  // Still checking platform/initial permissions
   if (isChecking) {
     return (
       <div className="h-screen w-screen flex items-center justify-center">
@@ -286,7 +272,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     );
   }
 
-  // All permissions granted - show success briefly
   if (allGranted) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center gap-4">
@@ -300,7 +285,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
     );
   }
 
-  // Show permissions request screen
   return (
     <div className="h-screen w-screen flex flex-col p-6 gap-6 items-center justify-center">
       <div className="flex flex-col items-center gap-2">
@@ -317,7 +301,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           </p>
         </div>
 
-        {/* Microphone Permission Card */}
         {showMicrophonePermission && (
           <div className="w-full p-4 rounded-lg bg-white/5 border border-mid-gray/20">
             <div className="flex items-center gap-4">
@@ -356,7 +339,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           </div>
         )}
 
-        {/* Accessibility Permission Card */}
         {showAccessibilityPermission && (
           <div className="w-full p-4 rounded-lg bg-white/5 border border-mid-gray/20">
             <div className="flex items-center gap-4">

@@ -25,7 +25,6 @@ export const SettingContainer: React.FC<SettingContainerProps> = ({
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
-  // Handle click outside to close tooltip
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -119,7 +118,6 @@ export const SettingContainer: React.FC<SettingContainerProps> = ({
     );
   }
 
-  // Horizontal layout (default)
   const horizontalContainerClasses = grouped
     ? "flex items-center justify-between px-4 p-2"
     : "flex items-center justify-between px-4 p-2 rounded-lg border border-mid-gray/20";

@@ -1,34 +1,5 @@
-//! Handy-keys based keyboard shortcut implementation
-//!
-//! This module provides an alternative to Tauri's global-shortcut plugin
-//! using the handy-keys library for more control over keyboard events.
-//!
-//! ## Architecture
-//!
-//! The implementation uses a dedicated manager thread that owns the `HotkeyManager`:
-//!
-//! ```text
-//! ┌─────────────────┐     commands      ┌──────────────────────┐
-//! │   Main Thread   │ ───────────────▶ │   Manager Thread     │
-//! │                 │   (via channel)   │                      │
-//! │ - register()    │                   │ - owns HotkeyManager │
-//! │ - unregister()  │                   │ - polls for events   │
-//! └─────────────────┘                   │ - dispatches actions │
-//!                                       └──────────────────────┘
-//! ```
-//!
-//! This design ensures thread-safety since `HotkeyManager` is only accessed
-//! from a single thread. Commands (register/unregister) are sent via an mpsc
-//! channel and responses are synchronously awaited.
-//!
-//! ## Recording Mode
-//!
-//! For UI key capture, a separate `KeyboardListener` is created on-demand and
-//! polled from a dedicated recording thread. Events are emitted to the frontend
-//! via Tauri's event system.
-
 use handy_keys::{Hotkey, HotkeyId, HotkeyManager, HotkeyState, KeyboardListener};
-use log::{debug, error, info};
+use log::error;
 use serde::Serialize;
 use specta::Type;
 use std::collections::HashMap;
@@ -42,7 +13,6 @@ use crate::settings::{self, get_settings, ShortcutBinding};
 
 use super::handler::handle_shortcut_event;
 
-/// Commands that can be sent to the hotkey manager thread
 enum ManagerCommand {
     Register {
         binding_id: String,
@@ -56,41 +26,27 @@ enum ManagerCommand {
     Shutdown,
 }
 
-/// State for the handy-keys shortcut manager
 pub struct HandyKeysState {
-    /// Channel to send commands to the manager thread (wrapped in Mutex for Sync)
     command_sender: Mutex<Sender<ManagerCommand>>,
-    /// Handle to the manager thread (wrapped in Mutex for Sync, allows proper join on drop)
     thread_handle: Mutex<Option<JoinHandle<()>>>,
-    /// Recording listener for UI key capture (only active during recording)
     recording_listener: Mutex<Option<KeyboardListener>>,
-    /// Flag indicating if we're in recording mode
     is_recording: AtomicBool,
-    /// The binding ID being recorded (if any)
     recording_binding_id: Mutex<Option<String>>,
-    /// Flag to stop recording loop
     recording_running: Arc<AtomicBool>,
 }
 
-/// Key event sent to frontend during recording mode
 #[derive(Debug, Clone, Serialize, Type)]
 pub struct FrontendKeyEvent {
-    /// Currently pressed modifier keys
     pub modifiers: Vec<String>,
-    /// The key that was pressed (if any)
     pub key: Option<String>,
-    /// Whether this is a key down event
     pub is_key_down: bool,
-    /// The full hotkey string (e.g., "option+space")
     pub hotkey_string: String,
 }
 
 impl HandyKeysState {
-    /// Create a new HandyKeysState
     pub fn new(app: AppHandle) -> Result<Self, String> {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ManagerCommand>();
 
-        // Start the manager thread
         let app_clone = app.clone();
         let thread_handle = thread::spawn(move || {
             Self::manager_thread(cmd_rx, app_clone);
@@ -106,11 +62,7 @@ impl HandyKeysState {
         })
     }
 
-    /// The main manager thread - owns the HotkeyManager and processes commands
     fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle) {
-        info!("handy-keys manager thread started");
-
-        // Create the HotkeyManager in this thread
         let manager = match HotkeyManager::new_with_blocking() {
             Ok(m) => m,
             Err(e) => {
@@ -119,24 +71,17 @@ impl HandyKeysState {
             }
         };
 
-        // Maps binding IDs to HotkeyIds and hotkey strings
         let mut binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
-        let mut hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new(); // (binding_id, hotkey_string)
+        let mut hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
 
         loop {
-            // Check for hotkey events (non-blocking)
             while let Some(event) = manager.try_recv() {
                 if let Some((binding_id, hotkey_string)) = hotkey_to_binding.get(&event.id) {
-                    debug!(
-                        "handy-keys event: binding={}, hotkey={}, state={:?}",
-                        binding_id, hotkey_string, event.state
-                    );
                     let is_pressed = event.state == HotkeyState::Pressed;
                     handle_shortcut_event(&app, binding_id, hotkey_string, is_pressed);
                 }
             }
 
-            // Check for commands (non-blocking with timeout)
             match cmd_rx.recv_timeout(std::time::Duration::from_millis(10)) {
                 Ok(cmd) => match cmd {
                     ManagerCommand::Register {
@@ -166,24 +111,18 @@ impl HandyKeysState {
                         let _ = response.send(result);
                     }
                     ManagerCommand::Shutdown => {
-                        info!("handy-keys manager thread shutting down");
                         break;
                     }
                 },
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    // No command, continue
-                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    info!("Command channel disconnected, shutting down");
                     break;
                 }
             }
         }
 
-        info!("handy-keys manager thread stopped");
     }
 
-    /// Register a hotkey
     fn do_register(
         manager: &HotkeyManager,
         binding_to_hotkey: &mut HashMap<String, HotkeyId>,
@@ -202,14 +141,9 @@ impl HandyKeysState {
         binding_to_hotkey.insert(binding_id.to_string(), id);
         hotkey_to_binding.insert(id, (binding_id.to_string(), hotkey_string.to_string()));
 
-        debug!(
-            "Registered handy-keys shortcut: {} -> {:?}",
-            binding_id, hotkey
-        );
         Ok(())
     }
 
-    /// Unregister a hotkey
     fn do_unregister(
         manager: &HotkeyManager,
         binding_to_hotkey: &mut HashMap<String, HotkeyId>,
@@ -221,12 +155,10 @@ impl HandyKeysState {
                 .unregister(id)
                 .map_err(|e| format!("Failed to unregister hotkey: {}", e))?;
             hotkey_to_binding.remove(&id);
-            debug!("Unregistered handy-keys shortcut: {}", binding_id);
         }
         Ok(())
     }
 
-    /// Register a shortcut binding
     pub fn register(&self, binding: &ShortcutBinding) -> Result<(), String> {
         let (tx, rx) = mpsc::channel();
         self.command_sender
@@ -243,7 +175,6 @@ impl HandyKeysState {
             .map_err(|_| "Failed to receive register response")?
     }
 
-    /// Unregister a shortcut binding
     pub fn unregister(&self, binding: &ShortcutBinding) -> Result<(), String> {
         let (tx, rx) = mpsc::channel();
         self.command_sender
@@ -259,13 +190,11 @@ impl HandyKeysState {
             .map_err(|_| "Failed to receive unregister response")?
     }
 
-    /// Start recording mode for a specific binding
     pub fn start_recording(&self, app: &AppHandle, binding_id: String) -> Result<(), String> {
         if self.is_recording.load(Ordering::SeqCst) {
             return Err("Already recording".into());
         }
 
-        // Create a new keyboard listener for recording
         let listener = KeyboardListener::new()
             .map_err(|e| format!("Failed to create keyboard listener: {}", e))?;
 
@@ -287,18 +216,15 @@ impl HandyKeysState {
         self.is_recording.store(true, Ordering::SeqCst);
         self.recording_running.store(true, Ordering::SeqCst);
 
-        // Start a thread to emit key events to the frontend
         let app_clone = app.clone();
         let recording_running = Arc::clone(&self.recording_running);
         thread::spawn(move || {
             Self::recording_loop(app_clone, recording_running);
         });
 
-        debug!("Started handy-keys recording mode");
         Ok(())
     }
 
-    /// Recording loop - emits key events to frontend during recording
     fn recording_loop(app: AppHandle, running: Arc<AtomicBool>) {
         while running.load(Ordering::SeqCst) {
             let event = {
@@ -311,7 +237,6 @@ impl HandyKeysState {
             };
 
             if let Some(key_event) = event {
-                // Convert to frontend-friendly format
                 let frontend_event = FrontendKeyEvent {
                     modifiers: modifiers_to_strings(key_event.modifiers),
                     key: key_event.key.map(|k| k.to_string().to_lowercase()),
@@ -322,7 +247,6 @@ impl HandyKeysState {
                         .unwrap_or_default(),
                 };
 
-                // Emit to frontend
                 if let Err(e) = app.emit("handy-keys-event", &frontend_event) {
                     error!("Failed to emit key event: {}", e);
                 }
@@ -331,10 +255,8 @@ impl HandyKeysState {
             }
         }
 
-        debug!("Recording loop ended");
     }
 
-    /// Stop recording mode
     pub fn stop_recording(&self) -> Result<(), String> {
         self.is_recording.store(false, Ordering::SeqCst);
         self.recording_running.store(false, Ordering::SeqCst);
@@ -354,23 +276,19 @@ impl HandyKeysState {
             *binding = None;
         }
 
-        debug!("Stopped handy-keys recording mode");
         Ok(())
     }
 }
 
 impl Drop for HandyKeysState {
     fn drop(&mut self) {
-        // Signal recording to stop
         self.recording_running.store(false, Ordering::SeqCst);
         self.is_recording.store(false, Ordering::SeqCst);
 
-        // Send shutdown command
         if let Ok(sender) = self.command_sender.lock() {
             let _ = sender.send(ManagerCommand::Shutdown);
         }
 
-        // Wait for the manager thread to finish
         if let Ok(mut handle) = self.thread_handle.lock() {
             if let Some(h) = handle.take() {
                 let _ = h.join();
@@ -379,7 +297,6 @@ impl Drop for HandyKeysState {
     }
 }
 
-/// Convert handy-keys Modifiers to a list of strings
 fn modifiers_to_strings(modifiers: handy_keys::Modifiers) -> Vec<String> {
     let mut result = Vec::new();
 
@@ -408,32 +325,25 @@ fn modifiers_to_strings(modifiers: handy_keys::Modifiers) -> Vec<String> {
     result
 }
 
-/// Validate a shortcut string for the HandyKeys implementation.
-/// HandyKeys is more permissive: allows modifier-only combos and the fn key.
 pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     if raw.trim().is_empty() {
         return Err("Shortcut cannot be empty".into());
     }
-    // HandyKeys accepts modifier-only, key-only, and modifier+key combos
-    // Just verify the string is parseable
     raw.parse::<Hotkey>()
         .map(|_| ())
         .map_err(|e| format!("Invalid shortcut for HandyKeys: {}", e))
 }
 
-/// Initialize handy-keys shortcuts
 pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
     let state = HandyKeysState::new(app.clone())?;
 
     let default_bindings = settings::get_default_settings().bindings;
     let user_settings = settings::load_or_create_app_settings(app);
 
-    // Register all bindings except cancel (which is dynamic)
     for (id, default_binding) in default_bindings {
         if id == "cancel" {
             continue;
         }
-        // Skip post-processing shortcut when the feature is disabled
         if id == "transcribe_with_post_process" && !user_settings.post_process_enabled {
             continue;
         }
@@ -457,13 +367,10 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
     }
 
     app.manage(state);
-    info!("handy-keys shortcuts initialized");
     Ok(())
 }
 
-/// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
-    // Disabled on Linux due to instability
     #[cfg(target_os = "linux")]
     {
         let _ = app;
@@ -485,7 +392,6 @@ pub fn register_cancel_shortcut(app: &AppHandle) {
     }
 }
 
-/// Unregister the cancel shortcut (called when recording stops)
 pub fn unregister_cancel_shortcut(app: &AppHandle) {
     #[cfg(target_os = "linux")]
     {
@@ -506,7 +412,6 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
     }
 }
 
-/// Register an action shortcut (bare digit key, called when recording starts)
 pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     #[cfg(target_os = "linux")]
     {
@@ -531,7 +436,6 @@ pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     }
 }
 
-/// Unregister an action shortcut (called when recording stops)
 pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     #[cfg(target_os = "linux")]
     {
@@ -551,7 +455,6 @@ pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     }
 }
 
-/// Register a shortcut
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let state = app
         .try_state::<HandyKeysState>()
@@ -559,7 +462,6 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
     state.register(&binding)
 }
 
-/// Unregister a shortcut
 pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let state = app
         .try_state::<HandyKeysState>()
@@ -567,7 +469,6 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
     state.unregister(&binding)
 }
 
-/// Start key recording mode
 #[tauri::command]
 #[specta::specta]
 pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<(), String> {
@@ -582,7 +483,6 @@ pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<
     state.start_recording(&app, binding_id)
 }
 
-/// Stop key recording mode
 #[tauri::command]
 #[specta::specta]
 pub fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {

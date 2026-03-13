@@ -1,9 +1,9 @@
 import { useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/settingsStore";
 import type { AppSettings as Settings, AudioDevice } from "@/bindings";
 
 interface UseSettingsReturn {
-  // State
   settings: Settings | null;
   isLoading: boolean;
   isUpdating: (key: string) => boolean;
@@ -11,8 +11,6 @@ interface UseSettingsReturn {
   outputDevices: AudioDevice[];
   audioFeedbackEnabled: boolean;
   postProcessModelOptions: Record<string, string[]>;
-
-  // Actions
   updateSetting: <K extends keyof Settings>(
     key: K,
     value: Settings[K],
@@ -21,15 +19,9 @@ interface UseSettingsReturn {
   refreshSettings: () => Promise<void>;
   refreshAudioDevices: () => Promise<void>;
   refreshOutputDevices: () => Promise<void>;
-
-  // Binding-specific actions
   updateBinding: (id: string, binding: string) => Promise<void>;
   resetBinding: (id: string) => Promise<void>;
-
-  // Convenience getters
   getSetting: <K extends keyof Settings>(key: K) => Settings[K] | undefined;
-
-  // Post-processing helpers
   setPostProcessProvider: (providerId: string) => Promise<void>;
   updatePostProcessBaseUrl: (
     providerId: string,
@@ -44,9 +36,31 @@ interface UseSettingsReturn {
 }
 
 export const useSettings = (): UseSettingsReturn => {
-  const store = useSettingsStore();
+  const store = useSettingsStore(
+    useShallow((state) => ({
+      settings: state.settings,
+      isLoading: state.isLoading,
+      isUpdatingKey: state.isUpdatingKey,
+      audioDevices: state.audioDevices,
+      outputDevices: state.outputDevices,
+      postProcessModelOptions: state.postProcessModelOptions,
+      updateSetting: state.updateSetting,
+      resetSetting: state.resetSetting,
+      refreshSettings: state.refreshSettings,
+      refreshAudioDevices: state.refreshAudioDevices,
+      refreshOutputDevices: state.refreshOutputDevices,
+      updateBinding: state.updateBinding,
+      resetBinding: state.resetBinding,
+      getSetting: state.getSetting,
+      setPostProcessProvider: state.setPostProcessProvider,
+      updatePostProcessBaseUrl: state.updatePostProcessBaseUrl,
+      updatePostProcessApiKey: state.updatePostProcessApiKey,
+      updatePostProcessModel: state.updatePostProcessModel,
+      fetchPostProcessModels: state.fetchPostProcessModels,
+      initialize: state.initialize,
+    })),
+  );
 
-  // Initialize on first mount
   useEffect(() => {
     if (store.isLoading) {
       store.initialize();

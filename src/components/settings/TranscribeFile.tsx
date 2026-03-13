@@ -36,7 +36,6 @@ export const TranscribeFile: React.FC = () => {
 
       setState({ kind: "loading" });
 
-      // Listen for progress events
       const unlisten = await listen<string>(
         "file-transcription-progress",
         (event) => {
@@ -93,7 +92,6 @@ export const TranscribeFile: React.FC = () => {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       } catch {
-        // Clipboard write failed silently
       }
     }
   }, [state]);

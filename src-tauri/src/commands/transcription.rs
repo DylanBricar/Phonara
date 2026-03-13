@@ -42,13 +42,8 @@ pub fn unload_model_manually(
         .map_err(|e| format!("Failed to unload model: {}", e))
 }
 
-/// Supported audio file extensions for file transcription.
 const SUPPORTED_EXTENSIONS: &[&str] = &["wav"];
 
-/// Transcribe an audio file from disk.
-///
-/// Currently supports WAV files. The audio is loaded, resampled to 16 kHz mono
-/// if necessary, and passed through the active transcription model.
 #[tauri::command]
 #[specta::specta]
 pub async fn transcribe_file(
@@ -58,12 +53,10 @@ pub async fn transcribe_file(
 ) -> Result<String, String> {
     let path = Path::new(&file_path);
 
-    // Validate file exists
     if !path.exists() {
         return Err(format!("File not found: {}", file_path));
     }
 
-    // Validate extension
     let extension = path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -78,11 +71,9 @@ pub async fn transcribe_file(
         ));
     }
 
-    // Emit progress: loading file
     let _ = app.emit("file-transcription-progress", "loading");
     info!("Loading audio file for transcription: {}", file_path);
 
-    // Load the audio file
     let samples = match extension.as_str() {
         "wav" => load_and_resample_wav(path)?,
         _ => return Err(format!("Unsupported format: .{}", extension)),
@@ -98,10 +89,8 @@ pub async fn transcribe_file(
         samples.len() as f64 / 16000.0
     );
 
-    // Emit progress: ensuring model is loaded
     let _ = app.emit("file-transcription-progress", "loading_model");
 
-    // Ensure the model is loaded
     if !transcription_manager.is_model_loaded() {
         let settings = get_settings(&app);
         transcription_manager
@@ -109,24 +98,20 @@ pub async fn transcribe_file(
             .map_err(|e| format!("Failed to load model: {}", e))?;
     }
 
-    // Emit progress: transcribing
     let _ = app.emit("file-transcription-progress", "transcribing");
 
-    // Run transcription (blocking operation, run on blocking thread)
     let tm = transcription_manager.inner().clone();
     let result = tokio::task::spawn_blocking(move || tm.transcribe(samples))
         .await
         .map_err(|e| format!("Transcription task failed: {}", e))?
         .map_err(|e| format!("Transcription failed: {}", e))?;
 
-    // Emit progress: done
     let _ = app.emit("file-transcription-progress", "done");
 
     info!("File transcription complete: {} chars", result.len());
     Ok(result)
 }
 
-/// Load a WAV file and resample to 16 kHz mono if needed.
 fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
     use hound::WavReader;
 
@@ -140,7 +125,6 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         sample_rate, channels, spec.bits_per_sample
     );
 
-    // Read samples as f32
     let raw_samples: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Int => {
             let max_val = (1i64 << (spec.bits_per_sample - 1)) as f32;
@@ -160,7 +144,6 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         return Ok(Vec::new());
     }
 
-    // Mix down to mono if multi-channel
     let mono_samples = if channels > 1 {
         raw_samples
             .chunks(channels)
@@ -170,7 +153,6 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         raw_samples
     };
 
-    // Resample to 16 kHz if needed
     let target_rate = 16000;
     if sample_rate == target_rate {
         return Ok(mono_samples);
@@ -196,7 +178,6 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         pos += chunk_size;
     }
 
-    // Handle remaining samples by zero-padding
     if pos < mono_samples.len() {
         let mut last_chunk = vec![0.0f32; chunk_size];
         let remaining = &mono_samples[pos..];
@@ -204,7 +185,6 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         let result = resampler
             .process(&[&last_chunk], None)
             .map_err(|e| format!("Resampling failed: {}", e))?;
-        // Only take the proportional amount of output samples
         let expected = (remaining.len() as f64 * target_rate as f64 / sample_rate as f64).ceil()
             as usize;
         let take = expected.min(result[0].len());

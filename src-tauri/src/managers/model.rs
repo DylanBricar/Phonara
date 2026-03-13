@@ -24,6 +24,7 @@ pub enum EngineType {
     MoonshineStreaming,
     SenseVoice,
     GeminiApi,
+    OpenAiApi,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -39,12 +40,12 @@ pub struct ModelInfo {
     pub partial_size: u64,
     pub is_directory: bool,
     pub engine_type: EngineType,
-    pub accuracy_score: f32,        // 0.0 to 1.0, higher is more accurate
-    pub speed_score: f32,           // 0.0 to 1.0, higher is faster
-    pub supports_translation: bool, // Whether the model supports translating to English
-    pub is_recommended: bool,       // Whether this is the recommended model for new users
-    pub supported_languages: Vec<String>, // Languages this model can transcribe
-    pub is_custom: bool,            // Whether this is a user-provided custom model
+    pub accuracy_score: f32,
+    pub speed_score: f32,
+    pub supports_translation: bool,
+    pub is_recommended: bool,
+    pub supported_languages: Vec<String>,
+    pub is_custom: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -65,7 +66,6 @@ pub struct ModelManager {
 
 impl ModelManager {
     pub fn new(app_handle: &AppHandle) -> Result<Self> {
-        // Create models directory in app data
         let models_dir = app_handle
             .path()
             .app_data_dir()
@@ -78,8 +78,6 @@ impl ModelManager {
 
         let mut available_models = HashMap::new();
 
-        // Whisper supported languages (99 languages from tokenizer)
-        // Including zh-Hans and zh-Hant variants to match frontend language codes
         let whisper_languages: Vec<String> = vec![
             "en", "zh", "zh-Hans", "zh-Hant", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl",
             "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi", "he", "uk", "el", "ms", "cs",
@@ -94,7 +92,6 @@ impl ModelManager {
         .map(String::from)
         .collect();
 
-        // TODO this should be read from a JSON file or something..
         available_models.insert(
             "small".to_string(),
             ModelInfo {
@@ -118,7 +115,6 @@ impl ModelManager {
             },
         );
 
-        // Add downloadable models
         available_models.insert(
             "medium".to_string(),
             ModelInfo {
@@ -127,7 +123,7 @@ impl ModelManager {
                 description: "Good accuracy, medium speed".to_string(),
                 filename: "whisper-medium-q4_1.bin".to_string(),
                 url: Some("https://blob.handy.computer/whisper-medium-q4_1.bin".to_string()),
-                size_mb: 492, // Approximate size
+                size_mb: 492,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -150,7 +146,7 @@ impl ModelManager {
                 description: "Balanced accuracy and speed.".to_string(),
                 filename: "ggml-large-v3-turbo.bin".to_string(),
                 url: Some("https://blob.handy.computer/ggml-large-v3-turbo.bin".to_string()),
-                size_mb: 1600, // Approximate size
+                size_mb: 1600,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -158,7 +154,7 @@ impl ModelManager {
                 engine_type: EngineType::Whisper,
                 accuracy_score: 0.80,
                 speed_score: 0.40,
-                supports_translation: false, // Turbo doesn't support translation
+                supports_translation: false,
                 is_recommended: true,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
@@ -173,7 +169,7 @@ impl ModelManager {
                 description: "Good accuracy, but slow.".to_string(),
                 filename: "ggml-large-v3-q5_0.bin".to_string(),
                 url: Some("https://blob.handy.computer/ggml-large-v3-q5_0.bin".to_string()),
-                size_mb: 1100, // Approximate size
+                size_mb: 1100,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -212,16 +208,86 @@ impl ModelManager {
             },
         );
 
-        // Add NVIDIA Parakeet models (directory-based)
+        let french_languages: Vec<String> = vec!["fr"].into_iter().map(String::from).collect();
+
+        available_models.insert(
+            "whisper-large-v3-fr".to_string(),
+            ModelInfo {
+                id: "whisper-large-v3-fr".to_string(),
+                name: "Whisper Large V3 French".to_string(),
+                description: "Best accuracy for French. Fine-tuned on 2500h+ French audio.".to_string(),
+                filename: "whisper-large-v3-fr-q5_0.bin".to_string(),
+                url: Some("https://huggingface.co/bofenghuang/whisper-large-v3-french/resolve/main/ggml-model-q5_0.bin".to_string()),
+                size_mb: 1080,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Whisper,
+                accuracy_score: 0.95,
+                speed_score: 0.30,
+                supports_translation: false,
+                is_recommended: false,
+                supported_languages: french_languages.clone(),
+                is_custom: false,
+            },
+        );
+
+        available_models.insert(
+            "whisper-large-v3-fr-distil".to_string(),
+            ModelInfo {
+                id: "whisper-large-v3-fr-distil".to_string(),
+                name: "Whisper French Distil".to_string(),
+                description: "Fast French model. 16 decoder layers, 1.9x faster than full.".to_string(),
+                filename: "whisper-large-v3-fr-distil-q5_0.bin".to_string(),
+                url: Some("https://huggingface.co/bofenghuang/whisper-large-v3-french-distil-dec16/resolve/main/ggml-model-q5_0.bin".to_string()),
+                size_mb: 791,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Whisper,
+                accuracy_score: 0.90,
+                speed_score: 0.50,
+                supports_translation: false,
+                is_recommended: false,
+                supported_languages: french_languages.clone(),
+                is_custom: false,
+            },
+        );
+
+        available_models.insert(
+            "whisper-distil-fr".to_string(),
+            ModelInfo {
+                id: "whisper-distil-fr".to_string(),
+                name: "Whisper French Lite".to_string(),
+                description: "Compact French model. 5.8x faster, half the size. Great accuracy.".to_string(),
+                filename: "whisper-distil-fr-q5_0.bin".to_string(),
+                url: Some("https://huggingface.co/bofenghuang/whisper-large-v3-distil-fr-v0.2/resolve/main/ggml-model-q5_0.bin".to_string()),
+                size_mb: 538,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::Whisper,
+                accuracy_score: 0.85,
+                speed_score: 0.70,
+                supports_translation: false,
+                is_recommended: false,
+                supported_languages: french_languages,
+                is_custom: false,
+            },
+        );
+
         available_models.insert(
             "parakeet-tdt-0.6b-v2".to_string(),
             ModelInfo {
                 id: "parakeet-tdt-0.6b-v2".to_string(),
                 name: "Parakeet V2".to_string(),
                 description: "English only. The best model for English speakers.".to_string(),
-                filename: "parakeet-tdt-0.6b-v2-int8".to_string(), // Directory name
+                filename: "parakeet-tdt-0.6b-v2-int8".to_string(),
                 url: Some("https://blob.handy.computer/parakeet-v2-int8.tar.gz".to_string()),
-                size_mb: 473, // Approximate size for int8 quantized model
+                size_mb: 473,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -236,8 +302,6 @@ impl ModelManager {
             },
         );
 
-        // Parakeet V3 supported languages (25 EU languages + Russian/Ukrainian):
-        // bg, hr, cs, da, nl, en, et, fi, fr, de, el, hu, it, lv, lt, mt, pl, pt, ro, sk, sl, es, sv, ru, uk
         let parakeet_v3_languages: Vec<String> = vec![
             "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv",
             "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
@@ -252,9 +316,9 @@ impl ModelManager {
                 id: "parakeet-tdt-0.6b-v3".to_string(),
                 name: "Parakeet V3".to_string(),
                 description: "Fast and accurate. Supports 25 European languages.".to_string(),
-                filename: "parakeet-tdt-0.6b-v3-int8".to_string(), // Directory name
+                filename: "parakeet-tdt-0.6b-v3-int8".to_string(),
                 url: Some("https://blob.handy.computer/parakeet-v3-int8.tar.gz".to_string()),
-                size_mb: 478, // Approximate size for int8 quantized model
+                size_mb: 478,
                 is_downloaded: false,
                 is_downloading: false,
                 partial_size: 0,
@@ -367,7 +431,6 @@ impl ModelManager {
             },
         );
 
-        // SenseVoice supported languages
         let sense_voice_languages: Vec<String> =
             vec!["zh", "zh-Hans", "zh-Hant", "en", "yue", "ja", "ko"]
                 .into_iter()
@@ -423,7 +486,31 @@ impl ModelManager {
             },
         );
 
-        // Auto-discover custom Whisper models (.bin files) in the models directory
+        available_models.insert(
+            "openai-api".to_string(),
+            ModelInfo {
+                id: "openai-api".to_string(),
+                name: "OpenAI API".to_string(),
+                description:
+                    "Cloud-based transcription via OpenAI (Whisper/GPT-4o). Requires API key and internet."
+                        .to_string(),
+                filename: "".to_string(),
+                url: None,
+                size_mb: 0,
+                is_downloaded: true,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: false,
+                engine_type: EngineType::OpenAiApi,
+                accuracy_score: 0.95,
+                speed_score: 0.8,
+                supports_translation: true,
+                is_recommended: false,
+                supported_languages: whisper_languages.clone(),
+                is_custom: false,
+            },
+        );
+
         if let Err(e) = Self::discover_custom_whisper_models(&models_dir, &mut available_models) {
             warn!("Failed to discover custom models: {}", e);
         }
@@ -436,16 +523,12 @@ impl ModelManager {
             extracting_models: Arc::new(Mutex::new(HashSet::new())),
         };
 
-        // Migrate any bundled models to user directory
         manager.migrate_bundled_models()?;
 
-        // Clean up stale .partial files from interrupted downloads
         manager.cleanup_stale_partial_files();
 
-        // Check which models are already downloaded
         manager.update_download_status()?;
 
-        // Auto-select a model if none is currently selected
         manager.auto_select_model_if_needed()?;
 
         Ok(manager)
@@ -462,8 +545,7 @@ impl ModelManager {
     }
 
     fn migrate_bundled_models(&self) -> Result<()> {
-        // Check for bundled models and copy them to user directory
-        let bundled_models = ["ggml-small.bin"]; // Add other bundled models here if any
+        let bundled_models = ["ggml-small.bin"];
 
         for filename in &bundled_models {
             let bundled_path = self.app_handle.path().resolve(
@@ -475,7 +557,6 @@ impl ModelManager {
                 if bundled_path.exists() {
                     let user_path = self.models_dir.join(filename);
 
-                    // Only copy if user doesn't already have the model
                     if !user_path.exists() {
                         info!("Migrating bundled model {} to user directory", filename);
                         fs::copy(&bundled_path, &user_path)?;
@@ -488,13 +569,8 @@ impl ModelManager {
         Ok(())
     }
 
-    /// Clean up stale `.partial` files from interrupted downloads.
-    ///
-    /// On app startup no downloads are active, so any `.partial` file that was
-    /// last modified more than 24 hours ago is considered stale and is removed.
-    /// This prevents old partial files from blocking retry attempts (Issue #858).
     fn cleanup_stale_partial_files(&self) {
-        let stale_threshold = Duration::from_secs(24 * 60 * 60); // 24 hours
+        let stale_threshold = Duration::from_secs(24 * 60 * 60);
 
         let entries = match fs::read_dir(&self.models_dir) {
             Ok(entries) => entries,
@@ -507,15 +583,11 @@ impl ModelManager {
         for entry in entries.flatten() {
             let path = entry.path();
 
-            // Only consider .partial files
             let name = match path.file_name().and_then(|n| n.to_str()) {
                 Some(n) if n.ends_with(".partial") => n.to_string(),
                 _ => continue,
             };
 
-            // At startup, no downloads are active. Check file age to decide
-            // whether to keep it (user might restart the app quickly and want
-            // to resume) or remove it (truly stale).
             let is_stale = match path.metadata().and_then(|m| m.modified()) {
                 Ok(modified) => {
                     SystemTime::now()
@@ -524,7 +596,6 @@ impl ModelManager {
                         > stale_threshold
                 }
                 Err(_) => {
-                    // Can't determine age; treat as stale to be safe
                     true
                 }
             };
@@ -550,19 +621,16 @@ impl ModelManager {
         let mut models = self.available_models.lock().unwrap();
 
         for model in models.values_mut() {
-            if matches!(model.engine_type, EngineType::GeminiApi) {
+            if matches!(model.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
                 continue;
             }
             if model.is_directory {
-                // For directory-based models, check if the directory exists
                 let model_path = self.models_dir.join(&model.filename);
                 let partial_path = self.models_dir.join(format!("{}.partial", &model.filename));
                 let extracting_path = self
                     .models_dir
                     .join(format!("{}.extracting", &model.filename));
 
-                // Clean up any leftover .extracting directories from interrupted extractions
-                // But only if this model is NOT currently being extracted
                 let is_currently_extracting = {
                     let extracting = self.extracting_models.lock().unwrap();
                     extracting.contains(&model.id)
@@ -575,21 +643,18 @@ impl ModelManager {
                 model.is_downloaded = model_path.exists() && model_path.is_dir();
                 model.is_downloading = false;
 
-                // Get partial file size if it exists (for the .tar.gz being downloaded)
                 if partial_path.exists() {
                     model.partial_size = partial_path.metadata().map(|m| m.len()).unwrap_or(0);
                 } else {
                     model.partial_size = 0;
                 }
             } else {
-                // For file-based models (existing logic)
                 let model_path = self.models_dir.join(&model.filename);
                 let partial_path = self.models_dir.join(format!("{}.partial", &model.filename));
 
                 model.is_downloaded = model_path.exists();
                 model.is_downloading = false;
 
-                // Get partial file size if it exists
                 if partial_path.exists() {
                     model.partial_size = partial_path.metadata().map(|m| m.len()).unwrap_or(0);
                 } else {
@@ -604,8 +669,6 @@ impl ModelManager {
     fn auto_select_model_if_needed(&self) -> Result<()> {
         let mut settings = get_settings(&self.app_handle);
 
-        // Clear stale selection: selected model is set but doesn't exist
-        // in available_models (e.g. deleted custom model file)
         if !settings.selected_model.is_empty() {
             let models = self.available_models.lock().unwrap();
             let exists = models.contains_key(&settings.selected_model);
@@ -621,19 +684,16 @@ impl ModelManager {
             }
         }
 
-        // If no model is selected, pick the first downloaded local model.
-        // Gemini is cloud-only and should not be auto-selected.
         if settings.selected_model.is_empty() {
             let models = self.available_models.lock().unwrap();
             if let Some(available_model) = models.values().find(|model| {
-                model.is_downloaded && !matches!(model.engine_type, EngineType::GeminiApi)
+                model.is_downloaded && !matches!(model.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi)
             }) {
                 info!(
                     "Auto-selecting model: {} ({})",
                     available_model.id, available_model.name
                 );
 
-                // Update settings with the selected model
                 let mut updated_settings = settings;
                 updated_settings.selected_model = available_model.id.clone();
                 write_settings(&self.app_handle, updated_settings);
@@ -645,8 +705,6 @@ impl ModelManager {
         Ok(())
     }
 
-    /// Discover custom Whisper models (.bin files) in the models directory.
-    /// Skips files that match predefined model filenames.
     fn discover_custom_whisper_models(
         models_dir: &Path,
         available_models: &mut HashMap<String, ModelInfo>,
@@ -655,14 +713,12 @@ impl ModelManager {
             return Ok(());
         }
 
-        // Collect filenames of predefined Whisper file-based models to skip
         let predefined_filenames: HashSet<String> = available_models
             .values()
             .filter(|m| matches!(m.engine_type, EngineType::Whisper) && !m.is_directory)
             .map(|m| m.filename.clone())
             .collect();
 
-        // Scan models directory for .bin files
         for entry in fs::read_dir(models_dir)? {
             let entry = match entry {
                 Ok(e) => e,
@@ -674,7 +730,6 @@ impl ModelManager {
 
             let path = entry.path();
 
-            // Only process .bin files (not directories)
             if !path.is_file() {
                 continue;
             }
@@ -684,32 +739,24 @@ impl ModelManager {
                 None => continue,
             };
 
-            // Skip hidden files
             if filename.starts_with('.') {
                 continue;
             }
 
-            // Only process .bin files (Whisper GGML format).
-            // This also excludes .partial downloads (e.g., "model.bin.partial").
-            // If we add discovery for other formats, add a .partial check before this filter.
             if !filename.ends_with(".bin") {
                 continue;
             }
 
-            // Skip predefined model files
             if predefined_filenames.contains(&filename) {
                 continue;
             }
 
-            // Generate model ID from filename (remove .bin extension)
             let model_id = filename.trim_end_matches(".bin").to_string();
 
-            // Skip if model ID already exists (shouldn't happen, but be safe)
             if available_models.contains_key(&model_id) {
                 continue;
             }
 
-            // Generate display name: replace - and _ with space, capitalize words
             let display_name = model_id
                 .replace(['-', '_'], " ")
                 .split_whitespace()
@@ -723,7 +770,6 @@ impl ModelManager {
                 .collect::<Vec<_>>()
                 .join(" ");
 
-            // Get file size in MB
             let size_mb = match path.metadata() {
                 Ok(meta) => meta.len() / (1024 * 1024),
                 Err(e) => {
@@ -744,14 +790,14 @@ impl ModelManager {
                     name: display_name,
                     description: "Not officially supported".to_string(),
                     filename,
-                    url: None, // Custom models have no download URL
+                    url: None,
                     size_mb,
-                    is_downloaded: true, // Already present on disk
+                    is_downloaded: true,
                     is_downloading: false,
                     partial_size: 0,
                     is_directory: false,
                     engine_type: EngineType::Whisper,
-                    accuracy_score: 0.0, // Sentinel: UI hides score bars when both are 0
+                    accuracy_score: 0.0,
                     speed_score: 0.0,
                     supports_translation: false,
                     is_recommended: false,
@@ -773,7 +819,7 @@ impl ModelManager {
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
-        if matches!(model_info.engine_type, EngineType::GeminiApi) {
+        if matches!(model_info.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
             return Ok(());
         }
 
@@ -785,16 +831,13 @@ impl ModelManager {
             .models_dir
             .join(format!("{}.partial", &model_info.filename));
 
-        // Don't download if complete version already exists and is valid
         if model_path.exists() {
             let is_valid = if model_info.is_directory {
-                // Directory-based model: check it's a non-empty directory
                 model_path.is_dir()
                     && fs::read_dir(&model_path)
                         .map(|mut d| d.next().is_some())
                         .unwrap_or(false)
             } else {
-                // File-based model: check it's not empty (corrupt download)
                 model_path
                     .metadata()
                     .map(|m| m.len() > 0)
@@ -802,14 +845,12 @@ impl ModelManager {
             };
 
             if is_valid {
-                // Clean up any partial file that might exist
                 if partial_path.exists() {
                     let _ = fs::remove_file(&partial_path);
                 }
                 self.update_download_status()?;
                 return Ok(());
             } else {
-                // Existing file/directory is corrupt (empty), remove and re-download
                 warn!(
                     "Model {} exists but appears corrupt, removing and re-downloading",
                     model_id
@@ -822,7 +863,6 @@ impl ModelManager {
             }
         }
 
-        // Check if we have a partial download to resume
         let mut resume_from = if partial_path.exists() {
             let size = partial_path.metadata()?.len();
             info!("Resuming download of model {} from byte {}", model_id, size);
@@ -832,7 +872,6 @@ impl ModelManager {
             0
         };
 
-        // Mark as downloading
         {
             let mut models = self.available_models.lock().unwrap();
             if let Some(model) = models.get_mut(model_id) {
@@ -840,14 +879,12 @@ impl ModelManager {
             }
         }
 
-        // Create cancellation flag for this download
         let cancel_flag = Arc::new(AtomicBool::new(false));
         {
             let mut flags = self.cancel_flags.lock().unwrap();
             flags.insert(model_id.to_string(), cancel_flag.clone());
         }
 
-        // Create HTTP client with range request for resuming
         let client = reqwest::Client::new();
         let mut request = client.get(&url);
 
@@ -857,9 +894,6 @@ impl ModelManager {
 
         let mut response = request.send().await?;
 
-        // If we tried to resume but server returned 200 (not 206 Partial Content),
-        // the server doesn't support range requests. Delete partial file and restart
-        // fresh to avoid file corruption (appending full file to partial).
         if resume_from > 0 && response.status() == reqwest::StatusCode::OK {
             warn!(
                 "Server doesn't support range requests for model {}, restarting download",
@@ -868,24 +902,17 @@ impl ModelManager {
             drop(response);
             let _ = fs::remove_file(&partial_path);
 
-            // Reset resume_from since we're starting fresh
             resume_from = 0;
 
-            // Restart download without range header
             response = client.get(&url).send().await?;
         }
 
-        // If the server returned 206 Partial Content, verify the Content-Range
-        // header is consistent with our partial file size. If the remote file
-        // changed (different total size), the partial data is invalid.
         if resume_from > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
             if let Some(content_range) = response
                 .headers()
                 .get(reqwest::header::CONTENT_RANGE)
                 .and_then(|v| v.to_str().ok())
             {
-                // Content-Range format: "bytes <start>-<end>/<total>"
-                // Verify the remaining content length is plausible
                 if let Some(total_str) = content_range.rsplit('/').next() {
                     if let Ok(server_total) = total_str.trim().parse::<u64>() {
                         let expected_remaining = server_total.saturating_sub(resume_from);
@@ -911,11 +938,9 @@ impl ModelManager {
             }
         }
 
-        // Check for success or partial content status
         if !response.status().is_success()
             && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
         {
-            // Mark as not downloading on error
             {
                 let mut models = self.available_models.lock().unwrap();
                 if let Some(model) = models.get_mut(model_id) {
@@ -929,7 +954,6 @@ impl ModelManager {
         }
 
         let total_size = if resume_from > 0 {
-            // For resumed downloads, add the resume point to content length
             resume_from + response.content_length().unwrap_or(0)
         } else {
             response.content_length().unwrap_or(0)
@@ -938,7 +962,6 @@ impl ModelManager {
         let mut downloaded = resume_from;
         let mut stream = response.bytes_stream();
 
-        // Open file for appending if resuming, or create new if starting fresh
         let mut file = if resume_from > 0 {
             std::fs::OpenOptions::new()
                 .create(true)
@@ -948,7 +971,6 @@ impl ModelManager {
             std::fs::File::create(&partial_path)?
         };
 
-        // Emit initial progress
         let initial_progress = DownloadProgress {
             model_id: model_id.to_string(),
             downloaded,
@@ -963,19 +985,14 @@ impl ModelManager {
             .app_handle
             .emit("model-download-progress", &initial_progress);
 
-        // Throttle progress events to max 10/sec (100ms intervals)
         let mut last_emit = Instant::now();
         let throttle_duration = Duration::from_millis(100);
 
-        // Download with progress
         while let Some(chunk) = stream.next().await {
-            // Check if download was cancelled
             if cancel_flag.load(Ordering::Relaxed) {
-                // Close the file before returning
                 drop(file);
                 info!("Download cancelled for: {}", model_id);
 
-                // Update state to mark as not downloading
                 {
                     let mut models = self.available_models.lock().unwrap();
                     if let Some(model) = models.get_mut(model_id) {
@@ -983,18 +1000,15 @@ impl ModelManager {
                     }
                 }
 
-                // Remove cancel flag
                 {
                     let mut flags = self.cancel_flags.lock().unwrap();
                     flags.remove(model_id);
                 }
 
-                // Keep partial file for resume functionality
                 return Ok(());
             }
 
             let chunk = chunk.map_err(|e| {
-                // Mark as not downloading on error
                 {
                     let mut models = self.available_models.lock().unwrap();
                     if let Some(model) = models.get_mut(model_id) {
@@ -1013,7 +1027,6 @@ impl ModelManager {
                 0.0
             };
 
-            // Emit progress event (throttled to avoid UI freeze)
             if last_emit.elapsed() >= throttle_duration {
                 let progress = DownloadProgress {
                     model_id: model_id.to_string(),
@@ -1026,7 +1039,6 @@ impl ModelManager {
             }
         }
 
-        // Emit final progress to ensure 100% is shown
         let final_progress = DownloadProgress {
             model_id: model_id.to_string(),
             downloaded,
@@ -1042,13 +1054,11 @@ impl ModelManager {
             .emit("model-download-progress", &final_progress);
 
         file.flush()?;
-        drop(file); // Ensure file is closed before moving
+        drop(file);
 
-        // Verify downloaded file size matches expected size
         if total_size > 0 {
             let actual_size = partial_path.metadata()?.len();
             if actual_size != total_size {
-                // Download is incomplete/corrupted - delete partial and return error
                 let _ = fs::remove_file(&partial_path);
                 {
                     let mut models = self.available_models.lock().unwrap();
@@ -1064,43 +1074,33 @@ impl ModelManager {
             }
         }
 
-        // Handle directory-based models (extract tar.gz) vs file-based models
         if model_info.is_directory {
-            // Track that this model is being extracted
             {
                 let mut extracting = self.extracting_models.lock().unwrap();
                 extracting.insert(model_id.to_string());
             }
 
-            // Emit extraction started event
             let _ = self.app_handle.emit("model-extraction-started", model_id);
             info!("Extracting archive for directory-based model: {}", model_id);
 
-            // Use a temporary extraction directory to ensure atomic operations
             let temp_extract_dir = self
                 .models_dir
                 .join(format!("{}.extracting", &model_info.filename));
             let final_model_dir = self.models_dir.join(&model_info.filename);
 
-            // Clean up any previous incomplete extraction
             if temp_extract_dir.exists() {
                 let _ = fs::remove_dir_all(&temp_extract_dir);
             }
 
-            // Create temporary extraction directory
             fs::create_dir_all(&temp_extract_dir)?;
 
-            // Open the downloaded tar.gz file
             let tar_gz = File::open(&partial_path)?;
             let tar = GzDecoder::new(tar_gz);
             let mut archive = Archive::new(tar);
 
-            // Extract to the temporary directory first
             archive.unpack(&temp_extract_dir).map_err(|e| {
                 let error_msg = format!("Failed to extract archive: {}", e);
-                // Clean up failed extraction
                 let _ = fs::remove_dir_all(&temp_extract_dir);
-                // Remove from extracting set
                 {
                     let mut extracting = self.extracting_models.lock().unwrap();
                     extracting.remove(model_id);
@@ -1115,23 +1115,19 @@ impl ModelManager {
                 anyhow::anyhow!(error_msg)
             })?;
 
-            // Find the actual extracted directory (archive might have a nested structure)
             let extracted_dirs: Vec<_> = fs::read_dir(&temp_extract_dir)?
                 .filter_map(|entry| entry.ok())
                 .filter(|entry| entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
                 .collect();
 
             if extracted_dirs.len() == 1 {
-                // Single directory extracted, move it to the final location
                 let source_dir = extracted_dirs[0].path();
                 if final_model_dir.exists() {
                     fs::remove_dir_all(&final_model_dir)?;
                 }
                 fs::rename(&source_dir, &final_model_dir)?;
-                // Clean up temp directory
                 let _ = fs::remove_dir_all(&temp_extract_dir);
             } else {
-                // Multiple items or no directories, rename the temp directory itself
                 if final_model_dir.exists() {
                     fs::remove_dir_all(&final_model_dir)?;
                 }
@@ -1139,22 +1135,17 @@ impl ModelManager {
             }
 
             info!("Successfully extracted archive for model: {}", model_id);
-            // Remove from extracting set
             {
                 let mut extracting = self.extracting_models.lock().unwrap();
                 extracting.remove(model_id);
             }
-            // Emit extraction completed event
             let _ = self.app_handle.emit("model-extraction-completed", model_id);
 
-            // Remove the downloaded tar.gz file
             let _ = fs::remove_file(&partial_path);
         } else {
-            // Move partial file to final location for file-based models
             fs::rename(&partial_path, &model_path)?;
         }
 
-        // Update download status
         {
             let mut models = self.available_models.lock().unwrap();
             if let Some(model) = models.get_mut(model_id) {
@@ -1164,13 +1155,11 @@ impl ModelManager {
             }
         }
 
-        // Remove cancel flag on successful completion
         {
             let mut flags = self.cancel_flags.lock().unwrap();
             flags.remove(model_id);
         }
 
-        // Emit completion event
         let _ = self.app_handle.emit("model-download-complete", model_id);
 
         info!(
@@ -1192,7 +1181,7 @@ impl ModelManager {
         let model_info =
             model_info.ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
-        if matches!(model_info.engine_type, EngineType::GeminiApi) {
+        if matches!(model_info.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
             return Err(anyhow::anyhow!("Cannot delete cloud model"));
         }
 
@@ -1208,7 +1197,6 @@ impl ModelManager {
         let mut deleted_something = false;
 
         if model_info.is_directory {
-            // Delete complete model directory if it exists
             if model_path.exists() && model_path.is_dir() {
                 info!("Deleting model directory at: {:?}", model_path);
                 fs::remove_dir_all(&model_path)?;
@@ -1216,7 +1204,6 @@ impl ModelManager {
                 deleted_something = true;
             }
         } else {
-            // Delete complete model file if it exists
             if model_path.exists() {
                 info!("Deleting model file at: {:?}", model_path);
                 fs::remove_file(&model_path)?;
@@ -1225,7 +1212,6 @@ impl ModelManager {
             }
         }
 
-        // Delete partial file if it exists (same for both types)
         if partial_path.exists() {
             info!("Deleting partial file at: {:?}", partial_path);
             fs::remove_file(&partial_path)?;
@@ -1237,19 +1223,15 @@ impl ModelManager {
             return Err(anyhow::anyhow!("No model files found to delete"));
         }
 
-        // Custom models should be removed from the list entirely since they
-        // have no download URL and can't be re-downloaded
         if model_info.is_custom {
             let mut models = self.available_models.lock().unwrap();
             models.remove(model_id);
             debug!("ModelManager: removed custom model from available models");
         } else {
-            // Update download status (marks predefined models as not downloaded)
             self.update_download_status()?;
             debug!("ModelManager: download status updated");
         }
 
-        // Emit event to notify UI
         let _ = self.app_handle.emit("model-deleted", model_id);
 
         Ok(())
@@ -1260,7 +1242,7 @@ impl ModelManager {
             .get_model_info(model_id)
             .ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
 
-        if matches!(model_info.engine_type, EngineType::GeminiApi) {
+        if matches!(model_info.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
             return Err(anyhow::anyhow!(
                 "Cloud model has no local path: {}",
                 model_id
@@ -1271,7 +1253,6 @@ impl ModelManager {
             return Err(anyhow::anyhow!("Model not available: {}", model_id));
         }
 
-        // Ensure we don't return partial files/directories
         if model_info.is_downloading {
             return Err(anyhow::anyhow!(
                 "Model is currently downloading: {}",
@@ -1285,7 +1266,6 @@ impl ModelManager {
             .join(format!("{}.partial", &model_info.filename));
 
         if model_info.is_directory {
-            // For directory-based models, ensure the directory exists and is complete
             if model_path.exists() && model_path.is_dir() && !partial_path.exists() {
                 Ok(model_path)
             } else {
@@ -1295,7 +1275,6 @@ impl ModelManager {
                 ))
             }
         } else {
-            // For file-based models (existing logic)
             if model_path.exists() && !partial_path.exists() {
                 Ok(model_path)
             } else {
@@ -1310,7 +1289,6 @@ impl ModelManager {
     pub fn cancel_download(&self, model_id: &str) -> Result<()> {
         debug!("ModelManager: cancel_download called for: {}", model_id);
 
-        // Set the cancellation flag to stop the download loop
         {
             let flags = self.cancel_flags.lock().unwrap();
             if let Some(flag) = flags.get(model_id) {
@@ -1321,7 +1299,6 @@ impl ModelManager {
             }
         }
 
-        // Update state immediately for UI responsiveness
         {
             let mut models = self.available_models.lock().unwrap();
             if let Some(model) = models.get_mut(model_id) {
@@ -1329,10 +1306,8 @@ impl ModelManager {
             }
         }
 
-        // Update download status to reflect current state
         self.update_download_status()?;
 
-        // Emit cancellation event so all UI components can clear their state
         let _ = self.app_handle.emit("model-download-cancelled", model_id);
 
         info!("Download cancellation initiated for: {}", model_id);
@@ -1351,20 +1326,17 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let models_dir = temp_dir.path().to_path_buf();
 
-        // Create test .bin files
         let mut custom_file = File::create(models_dir.join("my-custom-model.bin")).unwrap();
         custom_file.write_all(b"fake model data").unwrap();
 
         let mut another_file = File::create(models_dir.join("whisper_medical_v2.bin")).unwrap();
         another_file.write_all(b"another fake model").unwrap();
 
-        // Create files that should be ignored
-        File::create(models_dir.join(".hidden-model.bin")).unwrap(); // Hidden file
-        File::create(models_dir.join("readme.txt")).unwrap(); // Non-.bin file
-        File::create(models_dir.join("ggml-small.bin")).unwrap(); // Predefined filename
-        fs::create_dir(models_dir.join("some-directory.bin")).unwrap(); // Directory
+        File::create(models_dir.join(".hidden-model.bin")).unwrap();
+        File::create(models_dir.join("readme.txt")).unwrap();
+        File::create(models_dir.join("ggml-small.bin")).unwrap();
+        fs::create_dir(models_dir.join("some-directory.bin")).unwrap();
 
-        // Set up available_models with a predefined Whisper model
         let mut models = HashMap::new();
         models.insert(
             "small".to_string(),
@@ -1389,29 +1361,24 @@ mod tests {
             },
         );
 
-        // Discover custom models
         ModelManager::discover_custom_whisper_models(&models_dir, &mut models).unwrap();
 
-        // Should have discovered 2 custom models (my-custom-model and whisper_medical_v2)
         assert!(models.contains_key("my-custom-model"));
         assert!(models.contains_key("whisper_medical_v2"));
 
-        // Verify custom model properties
         let custom = models.get("my-custom-model").unwrap();
         assert_eq!(custom.name, "My Custom Model");
         assert_eq!(custom.filename, "my-custom-model.bin");
-        assert!(custom.url.is_none()); // Custom models have no URL
+        assert!(custom.url.is_none());
         assert!(custom.is_downloaded);
         assert!(custom.is_custom);
         assert_eq!(custom.accuracy_score, 0.0);
         assert_eq!(custom.speed_score, 0.0);
         assert!(custom.supported_languages.is_empty());
 
-        // Verify underscore handling
         let medical = models.get("whisper_medical_v2").unwrap();
         assert_eq!(medical.name, "Whisper Medical V2");
 
-        // Should NOT have discovered hidden, non-.bin, predefined, or directories
         assert!(!models.contains_key(".hidden-model"));
         assert!(!models.contains_key("readme"));
         assert!(!models.contains_key("some-directory"));
@@ -1427,7 +1394,6 @@ mod tests {
 
         ModelManager::discover_custom_whisper_models(&models_dir, &mut models).unwrap();
 
-        // No new models should be added
         assert_eq!(models.len(), count_before);
     }
 
@@ -1438,7 +1404,6 @@ mod tests {
         let mut models = HashMap::new();
         let count_before = models.len();
 
-        // Should not error, just return Ok
         let result = ModelManager::discover_custom_whisper_models(&models_dir, &mut models);
         assert!(result.is_ok());
         assert_eq!(models.len(), count_before);

@@ -44,24 +44,25 @@ enum LoadedEngine {
     MoonshineStreaming(MoonshineStreamingEngine),
     SenseVoice(SenseVoiceEngine),
     GeminiApi,
+    OpenAiApi,
 }
 
-/// Maximum chunk duration in seconds. Whisper's context window is 30s;
-/// we use 25s to leave headroom and avoid hallucinations at the boundary.
 const MAX_CHUNK_SECS: f32 = 25.0;
-/// Minimum audio duration (seconds) before we bother chunking.
-/// Short recordings are sent as-is.
 const CHUNK_THRESHOLD_SECS: f32 = 28.0;
-/// Overlap added when a hard split (no silence found) is needed, to
-/// avoid cutting a word in half. 0.5s at 16kHz = 8000 samples.
 const OVERLAP_SAMPLES: usize = 8000;
+const TARGET_RMS: f32 = 0.05;
+const MIN_RMS_FOR_NORMALIZATION: f32 = 0.02;
 
-/// Split long audio into chunks at silence boundaries.
-///
-/// Uses simple energy-based silence detection (no model needed) to find
-/// good split points. Each chunk is at most `MAX_CHUNK_SECS` long.
-/// If no true silence is found, it splits at the quietest frame and adds
-/// a small overlap so the boundary word appears in both chunks.
+fn normalize_audio(samples: Vec<f32>) -> Vec<f32> {
+    let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+    if rms >= MIN_RMS_FOR_NORMALIZATION || rms < 1e-6 {
+        return samples;
+    }
+    let gain = TARGET_RMS / rms;
+    debug!("Normalizing audio: rms={:.4} -> {:.4} (gain={:.1}x)", rms, TARGET_RMS, gain);
+    samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
+}
+
 fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
     let sample_rate = WHISPER_SAMPLE_RATE as usize;
     let max_chunk_samples = (MAX_CHUNK_SECS * sample_rate as f32) as usize;
@@ -76,9 +77,8 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
         duration_secs, MAX_CHUNK_SECS
     );
 
-    // Energy-based silence detection parameters
-    let frame_size = sample_rate / 20; // 50ms frames
-    let silence_threshold = 0.005_f32; // RMS energy threshold for silence
+    let frame_size = sample_rate / 20;
+    let silence_threshold = 0.005_f32;
 
     let mut chunks: Vec<Vec<f32>> = Vec::new();
     let mut chunk_start = 0;
@@ -86,17 +86,15 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
     while chunk_start < audio.len() {
         let chunk_end = (chunk_start + max_chunk_samples).min(audio.len());
 
-        // If this is the last piece, just include it
         if chunk_end == audio.len() {
             chunks.push(audio[chunk_start..chunk_end].to_vec());
             break;
         }
 
-        // Search for the best silence point in the last 30% of the chunk
         let search_start = chunk_start + (max_chunk_samples * 70 / 100);
         let search_end = chunk_end;
 
-        let mut best_split = chunk_end; // fallback: hard split at max
+        let mut best_split = chunk_end;
         let mut lowest_energy = f32::MAX;
         let mut found_silence = false;
 
@@ -107,10 +105,9 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
 
             if rms < lowest_energy {
                 lowest_energy = rms;
-                best_split = pos + frame_size / 2; // split at middle of quiet frame
+                best_split = pos + frame_size / 2;
             }
 
-            // If we find true silence, use it immediately
             if rms < silence_threshold {
                 best_split = pos + frame_size / 2;
                 found_silence = true;
@@ -123,11 +120,8 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
         chunks.push(audio[chunk_start..best_split].to_vec());
 
         if found_silence {
-            // Clean split at a silent point — no overlap needed
             chunk_start = best_split;
         } else {
-            // No real silence found — rewind by OVERLAP_SAMPLES so the
-            // boundary word appears in both chunks (avoids cut words)
             chunk_start = if best_split > OVERLAP_SAMPLES {
                 best_split - OVERLAP_SAMPLES
             } else {
@@ -149,9 +143,6 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
     chunks
 }
 
-/// Simple heuristic language detection from transcription text.
-/// Used to lock language across chunks when the user has "auto" selected.
-/// Returns an ISO 639-1 code (e.g. "fr", "de", "es") or None if uncertain.
 fn detect_language_from_text(text: &str) -> Option<String> {
     let lower = text.to_lowercase();
     let words: Vec<&str> = lower.split_whitespace().collect();
@@ -159,8 +150,6 @@ fn detect_language_from_text(text: &str) -> Option<String> {
         return None;
     }
 
-    // Common function words (articles, prepositions, conjunctions) per language.
-    // These are extremely frequent and unlikely to appear in other languages.
     let lang_markers: &[(&str, &[&str])] = &[
         ("fr", &["le", "la", "les", "de", "du", "des", "un", "une", "est", "et", "que", "qui", "dans", "pour", "avec", "pas", "sur", "ce", "sont", "nous", "vous", "ils", "elle", "mais", "ou", "donc", "c'est", "j'ai", "il", "je", "tu", "on"]),
         ("de", &["der", "die", "das", "ein", "eine", "ist", "und", "ich", "nicht", "sie", "auf", "mit", "den", "von", "dem", "dass", "wir", "aber", "auch", "noch", "wie"]),
@@ -182,7 +171,6 @@ fn detect_language_from_text(text: &str) -> Option<String> {
         }
     }
 
-    // Require at least 15% of words to be markers to be confident
     if best_count * 100 / total >= 15 {
         best_lang.map(|l| l.to_string())
     } else {
@@ -222,14 +210,11 @@ impl TranscriptionManager {
             loading_condvar: Arc::new(Condvar::new()),
         };
 
-        // Start the idle watcher using tokio instead of a dedicated OS thread
         {
             let app_handle_cloned = app_handle.clone();
             let manager_cloned = manager.clone();
             let shutdown_signal = manager.shutdown_signal.clone();
             let handle = thread::spawn(move || {
-                // Cache the timeout setting to avoid re-reading settings every 10s.
-                // Re-read only every 6th iteration (every ~60s) to pick up changes.
                 let mut cached_timeout: Option<u64> = None;
                 let mut cached_is_immediate = false;
                 let mut iteration: u32 = 0;
@@ -241,7 +226,6 @@ impl TranscriptionManager {
                         break;
                     }
 
-                    // Refresh cached settings periodically (every ~60s) instead of every poll
                     if iteration % 6 == 0 {
                         let settings = get_settings(&app_handle_cloned);
                         cached_timeout = settings.model_unload_timeout.to_seconds();
@@ -294,7 +278,6 @@ impl TranscriptionManager {
         Ok(manager)
     }
 
-    /// Lock the engine mutex, recovering from poison if a previous transcription panicked.
     fn lock_engine(&self) -> MutexGuard<'_, Option<LoadedEngine>> {
         self.engine.lock().unwrap_or_else(|poisoned| {
             warn!("Engine mutex was poisoned by a previous panic, recovering");
@@ -321,16 +304,16 @@ impl TranscriptionManager {
                     LoadedEngine::MoonshineStreaming(ref mut e) => e.unload_model(),
                     LoadedEngine::SenseVoice(ref mut e) => e.unload_model(),
                     LoadedEngine::GeminiApi => {}
+                    LoadedEngine::OpenAiApi => {}
                 }
             }
-            *engine = None; // Drop the engine to free memory
+            *engine = None;
         }
         {
             let mut current_model = self.current_model_id.lock().unwrap();
             *current_model = None;
         }
 
-        // Emit unloaded event
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {
@@ -349,7 +332,6 @@ impl TranscriptionManager {
         Ok(())
     }
 
-    /// Unloads the model immediately if the setting is enabled and the model is loaded
     pub fn maybe_unload_immediately(&self, context: &str) {
         let settings = get_settings(&self.app_handle);
         if settings.model_unload_timeout == ModelUnloadTimeout::Immediately
@@ -366,7 +348,6 @@ impl TranscriptionManager {
         let load_start = std::time::Instant::now();
         debug!("Starting to load model: {}", model_id);
 
-        // Emit loading started event
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {
@@ -396,17 +377,21 @@ impl TranscriptionManager {
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        let model_path = if matches!(model_info.engine_type, EngineType::GeminiApi) {
+        let model_path = if matches!(model_info.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
             std::path::PathBuf::new()
         } else {
             self.model_manager.get_model_path(model_id)?
         };
 
-        // Create appropriate engine based on model type
         let loaded_engine = match model_info.engine_type {
             EngineType::Whisper => {
                 let mut engine = WhisperEngine::new();
-                engine.load_model(&model_path).map_err(|e| {
+                let settings = get_settings(&self.app_handle);
+                let whisper_params = transcribe_rs::engines::whisper::WhisperModelParams {
+                    use_gpu: settings.whisper_use_gpu,
+                    ..Default::default()
+                };
+                engine.load_model_with_params(&model_path, whisper_params).map_err(|e| {
                     let error_msg = format!("Failed to load whisper model {}: {}", model_id, e);
                     let _ = self.app_handle.emit(
                         "model-state-changed",
@@ -528,9 +513,30 @@ impl TranscriptionManager {
                 }
                 LoadedEngine::GeminiApi
             }
+            EngineType::OpenAiApi => {
+                let settings = get_settings(&self.app_handle);
+                if settings.openai_api_key.is_none()
+                    || settings
+                        .openai_api_key
+                        .as_ref()
+                        .map_or(true, |k| k.is_empty())
+                {
+                    let error_msg = "OpenAI API key not configured";
+                    let _ = self.app_handle.emit(
+                        "model-state-changed",
+                        ModelStateEvent {
+                            event_type: "loading_failed".to_string(),
+                            model_id: Some(model_id.to_string()),
+                            model_name: Some(model_info.name.clone()),
+                            error: Some(error_msg.to_string()),
+                        },
+                    );
+                    return Err(anyhow::anyhow!(error_msg));
+                }
+                LoadedEngine::OpenAiApi
+            }
         };
 
-        // Update the current engine and model ID
         {
             let mut engine = self.lock_engine();
             *engine = Some(loaded_engine);
@@ -540,7 +546,6 @@ impl TranscriptionManager {
             *current_model = Some(model_id.to_string());
         }
 
-        // Emit loading completed event
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {
@@ -560,7 +565,6 @@ impl TranscriptionManager {
         Ok(())
     }
 
-    /// Kicks off the model loading in a background thread if it's not already loaded
     pub fn initiate_model_load(&self) {
         let mut is_loading = self.is_loading.lock().unwrap();
         if *is_loading || self.is_model_loaded() {
@@ -593,7 +597,6 @@ impl TranscriptionManager {
     }
 
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
-        // Update last activity timestamp
         self.last_activity.store(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -612,8 +615,8 @@ impl TranscriptionManager {
             return Ok(String::new());
         }
 
-        // For long audio, split into chunks and transcribe each separately
-        // to avoid Whisper hallucinations beyond its 30s context window.
+        let audio = normalize_audio(audio);
+
         let chunks = chunk_audio_by_silence(&audio);
         if chunks.len() > 1 {
             info!(
@@ -629,18 +632,11 @@ impl TranscriptionManager {
                 debug!("Transcribing chunk {}/{} ({:.1}s)", i + 1, total_chunks, chunk_duration);
                 match self.transcribe_single(chunk, forced_language.clone()) {
                     Ok(text) if !text.is_empty() => {
-                        // Per-chunk hallucination filter: if the chunk produced only
-                        // punctuation / non-alphabetic noise (e.g. "!" or "..."),
-                        // discard it rather than accumulating garbage.
                         use crate::audio_toolkit::text::filter_transcription_output;
                         let filtered = filter_transcription_output(&text);
                         if filtered.is_empty() {
                             debug!("Chunk {} discarded as hallucinated noise: {:?}", i + 1, text);
                         } else {
-                        // After the first chunk (longest, most reliable for language
-                        // detection), detect language from the text and force it for
-                        // subsequent chunks to prevent Whisper auto-detection errors
-                        // on shorter segments.
                         if i == 0 && forced_language.is_none() {
                             let settings = get_settings(&self.app_handle);
                             if settings.selected_language == "auto"
@@ -670,19 +666,13 @@ impl TranscriptionManager {
             return Ok(final_result);
         }
 
-        // Single chunk — transcribe directly
         self.transcribe_single(audio, None)
     }
 
-    /// Transcribe a single audio segment (must be short enough for the engine's context window).
-    /// If `language_override` is `Some`, it takes precedence over the user's setting
-    /// (used to force a consistent language across chunks).
     fn transcribe_single(&self, audio: Vec<f32>, language_override: Option<String>) -> Result<String> {
         let st = std::time::Instant::now();
 
-        // Check if model is loaded, if not try to load it
         {
-            // If the model is loading, wait for it to complete.
             let mut is_loading = self.is_loading.lock().unwrap();
             while *is_loading {
                 is_loading = self.loading_condvar.wait(is_loading).unwrap();
@@ -694,23 +684,19 @@ impl TranscriptionManager {
             }
         }
 
-        // Get current settings for configuration
         let mut settings = get_settings(&self.app_handle);
 
-        // Resolve "os-input" to actual language from the OS keyboard layout
         if settings.selected_language == "os-input" {
             settings.selected_language = crate::commands::get_language_from_os_input()
                 .unwrap_or_else(|| "auto".to_string());
             debug!("Resolved OS input language to: {}", settings.selected_language);
         }
 
-        // Apply language override (from chunked transcription's first-chunk detection)
         if let Some(ref lang) = language_override {
             debug!("Using language override: {}", lang);
             settings.selected_language = lang.clone();
         }
 
-        // Handle Gemini API separately (requires async HTTP call)
         {
             let engine_guard = self.lock_engine();
             if let Some(LoadedEngine::GeminiApi) = engine_guard.as_ref() {
@@ -722,9 +708,6 @@ impl TranscriptionManager {
                     .clone();
                 let gemini_model = settings.gemini_model.clone();
 
-                // Use block_in_place to safely run async code from a tokio worker thread.
-                // Handle::block_on() panics if called directly from an async context,
-                // so block_in_place tells tokio to move its work off this thread first.
                 let result = tokio::task::block_in_place(|| {
                     tokio::runtime::Handle::current().block_on(
                         crate::gemini_client::transcribe_audio(&api_key, &gemini_model, &audio),
@@ -754,15 +737,59 @@ impl TranscriptionManager {
             }
         }
 
-        // Perform transcription with the appropriate engine.
-        // We use catch_unwind to prevent engine panics from poisoning the mutex,
-        // which would make the app hang indefinitely on subsequent operations.
+        {
+            let engine_guard = self.lock_engine();
+            if let Some(LoadedEngine::OpenAiApi) = engine_guard.as_ref() {
+                drop(engine_guard);
+                let api_key = settings
+                    .openai_api_key
+                    .as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("OpenAI API key not configured"))?
+                    .clone();
+                let openai_model = settings.openai_model.clone();
+                let language = if settings.selected_language == "auto" {
+                    None
+                } else {
+                    Some(settings.selected_language.clone())
+                };
+
+                let result = tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(
+                        crate::openai_client::transcribe_audio(
+                            &api_key,
+                            &openai_model,
+                            &audio,
+                            language.as_deref(),
+                        ),
+                    )
+                })?;
+
+                let corrected = if !settings.custom_words.is_empty() {
+                    apply_custom_words(
+                        &result,
+                        &settings.custom_words,
+                        settings.word_correction_threshold,
+                    )
+                } else {
+                    result
+                };
+                let replaced = apply_text_replacements(&corrected, &settings.text_replacements);
+                let final_result = filter_transcription_output(&replaced);
+
+                let et = std::time::Instant::now();
+                info!(
+                    "OpenAI transcription completed in {}ms",
+                    (et - st).as_millis()
+                );
+
+                self.maybe_unload_immediately("openai transcription");
+                return Ok(final_result);
+            }
+        }
+
         let result = {
             let mut engine_guard = self.lock_engine();
 
-            // Take the engine out so we own it during transcription.
-            // If the engine panics, we simply don't put it back (effectively unloading it)
-            // instead of poisoning the mutex.
             let mut engine = match engine_guard.take() {
                 Some(e) => e,
                 None => {
@@ -772,14 +799,16 @@ impl TranscriptionManager {
                 }
             };
 
-            // Release the lock before transcribing — no mutex held during the engine call
             drop(engine_guard);
+
+            let current_model_id = self.get_current_model();
+            let model_manager = &self.model_manager;
 
             let transcribe_result = catch_unwind(AssertUnwindSafe(
                 || -> Result<transcribe_rs::TranscriptionResult> {
                     match &mut engine {
                         LoadedEngine::Whisper(whisper_engine) => {
-                            let whisper_language = if settings.selected_language == "auto" {
+                            let mut whisper_language = if settings.selected_language == "auto" {
                                 None
                             } else {
                                 let normalized = if settings.selected_language == "zh-Hans"
@@ -791,6 +820,16 @@ impl TranscriptionManager {
                                 };
                                 Some(normalized)
                             };
+
+                            if whisper_language.is_none() {
+                                if let Some(model_id) = current_model_id.as_ref() {
+                                    if let Some(info) = model_manager.get_model_info(model_id) {
+                                        if info.supported_languages.len() == 1 {
+                                            whisper_language = Some(info.supported_languages[0].clone());
+                                        }
+                                    }
+                                }
+                            }
 
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
@@ -844,20 +883,20 @@ impl TranscriptionManager {
                         LoadedEngine::GeminiApi => {
                             unreachable!("GeminiApi handled before catch_unwind")
                         }
+                        LoadedEngine::OpenAiApi => {
+                            unreachable!("OpenAiApi handled before catch_unwind")
+                        }
                     }
                 },
             ));
 
             match transcribe_result {
                 Ok(inner_result) => {
-                    // Success or normal error — put the engine back
                     let mut engine_guard = self.lock_engine();
                     *engine_guard = Some(engine);
                     inner_result?
                 }
                 Err(panic_payload) => {
-                    // Engine panicked — do NOT put it back (it's in an unknown state).
-                    // The engine is dropped here, effectively unloading it.
                     let panic_msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
                         s.to_string()
                     } else if let Some(s) = panic_payload.downcast_ref::<String>() {
@@ -870,7 +909,6 @@ impl TranscriptionManager {
                         panic_msg
                     );
 
-                    // Clear the model ID so it will be reloaded on next attempt
                     {
                         let mut current_model = self
                             .current_model_id
@@ -897,7 +935,6 @@ impl TranscriptionManager {
             }
         };
 
-        // Apply word correction if custom words are configured
         let corrected_result = if !settings.custom_words.is_empty() {
             apply_custom_words(
                 &result.text,
@@ -908,10 +945,8 @@ impl TranscriptionManager {
             result.text
         };
 
-        // Apply explicit text replacement rules
         let replaced_result = apply_text_replacements(&corrected_result, &settings.text_replacements);
 
-        // Filter out filler words and hallucinations
         let filtered_result = filter_transcription_output(&replaced_result);
 
         let et = std::time::Instant::now();
@@ -940,9 +975,6 @@ impl TranscriptionManager {
     }
 }
 
-/// Run a post-transcription hook script if it exists.
-/// Looks for `hooks/transcription` (or `.exe`/`.bat`/`.cmd` on Windows)
-/// in the app data directory and runs it, passing the transcription text via stdin.
 pub fn run_transcription_hook(app_handle: &AppHandle, text: &str) {
     use tauri::Manager;
 
@@ -953,7 +985,6 @@ pub fn run_transcription_hook(app_handle: &AppHandle, text: &str) {
 
     let hook_path = data_dir.join("hooks").join("transcription");
 
-    // On Windows, also check for .exe, .bat, .cmd
     #[cfg(target_os = "windows")]
     let hook_path = {
         if hook_path.exists() {
@@ -1010,10 +1041,8 @@ impl Drop for TranscriptionManager {
     fn drop(&mut self) {
         debug!("Shutting down TranscriptionManager");
 
-        // Signal the watcher thread to shutdown
         self.shutdown_signal.store(true, Ordering::Relaxed);
 
-        // Wait for the thread to finish gracefully
         if let Some(handle) = self.watcher_handle.lock().unwrap().take() {
             if let Err(e) = handle.join() {
                 warn!("Failed to join idle watcher thread: {:?}", e);

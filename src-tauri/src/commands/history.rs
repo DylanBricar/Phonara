@@ -1,3 +1,4 @@
+use base64::Engine;
 use crate::managers::history::{HistoryEntry, HistoryManager};
 use crate::managers::transcription::TranscriptionManager;
 use std::sync::Arc;
@@ -36,9 +37,11 @@ pub async fn get_audio_file_path(
     file_name: String,
 ) -> Result<String, String> {
     let path = history_manager.get_audio_file_path(&file_name);
-    path.to_str()
-        .ok_or_else(|| "Invalid file path".to_string())
-        .map(|s| s.to_string())
+    if !path.exists() {
+        return Err("Audio file not found".to_string());
+    }
+    let bytes = std::fs::read(&path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&bytes))
 }
 
 #[tauri::command]

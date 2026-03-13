@@ -90,7 +90,6 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter" && filteredLanguages.length > 0) {
-      // Select first filtered language on Enter
       handleLanguageSelect(filteredLanguages[0].value);
     } else if (event.key === "Escape") {
       setIsOpen(false);
@@ -137,7 +136,6 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
           {isOpen && !isUpdating("selected_language") && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-mid-gray/80 rounded shadow-lg z-50 max-h-60 overflow-hidden">
-              {/* Search input */}
               <div className="p-2 border-b border-mid-gray/80">
                 <input
                   ref={searchInputRef}

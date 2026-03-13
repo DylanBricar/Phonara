@@ -49,16 +49,10 @@ export const RecordingsDirectory: React.FC<RecordingsDirectoryProps> =
           if (result.status === "ok") {
             await refreshSettings();
             setShowRestart(true);
-          } else {
-            console.error(
-              "Failed to set recordings directory:",
-              result.error,
-            );
           }
           setIsUpdating(false);
         }
-      } catch (error) {
-        console.error("Failed to open folder picker:", error);
+      } catch {
         setIsUpdating(false);
       }
     };
@@ -70,14 +64,8 @@ export const RecordingsDirectory: React.FC<RecordingsDirectoryProps> =
         if (result.status === "ok") {
           await refreshSettings();
           setShowRestart(true);
-        } else {
-          console.error(
-            "Failed to clear recordings directory:",
-            result.error,
-          );
         }
-      } catch (error) {
-        console.error("Failed to reset recordings directory:", error);
+      } catch {
       }
       setIsUpdating(false);
     };

@@ -38,7 +38,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   const [modelStatus, setModelStatus] = useState<ModelStatus>("unloaded");
   const [modelError, setModelError] = useState<string | null>(null);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
-  // Track pending model switch for optimistic display
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
 
   const { getSetting } = useSettings();
@@ -46,7 +45,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
 
   const displayModelId = pendingModelId || currentModel;
 
-  // Check model status when currentModel changes
   useEffect(() => {
     const checkStatus = async () => {
       if (currentModel) {
@@ -69,7 +67,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   }, [currentModel]);
 
   useEffect(() => {
-    // Listen for model loading lifecycle events
     const modelStateUnlisten = listen<ModelStateEvent>(
       "model-state-changed",
       (event) => {
@@ -97,7 +94,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
       },
     );
 
-    // Auto-select model when download completes (fires after extraction too)
     const downloadCompleteUnlisten = listen<string>(
       "model-download-complete",
       (event) => {
@@ -115,13 +111,11 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
               }
             }
           } catch {
-            // Ignore errors in auto-select
           }
         }, 500);
       },
     );
 
-    // Click outside to close dropdown
     const handleClickOutside = (event: MouseEvent) => {
       if (
         dropdownRef.current &&
@@ -143,6 +137,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   const handleModelSelect = async (modelId: string) => {
     if (modelId === "gemini-api") {
       const apiKey = getSetting("gemini_api_key") as string | undefined;
+      if (!apiKey || apiKey.length === 0) {
+        setShowModelDropdown(false);
+        return;
+      }
+    }
+    if (modelId === "openai-api") {
+      const apiKey = getSetting("openai_api_key") as string | undefined;
       if (!apiKey || apiKey.length === 0) {
         setShowModelDropdown(false);
         return;
@@ -227,7 +228,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
     }
   };
 
-  // Derive display status from model status + store state
   const getDisplayStatus = (): ModelStatus => {
     if (Object.keys(extractingModels).length > 0) return "extracting";
     if (Object.keys(downloadProgress).length > 0) return "downloading";
@@ -236,7 +236,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
 
   return (
     <>
-      {/* Model Status and Switcher */}
       <div className="relative" ref={dropdownRef}>
         <ModelStatusButton
           status={getDisplayStatus()}
@@ -245,7 +244,6 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
           onClick={() => setShowModelDropdown(!showModelDropdown)}
         />
 
-        {/* Model Dropdown */}
         {showModelDropdown && (
           <ModelDropdown
             models={models}
@@ -254,11 +252,13 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
             hasGeminiKey={
               !!(getSetting("gemini_api_key") as string | undefined)
             }
+            hasOpenaiKey={
+              !!(getSetting("openai_api_key") as string | undefined)
+            }
           />
         )}
       </div>
 
-      {/* Download Progress Bar for Models */}
       <DownloadProgressDisplay
         downloadProgress={downloadProgress}
         downloadStats={downloadStats}

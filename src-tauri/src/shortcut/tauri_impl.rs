@@ -1,9 +1,4 @@
-//! Tauri global-shortcut implementation
-//!
-//! This module provides shortcut functionality using Tauri's built-in
-//! global-shortcut plugin.
-
-use log::{error, warn};
+use log::error;
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -13,17 +8,14 @@ use crate::settings::get_settings;
 
 use super::handler::handle_shortcut_event;
 
-/// Initialize shortcuts using Tauri's global-shortcut plugin
 pub fn init_shortcuts(app: &AppHandle) {
     let default_bindings = settings::get_default_settings().bindings;
     let user_settings = settings::load_or_create_app_settings(app);
 
-    // Register all default shortcuts, applying user customizations
     for (id, default_binding) in default_bindings {
         if id == "cancel" {
-            continue; // Skip cancel shortcut, it will be registered dynamically
+            continue;
         }
-        // Skip post-processing shortcut when the feature is disabled
         if id == "transcribe_with_post_process" && !user_settings.post_process_enabled {
             continue;
         }
@@ -43,8 +35,6 @@ pub fn init_shortcuts(app: &AppHandle) {
     }
 }
 
-/// Validate a shortcut string for the Tauri global-shortcut implementation.
-/// Tauri requires at least one non-modifier key and doesn't support the fn key.
 pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     if raw.trim().is_empty() {
         return Err("Shortcut cannot be empty".into());
@@ -55,7 +45,6 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
         "windows",
     ];
 
-    // Check for fn key which Tauri doesn't support
     let parts: Vec<String> = raw.split('+').map(|p| p.trim().to_lowercase()).collect();
     for part in &parts {
         if part == "fn" || part == "function" {
@@ -63,7 +52,6 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
         }
     }
 
-    // Check for at least one non-modifier key
     let has_non_modifier = parts.iter().any(|part| !modifiers.contains(&part.as_str()));
 
     if has_non_modifier {
@@ -73,18 +61,11 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     }
 }
 
-/// Register a shortcut using Tauri's global-shortcut plugin
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
-    // Validate for Tauri requirements
     if let Err(e) = validate_shortcut(&binding.current_binding) {
-        warn!(
-            "register_tauri_shortcut validation error for binding '{}': {}",
-            binding.current_binding, e
-        );
         return Err(e);
     }
 
-    // Parse shortcut and return error if it fails
     let shortcut = match binding.current_binding.parse::<Shortcut>() {
         Ok(s) => s,
         Err(e) => {
@@ -97,13 +78,10 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
         }
     };
 
-    // Prevent duplicate registrations that would silently shadow one another
     if app.global_shortcut().is_registered(shortcut) {
-        // Unregister first to allow re-registration (e.g. after settings change)
         let _ = app.global_shortcut().unregister(shortcut);
     }
 
-    // Clone binding.id for use in the closure
     let binding_id_for_closure = binding.id.clone();
 
     app.global_shortcut()
@@ -131,7 +109,6 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
     Ok(())
 }
 
-/// Unregister a shortcut from Tauri's global-shortcut plugin
 pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let shortcut = match binding.current_binding.parse::<Shortcut>() {
         Ok(s) => s,
@@ -157,9 +134,7 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
     Ok(())
 }
 
-/// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
-    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
     #[cfg(target_os = "linux")]
     {
         let _ = app;
@@ -179,9 +154,7 @@ pub fn register_cancel_shortcut(app: &AppHandle) {
     }
 }
 
-/// Unregister the cancel shortcut (called when recording stops)
 pub fn unregister_cancel_shortcut(app: &AppHandle) {
-    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
     #[cfg(target_os = "linux")]
     {
         let _ = app;
@@ -193,14 +166,12 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
         let app_clone = app.clone();
         tauri::async_runtime::spawn(async move {
             if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                // We ignore errors here as it might already be unregistered
                 let _ = unregister_shortcut(&app_clone, cancel_binding);
             }
         });
     }
 }
 
-/// Register an action shortcut (ctrl+digit, called when recording starts)
 pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     #[cfg(target_os = "linux")]
     {
@@ -219,7 +190,6 @@ pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     }
 }
 
-/// Unregister an action shortcut (called when recording stops)
 pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     #[cfg(target_os = "linux")]
     {
