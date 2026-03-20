@@ -37,6 +37,7 @@ pub struct ModelStateEvent {
     pub error: Option<String>,
 }
 
+#[allow(dead_code)]
 enum LoadedEngine {
     Whisper(WhisperEngine),
     Parakeet(ParakeetEngine),

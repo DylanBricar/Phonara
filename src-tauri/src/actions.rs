@@ -669,6 +669,15 @@ impl ShortcutAction for TranscribeAction {
                     }
                     Err(err) => {
                         error!("Transcription failed: {}", err);
+                        if let Some(id) = entry_id {
+                            let hm_clone = Arc::clone(&hm);
+                            let error_text = format!("[Transcription failed: {}]", err);
+                            tauri::async_runtime::spawn(async move {
+                                let _ = hm_clone.update_transcription_result(
+                                    id, error_text, None, None, None, None,
+                                );
+                            });
+                        }
                         utils::hide_recording_overlay(&ah);
                         change_tray_icon(&ah, TrayIconState::Idle);
                     }

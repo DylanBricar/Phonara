@@ -25,6 +25,7 @@ mod transcription_coordinator;
 mod tray;
 mod tray_i18n;
 mod utils;
+#[allow(dead_code)]
 mod wake_word;
 
 pub use cli::CliArgs;
@@ -514,7 +515,8 @@ pub fn run(cli_args: CliArgs) {
             let settings = get_settings(&app_handle);
             if settings.api_server_enabled {
                 let tm = app.state::<Arc<TranscriptionManager>>().inner().clone();
-                api_server::start_api_server(tm, settings.api_server_port);
+                let token = settings.api_server_token.clone().unwrap_or_default();
+                api_server::start_api_server(tm, settings.api_server_port, token);
             }
 
             if cli_args.no_tray {

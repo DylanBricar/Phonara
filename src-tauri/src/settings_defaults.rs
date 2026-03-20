@@ -500,6 +500,7 @@ pub fn get_default_settings() -> AppSettings {
         extra_recording_buffer_ms: default_extra_recording_buffer_ms(),
         api_server_enabled: default_api_server_enabled(),
         api_server_port: default_api_server_port(),
+        api_server_token: None,
         wake_word_enabled: false,
         wake_word_sensitivity: default_wake_word_sensitivity(),
         wake_word_model: None,

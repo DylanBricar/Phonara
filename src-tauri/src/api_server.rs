@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Multipart, State},
-    http::StatusCode,
+    extract::{DefaultBodyLimit, Multipart, State},
+    http::{HeaderMap, StatusCode},
     response::Json,
     routing::post,
     Router,
@@ -8,9 +8,10 @@ use axum::{
 use log::{error, info};
 use serde::Serialize;
 use std::sync::Arc;
-use tower_http::cors::CorsLayer;
 
 use crate::managers::transcription::TranscriptionManager;
+
+const MAX_UPLOAD_SIZE: usize = 100 * 1024 * 1024; // 100 MB
 
 #[derive(Serialize)]
 struct TranscriptionResponse {
@@ -30,14 +31,39 @@ struct ErrorDetail {
 
 struct ApiState {
     transcription_manager: Arc<TranscriptionManager>,
+    api_token: String,
+}
+
+fn make_error(status: StatusCode, message: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        status,
+        Json(ErrorResponse {
+            error: ErrorDetail {
+                message: message.to_string(),
+                r#type: "invalid_request_error".to_string(),
+            },
+        }),
+    )
 }
 
 async fn transcribe_audio(
     State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<TranscriptionResponse>, (StatusCode, Json<ErrorResponse>)> {
+    if !state.api_token.is_empty() {
+        let auth = headers
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let expected = format!("Bearer {}", state.api_token);
+        if auth != expected {
+            return Err(make_error(StatusCode::UNAUTHORIZED, "Invalid or missing API token"));
+        }
+    }
+
     let mut audio_data: Option<Vec<u8>> = None;
-    let mut _language: Option<String> = None;
+    let mut language: Option<String> = None;
 
     while let Ok(Some(field)) = multipart.next_field().await {
         let name = field.name().unwrap_or("").to_string();
@@ -46,40 +72,22 @@ async fn transcribe_audio(
                 audio_data = field.bytes().await.ok().map(|b| b.to_vec());
             }
             "language" => {
-                _language = field.text().await.ok();
+                language = field.text().await.ok();
             }
             _ => {}
         }
     }
 
     let audio_bytes = audio_data.ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: ErrorDetail {
-                    message: "No audio file provided".to_string(),
-                    r#type: "invalid_request_error".to_string(),
-                },
-            }),
-        )
+        make_error(StatusCode::BAD_REQUEST, "No audio file provided")
     })?;
 
     let samples = match load_audio_from_bytes(&audio_bytes) {
         Ok(s) => s,
-        Err(e) => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: ErrorDetail {
-                        message: format!("Failed to decode audio: {}", e),
-                        r#type: "invalid_request_error".to_string(),
-                    },
-                }),
-            ));
-        }
+        Err(e) => return Err(make_error(StatusCode::BAD_REQUEST, &format!("Failed to decode audio: {}", e))),
     };
 
-    match state.transcription_manager.transcribe(samples, None) {
+    match state.transcription_manager.transcribe(samples, language) {
         Ok(text) => Ok(Json(TranscriptionResponse { text })),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -130,9 +138,11 @@ fn load_audio_from_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
 pub fn start_api_server(
     transcription_manager: Arc<TranscriptionManager>,
     port: u16,
+    api_token: String,
 ) {
     let state = Arc::new(ApiState {
         transcription_manager,
+        api_token: api_token.clone(),
     });
 
     std::thread::spawn(move || {
@@ -144,7 +154,7 @@ pub fn start_api_server(
         rt.block_on(async {
             let app = Router::new()
                 .route("/v1/audio/transcriptions", post(transcribe_audio))
-                .layer(CorsLayer::permissive())
+                .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE))
                 .with_state(state);
 
             let addr = format!("127.0.0.1:{}", port);

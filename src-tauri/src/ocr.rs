@@ -4,8 +4,8 @@ const MAX_OCR_TEXT_CHARS: usize = 8000;
 
 pub fn fetch_ocr_text() -> String {
     let text = platform_ocr();
-    if text.len() > MAX_OCR_TEXT_CHARS {
-        text[..MAX_OCR_TEXT_CHARS].to_string()
+    if text.chars().count() > MAX_OCR_TEXT_CHARS {
+        text.chars().take(MAX_OCR_TEXT_CHARS).collect()
     } else {
         text
     }

@@ -1,5 +1,6 @@
 pub mod handler;
 pub mod handy_keys;
+#[allow(dead_code)]
 pub mod gnome_shortcuts;
 mod tauri_impl;
 

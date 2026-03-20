@@ -64,18 +64,26 @@ pub fn unregister_gnome_shortcut() -> Result<(), String> {
 }
 
 fn run_gsettings(action: &str, schema: &str, key: &str, value: &str) -> Result<(), String> {
-    Command::new("gsettings")
+    let output = Command::new("gsettings")
         .args([action, schema, key, value])
         .output()
-        .map_err(|e| format!("gsettings {} failed: {}", action, e))?;
+        .map_err(|e| format!("gsettings {} failed to spawn: {}", action, e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gsettings {} {}.{} failed: {}", action, schema, key, stderr.trim()));
+    }
     Ok(())
 }
 
 fn run_gsettings_with_path(action: &str, schema: &str, path: &str, key: &str, value: &str) -> Result<(), String> {
-    Command::new("gsettings")
+    let output = Command::new("gsettings")
         .args([action, &format!("{}:{}", schema, path), key, value])
         .output()
-        .map_err(|e| format!("gsettings {} failed: {}", action, e))?;
+        .map_err(|e| format!("gsettings {} failed to spawn: {}", action, e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("gsettings {} {}:{}.{} failed: {}", action, schema, path, key, stderr.trim()));
+    }
     Ok(())
 }
 

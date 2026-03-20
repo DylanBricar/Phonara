@@ -487,6 +487,8 @@ pub struct AppSettings {
     #[serde(default = "default_api_server_port")]
     pub api_server_port: u16,
     #[serde(default)]
+    pub api_server_token: Option<String>,
+    #[serde(default)]
     pub wake_word_enabled: bool,
     #[serde(default = "default_wake_word_sensitivity")]
     pub wake_word_sensitivity: f32,

@@ -263,9 +263,11 @@ impl AudioRecordingManager {
 
         match list_input_devices() {
             Ok(devices) => {
-                for prioritized in &settings.prioritized_microphones {
-                    if let Some(device) = devices.iter().find(|d| &d.name == prioritized) {
-                        return Some(device.device.clone());
+                if !use_clamshell_mic && !settings.prioritized_microphones.is_empty() {
+                    for prioritized in &settings.prioritized_microphones {
+                        if let Some(device) = devices.iter().find(|d| &d.name == prioritized) {
+                            return Some(device.device.clone());
+                        }
                     }
                 }
                 devices
