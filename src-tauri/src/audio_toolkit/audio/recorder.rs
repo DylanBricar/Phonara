@@ -311,7 +311,9 @@ impl AudioRecorder {
                             _ => 1,
                         };
 
-                        if score(config_range.sample_format()) > score(current.sample_format()) {
+                        let new_score = score(config_range.sample_format());
+                        let cur_score = score(current.sample_format());
+                        if new_score > cur_score || (new_score == cur_score && config_range.channels() < current.channels()) {
                             best_config = Some(config_range);
                         }
                     }

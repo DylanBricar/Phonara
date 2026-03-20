@@ -287,6 +287,19 @@ impl AudioRecordingManager {
                         let stdout = String::from_utf8_lossy(&output.stdout);
                         if stdout.trim() == "muted" {
                             *did_mute_guard = true;
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                                if let Ok(verify) = Command::new("osascript")
+                                    .arg("-e")
+                                    .arg("return (output muted of (get volume settings)) as text")
+                                    .output()
+                                {
+                                    let mute_state = String::from_utf8_lossy(&verify.stdout);
+                                    if mute_state.trim() != "true" {
+                                        log::warn!("Mute verification failed: output device may not support software muting (USB audio interface limitation)");
+                                    }
+                                }
+                            });
                         }
                     }
                     Err(_) => {}

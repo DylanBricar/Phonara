@@ -9,7 +9,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
-const DEBOUNCE: Duration = Duration::from_millis(30);
+const DEBOUNCE: Duration = Duration::from_millis(150);
 
 enum Command {
     Input {

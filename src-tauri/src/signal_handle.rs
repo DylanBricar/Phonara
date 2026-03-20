@@ -24,7 +24,13 @@ pub fn setup_signal_handler(app_handle: AppHandle, mut signals: Signals) {
                 SIGUSR2 => ("transcribe", "SIGUSR2"),
                 _ => continue,
             };
-            send_transcription_input(&app_handle, binding_id, signal_name);
+            let app = app_handle.clone();
+            let binding_id_copy = binding_id.to_string();
+            let signal_name_copy = signal_name.to_string();
+            let app_inner = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                send_transcription_input(&app_inner, &binding_id_copy, &signal_name_copy);
+            });
         }
     });
 }

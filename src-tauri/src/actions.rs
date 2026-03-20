@@ -99,11 +99,16 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         return None;
     }
 
-    let api_key = settings
+    let mut api_key = settings
         .post_process_api_keys
         .get(&provider.id)
         .cloned()
         .unwrap_or_default();
+
+    if api_key.is_empty() {
+        api_key = std::env::var(format!("{}_API_KEY", provider.id.to_uppercase().replace("-", "_")))
+            .unwrap_or_default();
+    }
 
     if provider.supports_structured_output {
         let system_prompt = build_system_prompt(&prompt, &settings.selected_language);
@@ -293,11 +298,16 @@ async fn process_action(
         return None;
     }
 
-    let api_key = settings
+    let mut api_key = settings
         .post_process_api_keys
         .get(&provider.id)
         .cloned()
         .unwrap_or_default();
+
+    if api_key.is_empty() {
+        api_key = std::env::var(format!("{}_API_KEY", provider.id.to_uppercase().replace("-", "_")))
+            .unwrap_or_default();
+    }
 
     let system_prompt = "You are a text processing assistant. Output ONLY the final processed text. Do not add any explanation, commentary, preamble, or formatting such as markdown code blocks. Just output the raw result text, nothing else.".to_string();
 
