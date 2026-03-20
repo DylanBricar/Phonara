@@ -17,7 +17,7 @@ use log::error;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 use tauri::Manager;
 
 pub struct ActiveActionState(pub Mutex<Option<u8>>);
@@ -370,6 +370,7 @@ impl ShortcutAction for TranscribeAction {
         let is_always_on = settings.always_on_microphone;
 
         let mut recording_started = false;
+        let mut recording_error: Option<String> = None;
         if is_always_on {
             let rm_clone = Arc::clone(&rm);
             let app_clone = app.clone();
@@ -378,18 +379,29 @@ impl ShortcutAction for TranscribeAction {
                 rm_clone.apply_mute();
             });
 
-            recording_started = rm.try_start_recording(&binding_id);
-        } else {
-            if rm.try_start_recording(&binding_id) {
-                recording_started = true;
-                let app_clone = app.clone();
-                let rm_clone = Arc::clone(&rm);
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(100));
-                    play_feedback_sound_blocking(&app_clone, SoundType::Start);
-                    rm_clone.apply_mute();
-                });
+            match rm.try_start_recording(&binding_id) {
+                Ok(()) => recording_started = true,
+                Err(e) => recording_error = Some(e),
             }
+        } else {
+            match rm.try_start_recording(&binding_id) {
+                Ok(()) => {
+                    recording_started = true;
+                    let app_clone = app.clone();
+                    let rm_clone = Arc::clone(&rm);
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                        play_feedback_sound_blocking(&app_clone, SoundType::Start);
+                        rm_clone.apply_mute();
+                    });
+                }
+                Err(e) => recording_error = Some(e),
+            }
+        }
+
+        if let Some(err) = recording_error {
+            error!("Recording failed to start: {}", err);
+            let _ = app.emit("recording-error", err);
         }
 
         if recording_started {
