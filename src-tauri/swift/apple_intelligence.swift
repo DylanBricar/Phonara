@@ -2,12 +2,6 @@ import Dispatch
 import Foundation
 import FoundationModels
 
-@available(macOS 26.0, *)
-@Generable
-private struct CleanedTranscript: Sendable {
-    let cleanedText: String
-}
-
 // MARK: - Swift implementation for Apple LLM integration
 // This file is compiled via Cargo build script for Apple Silicon targets
 
@@ -93,18 +87,8 @@ public func processTextWithSystemPrompt(
                 model: model,
                 instructions: swiftSystemPrompt
             )
-            var output: String
-
-            do {
-                let structured = try await session.respond(
-                    to: swiftUserContent,
-                    generating: CleanedTranscript.self
-                )
-                output = structured.content.cleanedText
-            } catch {
-                let fallbackGeneration = try await session.respond(to: swiftUserContent)
-                output = fallbackGeneration.content
-            }
+            let generation = try await session.respond(to: swiftUserContent)
+            var output = generation.content
 
             if tokenLimit > 0 {
                 output = truncatedText(output, limit: tokenLimit)

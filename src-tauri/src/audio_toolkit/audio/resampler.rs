@@ -74,6 +74,7 @@ impl FrameResampler {
                     self.emit_frames(&out[0], &mut emit);
                 }
             }
+            self.in_buf.clear();
         }
 
         if !self.pending.is_empty() {

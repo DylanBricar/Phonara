@@ -166,7 +166,13 @@ impl AudioRecorder {
         if let Some(tx) = &self.cmd_tx {
             tx.send(Cmd::Stop(resp_tx))?;
         }
-        Ok(resp_rx.recv()?)
+        match resp_rx.recv_timeout(Duration::from_secs(10)) {
+            Ok(samples) => Ok(samples),
+            Err(_) => {
+                log::error!("Timed out waiting for audio samples from recorder");
+                Ok(Vec::new())
+            }
+        }
     }
 
     pub fn close(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -294,17 +300,17 @@ fn run_consumer(
         vad: &Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
         out_buf: &mut Vec<f32>,
     ) {
-        if !recording {
-            return;
-        }
-
         if let Some(vad_arc) = vad {
             let mut det = vad_arc.lock().unwrap();
             match det.push_frame(samples).unwrap_or(VadFrame::Speech(samples)) {
-                VadFrame::Speech(buf) => out_buf.extend_from_slice(buf),
+                VadFrame::Speech(buf) => {
+                    if recording {
+                        out_buf.extend_from_slice(buf);
+                    }
+                }
                 VadFrame::Noise => {}
             }
-        } else {
+        } else if recording {
             out_buf.extend_from_slice(samples);
         }
     }
@@ -335,10 +341,9 @@ fn run_consumer(
                 Cmd::Start => {
                     processed_samples.clear();
                     recording = true;
-                    frame_resampler.reset();
                     visualizer.reset();
                     if let Some(v) = &vad {
-                        v.lock().unwrap().reset();
+                        v.lock().unwrap().soft_reset();
                     }
                 }
                 Cmd::Stop(reply_tx) => {

@@ -363,8 +363,6 @@ impl ShortcutAction for TranscribeAction {
         tm.initiate_model_load();
 
         let binding_id = binding_id.to_string();
-        change_tray_icon(app, TrayIconState::Recording);
-        show_recording_overlay(app);
 
         let rm = app.state::<Arc<AudioRecordingManager>>();
 
@@ -395,6 +393,8 @@ impl ShortcutAction for TranscribeAction {
         }
 
         if recording_started {
+            change_tray_icon(app, TrayIconState::Recording);
+            show_recording_overlay(app);
             crate::shortcut::handler::reset_cancel_suppression();
             shortcut::register_cancel_shortcut(app);
             shortcut::register_pause_shortcut(app);

@@ -20,6 +20,10 @@ pub trait VoiceActivityDetector: Send + Sync {
     }
 
     fn reset(&mut self) {}
+
+    fn soft_reset(&mut self) {
+        self.reset();
+    }
 }
 
 mod silero;

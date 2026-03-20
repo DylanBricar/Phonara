@@ -320,10 +320,6 @@ async changeWhisperUseGpuSetting(enabled: boolean) : Promise<Result<null, string
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Temporarily unregister a binding while the user is editing it in the UI.
- * This avoids firing the action while keys are being recorded.
- */
 async suspendBinding(id: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("suspend_binding", { id }) };
@@ -332,9 +328,6 @@ async suspendBinding(id: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Re-register the binding after the user has finished editing.
- */
 async resumeBinding(id: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("resume_binding", { id }) };
@@ -383,12 +376,6 @@ async changeUpdateChecksSetting(enabled: boolean) : Promise<Result<null, string>
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Change the keyboard implementation with runtime switching.
- * This will unregister all shortcuts from the old implementation,
- * validate shortcuts for the new implementation (resetting invalid ones to defaults),
- * and register them with the new implementation.
- */
 async changeKeyboardImplementationSetting(implementation: string) : Promise<Result<ImplementationChangeResult, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("change_keyboard_implementation_setting", { implementation }) };
@@ -397,9 +384,6 @@ async changeKeyboardImplementationSetting(implementation: string) : Promise<Resu
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Get the current keyboard implementation
- */
 async getKeyboardImplementation() : Promise<string> {
     return await TAURI_INVOKE("get_keyboard_implementation");
 },
@@ -494,9 +478,6 @@ async changeAccentColorSetting(color: string) : Promise<Result<null, string>> {
 async getSystemAccentColor() : Promise<string | null> {
     return await TAURI_INVOKE("get_system_accent_color");
 },
-/**
- * Start key recording mode
- */
 async startHandyKeysRecording(bindingId: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("start_handy_keys_recording", { bindingId }) };
@@ -505,9 +486,6 @@ async startHandyKeysRecording(bindingId: string) : Promise<Result<null, string>>
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Stop key recording mode
- */
 async stopHandyKeysRecording() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("stop_handy_keys_recording") };
@@ -642,24 +620,12 @@ async importSettings(path: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Get the language code from the current OS keyboard input method.
- * Returns a language code (e.g., "en", "fr", "de") or None if detection fails.
- */
 async getLanguageFromOsInput() : Promise<string | null> {
     return await TAURI_INVOKE("get_language_from_os_input");
 },
-/**
- * Check if Apple Intelligence is available on this device.
- * Called by the frontend when the user selects Apple Intelligence provider.
- */
 async checkAppleIntelligenceAvailable() : Promise<boolean> {
     return await TAURI_INVOKE("check_apple_intelligence_available");
 },
-/**
- * Try to initialize Enigo (keyboard/mouse simulation).
- * On macOS, this will return an error if accessibility permissions are not granted.
- */
 async initializeEnigo() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("initialize_enigo") };
@@ -668,11 +634,6 @@ async initializeEnigo() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Initialize keyboard shortcuts.
- * On macOS, this should be called after accessibility permissions are granted.
- * This is idempotent - calling it multiple times is safe.
- */
 async initializeShortcuts() : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("initialize_shortcuts") };
@@ -904,12 +865,6 @@ async unloadModelManually() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Transcribe an audio file from disk.
- * 
- * Currently supports WAV files. The audio is loaded, resampled to 16 kHz mono
- * if necessary, and passed through the active transcription model.
- */
 async transcribeFile(filePath: string) : Promise<Result<string, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("transcribe_file", { filePath }) };
@@ -1006,10 +961,6 @@ async changeOpenaiModelSetting(model: string) : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
-/**
- * Stub implementation for non-macOS platforms
- * Always returns false since laptop detection is macOS-specific
- */
 async isLaptop() : Promise<Result<boolean, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("is_laptop") };
@@ -1039,14 +990,7 @@ export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
 export type CustomSounds = { start: boolean; stop: boolean }
 export type EngineType = "Whisper" | "Parakeet" | "Moonshine" | "MoonshineStreaming" | "SenseVoice" | "GeminiApi" | "OpenAiApi"
 export type HistoryEntry = { id: number; file_name: string; timestamp: number; saved: boolean; title: string; transcription_text: string; post_processed_text: string | null; post_process_prompt: string | null; post_process_action_key: number | null; model_name: string | null }
-/**
- * Result of changing keyboard implementation
- */
-export type ImplementationChangeResult = { success: boolean; 
-/**
- * List of binding IDs that were reset to defaults due to incompatibility
- */
-reset_bindings: string[] }
+export type ImplementationChangeResult = { success: boolean; reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
 export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"

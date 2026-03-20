@@ -127,12 +127,13 @@ fn preserve_case_pattern(original: &str, replacement: &str) -> String {
 }
 
 fn extract_punctuation(word: &str) -> (&str, &str) {
-    let prefix_end = word.chars().take_while(|c| !c.is_alphanumeric()).count();
+    let prefix_end = word.chars().take_while(|c| !c.is_alphanumeric()).map(|c| c.len_utf8()).sum::<usize>();
     let suffix_start = word
-        .char_indices()
+        .chars()
         .rev()
-        .take_while(|(_, c)| !c.is_alphanumeric())
-        .count();
+        .take_while(|c| !c.is_alphanumeric())
+        .map(|c| c.len_utf8())
+        .sum::<usize>();
 
     let prefix = if prefix_end > 0 {
         &word[..prefix_end]
@@ -150,7 +151,7 @@ fn extract_punctuation(word: &str) -> (&str, &str) {
 }
 
 const FILLER_WORDS: &[&str] = &[
-    "uh", "um", "uhm", "umm", "uhh", "uhhh", "ah", "eh", "hmm", "hm", "mmm", "mm", "mh", "ha",
+    "uh", "um", "uhm", "umm", "uhh", "uhhh", "hmm", "hm", "mmm", "mm", "mh",
     "ehh",
 ];
 
@@ -283,7 +284,7 @@ fn collapse_spaced_repeated_punctuation(text: &str) -> String {
 
 fn is_punctuation_only(text: &str) -> bool {
     let trimmed = text.trim();
-    !trimmed.is_empty() && !trimmed.chars().any(|c| c.is_alphabetic())
+    !trimmed.is_empty() && !trimmed.chars().any(|c| c.is_alphanumeric())
 }
 
 pub fn filter_transcription_output(text: &str) -> String {

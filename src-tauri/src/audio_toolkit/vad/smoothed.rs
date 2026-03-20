@@ -93,4 +93,11 @@ impl VoiceActivityDetector for SmoothedVad {
         self.in_speech = false;
         self.temp_out.clear();
     }
+
+    fn soft_reset(&mut self) {
+        self.hangover_counter = 0;
+        self.onset_counter = 0;
+        self.in_speech = false;
+        self.temp_out.clear();
+    }
 }

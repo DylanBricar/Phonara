@@ -55,7 +55,10 @@ const MIN_RMS_FOR_NORMALIZATION: f32 = 0.02;
 
 fn normalize_audio(samples: Vec<f32>) -> Vec<f32> {
     let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
-    if rms >= MIN_RMS_FOR_NORMALIZATION || rms < 1e-6 {
+    if rms < 1e-6 {
+        return Vec::new();
+    }
+    if rms >= MIN_RMS_FOR_NORMALIZATION {
         return samples;
     }
     let gain = TARGET_RMS / rms;
@@ -119,8 +122,13 @@ fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
 
         chunks.push(audio[chunk_start..best_split].to_vec());
 
+        let silence_overlap = OVERLAP_SAMPLES / 4;
         if found_silence {
-            chunk_start = best_split;
+            chunk_start = if best_split > silence_overlap {
+                best_split - silence_overlap
+            } else {
+                best_split
+            };
         } else {
             chunk_start = if best_split > OVERLAP_SAMPLES {
                 best_split - OVERLAP_SAMPLES
@@ -656,6 +664,14 @@ impl TranscriptionManager {
                 }
             }
             let final_result = all_results.join(" ");
+            let settings = get_settings(&self.app_handle);
+            let final_result = if !settings.custom_words.is_empty() {
+                apply_custom_words(&final_result, &settings.custom_words, settings.word_correction_threshold)
+            } else {
+                final_result
+            };
+            let final_result = apply_text_replacements(&final_result, &settings.text_replacements);
+            let final_result = filter_transcription_output(&final_result);
             info!(
                 "Chunked transcription completed in {}ms: {} chunks, {} chars",
                 st.elapsed().as_millis(),
