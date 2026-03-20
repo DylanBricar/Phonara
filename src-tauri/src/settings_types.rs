@@ -462,6 +462,8 @@ pub struct AppSettings {
     pub theme_mode: ThemeMode,
     #[serde(default)]
     pub accent_color: AccentColor,
+    #[serde(default = "default_extra_recording_buffer_ms")]
+    pub extra_recording_buffer_ms: u64,
 }
 
 impl AppSettings {

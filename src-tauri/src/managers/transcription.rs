@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, SystemTime};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use transcribe_rs::{
     engines::{
         moonshine::{
@@ -254,6 +254,20 @@ impl TranscriptionManager {
                             .as_millis() as u64;
 
                         if now_ms.saturating_sub(last) > limit_seconds * 1000 {
+                            let is_recording = app_handle_cloned
+                                .try_state::<Arc<crate::managers::audio::AudioRecordingManager>>()
+                                .map_or(false, |a: tauri::State<'_, Arc<crate::managers::audio::AudioRecordingManager>>| a.is_recording());
+                            if is_recording {
+                                manager_cloned.last_activity.store(
+                                    SystemTime::now()
+                                        .duration_since(SystemTime::UNIX_EPOCH)
+                                        .unwrap()
+                                        .as_millis() as u64,
+                                    std::sync::atomic::Ordering::Relaxed,
+                                );
+                                continue;
+                            }
+
                             if manager_cloned.is_model_loaded() {
                                 let unload_start = std::time::Instant::now();
                                 debug!("Starting to unload model due to inactivity");
@@ -850,7 +864,22 @@ impl TranscriptionManager {
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
                                 translate: settings.translate_to_english,
-                                initial_prompt: settings.whisper_initial_prompt.clone(),
+                                initial_prompt: {
+                                    let mut prompt_parts = Vec::new();
+                                    if let Some(ref p) = settings.whisper_initial_prompt {
+                                        if !p.trim().is_empty() {
+                                            prompt_parts.push(p.clone());
+                                        }
+                                    }
+                                    if !settings.custom_words.is_empty() {
+                                        prompt_parts.push(settings.custom_words.join(", "));
+                                    }
+                                    if prompt_parts.is_empty() {
+                                        None
+                                    } else {
+                                        Some(prompt_parts.join(". "))
+                                    }
+                                },
                                 ..Default::default()
                             };
 

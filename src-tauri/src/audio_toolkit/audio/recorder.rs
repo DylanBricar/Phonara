@@ -234,12 +234,22 @@ impl AudioRecorder {
     fn get_preferred_config(
         device: &cpal::Device,
     ) -> Result<cpal::SupportedStreamConfig, Box<dyn std::error::Error>> {
-        let supported_configs = device.supported_input_configs()?;
+        let default_config = device.default_input_config()?;
+        let target_rate = default_config.sample_rate();
+
+        let supported_configs = match device.supported_input_configs() {
+            Ok(configs) => configs,
+            Err(e) => {
+                log::warn!("Could not enumerate input configs ({e}), using device default");
+                return Ok(default_config);
+            }
+        };
+
         let mut best_config: Option<cpal::SupportedStreamConfigRange> = None;
 
         for config_range in supported_configs {
-            if config_range.min_sample_rate().0 <= constants::WHISPER_SAMPLE_RATE
-                && config_range.max_sample_rate().0 >= constants::WHISPER_SAMPLE_RATE
+            if config_range.min_sample_rate() <= target_rate
+                && config_range.max_sample_rate() >= target_rate
             {
                 match best_config {
                     None => best_config = Some(config_range),
@@ -260,10 +270,10 @@ impl AudioRecorder {
         }
 
         if let Some(config) = best_config {
-            return Ok(config.with_sample_rate(cpal::SampleRate(constants::WHISPER_SAMPLE_RATE)));
+            return Ok(config.with_sample_rate(target_rate));
         }
 
-        Ok(device.default_input_config()?)
+        Ok(default_config)
     }
 }
 

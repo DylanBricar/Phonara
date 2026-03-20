@@ -467,6 +467,11 @@ impl AudioRecordingManager {
                 *state = RecordingState::Idle;
                 drop(state);
 
+                let settings = get_settings(&self.app_handle);
+                if settings.extra_recording_buffer_ms > 0 {
+                    std::thread::sleep(Duration::from_millis(settings.extra_recording_buffer_ms));
+                }
+
                 let samples = if let Some(rec) = self.recorder.lock().unwrap().as_ref() {
                     match rec.stop() {
                         Ok(buf) => buf,

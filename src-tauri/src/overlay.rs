@@ -178,7 +178,16 @@ fn get_monitor_with_cursor(app_handle: &AppHandle) -> Option<tauri::Monitor> {
         }
 
         for monitor in &monitors {
-            if is_point_within_monitor((mouse_x, mouse_y), monitor.position(), monitor.size()) {
+            let scale = monitor.scale_factor();
+            let logical_pos = PhysicalPosition {
+                x: (monitor.position().x as f64 / scale).round() as i32,
+                y: (monitor.position().y as f64 / scale).round() as i32,
+            };
+            let logical_size = PhysicalSize {
+                width: (monitor.size().width as f64 / scale).round() as u32,
+                height: (monitor.size().height as f64 / scale).round() as u32,
+            };
+            if is_point_within_monitor((mouse_x, mouse_y), &logical_pos, &logical_size) {
                 return Some(monitor.clone());
             }
         }

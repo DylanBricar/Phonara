@@ -264,6 +264,10 @@ pub fn default_overlay_height() -> u16 {
     40
 }
 
+pub fn default_extra_recording_buffer_ms() -> u64 {
+    0
+}
+
 pub fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
     let mut changed = false;
     for provider in default_post_process_providers() {
@@ -460,5 +464,6 @@ pub fn get_default_settings() -> AppSettings {
         overlay_custom_height: default_overlay_height(),
         theme_mode: ThemeMode::default(),
         accent_color: AccentColor::default(),
+        extra_recording_buffer_ms: default_extra_recording_buffer_ms(),
     }
 }
