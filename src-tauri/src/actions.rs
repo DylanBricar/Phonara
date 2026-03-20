@@ -510,6 +510,19 @@ impl ShortcutAction for TranscribeAction {
                 } else {
                     settings_for_model.selected_language.clone()
                 };
+
+                let entry_id = if duration_seconds > 1.0 {
+                    match hm.save_recording_pending(samples_clone.clone()).await {
+                        Ok(id) => Some(id),
+                        Err(e) => {
+                            error!("Failed to save recording pending: {}", e);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
                 match tm.transcribe(samples, Some(effective_language.clone())) {
                     Ok(transcription) => {
                         let mut transcription = transcription;
@@ -629,7 +642,7 @@ impl ShortcutAction for TranscribeAction {
                             );
                         }
 
-                        if !transcription.is_empty() || duration_seconds > 1.0 {
+                        if let Some(id) = entry_id {
                             let hm_clone = Arc::clone(&hm);
                             let transcription_for_history = transcription.clone();
                             let model_name_for_history = tm.get_current_model_name();
@@ -640,42 +653,22 @@ impl ShortcutAction for TranscribeAction {
                             };
                             tauri::async_runtime::spawn(async move {
                                 if let Err(e) = hm_clone
-                                    .save_transcription(
-                                        samples_clone,
+                                    .update_transcription_result(
+                                        id,
                                         transcription_for_history,
                                         post_processed_text,
                                         post_process_prompt,
                                         action_key_for_history,
                                         model_name_for_history,
                                     )
-                                    .await
                                 {
-                                    error!("Failed to save transcription to history: {}", e);
+                                    error!("Failed to update transcription result: {}", e);
                                 }
                             });
                         }
                     }
                     Err(err) => {
                         error!("Transcription failed: {}", err);
-                        if duration_seconds > 1.0 {
-                            let hm_clone = Arc::clone(&hm);
-                            let model_name_for_history = tm.get_current_model_name();
-                            tauri::async_runtime::spawn(async move {
-                                if let Err(e) = hm_clone
-                                    .save_transcription(
-                                        samples_clone,
-                                        String::new(),
-                                        None,
-                                        None,
-                                        None,
-                                        model_name_for_history,
-                                    )
-                                    .await
-                                {
-                                    error!("Failed to save audio after transcription failure: {}", e);
-                                }
-                            });
-                        }
                         utils::hide_recording_overlay(&ah);
                         change_tray_icon(&ah, TrayIconState::Idle);
                     }

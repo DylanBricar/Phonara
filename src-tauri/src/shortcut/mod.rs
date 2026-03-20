@@ -519,6 +519,15 @@ pub fn change_selected_language_setting(app: AppHandle, language: String) -> Res
 
 #[tauri::command]
 #[specta::specta]
+pub fn change_secondary_selected_language_setting(app: AppHandle, language: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.secondary_selected_language = language;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_overlay_position_setting(app: AppHandle, position: String) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     let parsed = match position.as_str() {

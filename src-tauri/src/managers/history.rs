@@ -143,6 +143,33 @@ impl HistoryManager {
         Ok(Connection::open(&self.db_path)?)
     }
 
+    pub async fn save_recording_pending(
+        &self,
+        audio_samples: Vec<f32>,
+    ) -> Result<i64> {
+        let timestamp = Utc::now().timestamp();
+        let file_name = format!("handy-{}.wav", timestamp);
+        let title = self.format_timestamp_title(timestamp);
+
+        let file_path = self.recordings_dir.join(&file_name);
+        save_wav_file(file_path, &audio_samples).await?;
+
+        let entry_id = self.save_to_database_pending(
+            file_name,
+            timestamp,
+            title,
+        )?;
+
+        self.cleanup_old_entries()?;
+
+        if let Err(e) = self.app_handle.emit("history-updated", ()) {
+            error!("Failed to emit history-updated event: {}", e);
+        }
+
+        Ok(entry_id)
+    }
+
+    #[allow(dead_code)]
     pub async fn save_transcription(
         &self,
         audio_samples: Vec<f32>,
@@ -179,6 +206,23 @@ impl HistoryManager {
         Ok(())
     }
 
+    fn save_to_database_pending(
+        &self,
+        file_name: String,
+        timestamp: i64,
+        title: String,
+    ) -> Result<i64> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "INSERT INTO transcription_history (file_name, timestamp, saved, title, transcription_text) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![file_name, timestamp, false, title, ""],
+        )?;
+
+        let entry_id = conn.last_insert_rowid();
+        Ok(entry_id)
+    }
+
+    #[allow(dead_code)]
     fn save_to_database(
         &self,
         file_name: String,
@@ -408,6 +452,28 @@ impl HistoryManager {
         conn.execute(
             "UPDATE transcription_history SET transcription_text = ?1, model_name = ?2 WHERE id = ?3",
             params![new_text, model_name, id],
+        )?;
+
+        if let Err(e) = self.app_handle.emit("history-updated", ()) {
+            error!("Failed to emit history-updated event: {}", e);
+        }
+
+        Ok(())
+    }
+
+    pub fn update_transcription_result(
+        &self,
+        id: i64,
+        transcription_text: String,
+        post_processed_text: Option<String>,
+        post_process_prompt: Option<String>,
+        post_process_action_key: Option<u8>,
+        model_name: Option<String>,
+    ) -> Result<()> {
+        let conn = self.get_connection()?;
+        conn.execute(
+            "UPDATE transcription_history SET transcription_text = ?1, post_processed_text = ?2, post_process_prompt = ?3, post_process_action_key = ?4, model_name = ?5 WHERE id = ?6",
+            params![transcription_text, post_processed_text, post_process_prompt, post_process_action_key.map(|k| k as i64), model_name, id],
         )?;
 
         if let Err(e) = self.app_handle.emit("history-updated", ()) {

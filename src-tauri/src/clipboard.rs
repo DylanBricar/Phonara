@@ -732,15 +732,24 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         }
     }
 
-    let auto_submit = if let Some(cli_args) = app_handle.try_state::<CliArgs>() {
-        cli_args.auto_submit.is_some() || settings.auto_submit
+    let (auto_submit, submit_key) = if let Some(cli_args) = app_handle.try_state::<CliArgs>() {
+        if let Some(ref key_str) = cli_args.auto_submit {
+            let key = match key_str.to_lowercase().as_str() {
+                "ctrl+enter" | "ctrl_enter" => AutoSubmitKey::CtrlEnter,
+                "cmd+enter" | "cmd_enter" => AutoSubmitKey::CmdEnter,
+                _ => AutoSubmitKey::Enter,
+            };
+            (true, key)
+        } else {
+            (settings.auto_submit, settings.auto_submit_key)
+        }
     } else {
-        settings.auto_submit
+        (settings.auto_submit, settings.auto_submit_key)
     };
 
     if should_send_auto_submit(auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
-        send_return_key(&mut enigo, settings.auto_submit_key)?;
+        send_return_key(&mut enigo, submit_key)?;
     }
 
     if settings.clipboard_handling == ClipboardHandling::CopyToClipboard {

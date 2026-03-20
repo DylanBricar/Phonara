@@ -304,6 +304,7 @@ pub fn run(cli_args: CliArgs) {
         shortcut::change_autostart_setting,
         shortcut::change_translate_to_english_setting,
         shortcut::change_selected_language_setting,
+        shortcut::change_secondary_selected_language_setting,
         shortcut::change_overlay_position_setting,
         shortcut::change_debug_mode_setting,
         shortcut::change_word_correction_threshold_setting,
@@ -518,6 +519,13 @@ pub fn run(cli_args: CliArgs) {
             let tray_available = settings.show_tray_icon && !cli_args.no_tray;
             if should_force_show || !should_hide || !tray_available {
                 show_main_window(&app_handle);
+            }
+
+            #[cfg(target_os = "linux")]
+            {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.set_decorations(false);
+                }
             }
 
             Ok(())
