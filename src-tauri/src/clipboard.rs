@@ -131,6 +131,21 @@ fn paste_via_clipboard(
         2,
     )?;
 
+    let mut elapsed = 0u64;
+    let max_wait = paste_delay_ms.max(50);
+    let clipboard = app_handle.clipboard();
+
+    while elapsed < max_wait {
+        std::thread::sleep(Duration::from_millis(5));
+        elapsed += 5;
+
+        if let Ok(current_content) = clipboard.read_text() {
+            if current_content == text {
+                break;
+            }
+        }
+    }
+
     std::thread::sleep(Duration::from_millis(paste_delay_ms));
 
     #[cfg(target_os = "linux")]

@@ -85,6 +85,7 @@ fn set_mute(mute: bool) {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn is_system_already_muted() -> bool {
     use std::process::Command;
 
@@ -274,11 +275,32 @@ impl AudioRecordingManager {
         let mut did_mute_guard = self.did_mute.lock().unwrap();
 
         if settings.mute_while_recording && *self.is_open.lock().unwrap() {
-            if is_system_already_muted() {
+            #[cfg(target_os = "macos")]
+            {
+                use std::process::Command;
+                let result = Command::new("osascript")
+                    .arg("-e")
+                    .arg("set v to (get volume settings)\nif (output muted of v) is false and (output volume of v) > 0 then\nset volume output muted true\nreturn \"muted\"\nelse\nreturn \"skip\"\nend if")
+                    .output();
+                match result {
+                    Ok(output) => {
+                        let stdout = String::from_utf8_lossy(&output.stdout);
+                        if stdout.trim() == "muted" {
+                            *did_mute_guard = true;
+                        }
+                    }
+                    Err(_) => {}
+                }
                 return;
             }
-            set_mute(true);
-            *did_mute_guard = true;
+            #[cfg(not(target_os = "macos"))]
+            {
+                if is_system_already_muted() {
+                    return;
+                }
+                set_mute(true);
+                *did_mute_guard = true;
+            }
         }
     }
 

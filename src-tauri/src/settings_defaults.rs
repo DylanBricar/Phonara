@@ -57,7 +57,7 @@ pub fn default_word_correction_threshold() -> f64 {
 }
 
 pub fn default_paste_delay_ms() -> u64 {
-    60
+    100
 }
 
 pub fn default_auto_submit() -> bool {

@@ -612,7 +612,27 @@ impl ShortcutAction for TranscribeAction {
                             });
                         }
                     }
-                    Err(_err) => {
+                    Err(err) => {
+                        error!("Transcription failed: {}", err);
+                        if duration_seconds > 1.0 {
+                            let hm_clone = Arc::clone(&hm);
+                            let model_name_for_history = tm.get_current_model_name();
+                            tauri::async_runtime::spawn(async move {
+                                if let Err(e) = hm_clone
+                                    .save_transcription(
+                                        samples_clone,
+                                        String::new(),
+                                        None,
+                                        None,
+                                        None,
+                                        model_name_for_history,
+                                    )
+                                    .await
+                                {
+                                    error!("Failed to save audio after transcription failure: {}", e);
+                                }
+                            });
+                        }
                         utils::hide_recording_overlay(&ah);
                         change_tray_icon(&ah, TrayIconState::Idle);
                     }
