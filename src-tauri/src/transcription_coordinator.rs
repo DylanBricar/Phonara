@@ -7,7 +7,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 const DEBOUNCE: Duration = Duration::from_millis(30);
 
@@ -144,6 +144,7 @@ impl TranscriptionCoordinator {
             }));
             if let Err(e) = result {
                 error!("Transcription coordinator panicked: {e:?}");
+                let _ = app.emit("transcription-coordinator-crashed", "The transcription system crashed. Please restart the app.");
             }
         });
 

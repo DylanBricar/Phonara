@@ -503,21 +503,22 @@ pub fn run(cli_args: CliArgs) {
         })
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
+                let has_tray = TRAY_ICON_ENABLED.load(Ordering::Relaxed)
+                    && !window.app_handle().state::<CliArgs>().no_tray;
+                if !has_tray {
+                    window.app_handle().exit(0);
+                    return;
+                }
                 api.prevent_close();
                 let _res = window.hide();
 
                 #[cfg(target_os = "macos")]
                 {
-                    let tray_visible =
-                        TRAY_ICON_ENABLED.load(Ordering::Relaxed)
-                            && !window.app_handle().state::<CliArgs>().no_tray;
-                    if tray_visible {
-                        let res = window
-                            .app_handle()
-                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
-                        if let Err(e) = res {
-                            log::error!("Failed to set activation policy: {}", e);
-                        }
+                    let res = window
+                        .app_handle()
+                        .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                    if let Err(e) = res {
+                        log::error!("Failed to set activation policy: {}", e);
                     }
                 }
             }

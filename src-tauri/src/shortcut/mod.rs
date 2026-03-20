@@ -195,6 +195,8 @@ pub fn change_binding(
         error!("change_binding error: {}", error_msg);
     }
 
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
     if let Err(e) = validate_shortcut_for_implementation(&binding, settings.keyboard_implementation)
     {
         return Err(e);

@@ -327,19 +327,12 @@ pub fn apply_text_replacements(text: &str, replacements: &[TextReplacement]) -> 
         if replacement.case_sensitive {
             result = result.replace(&replacement.find, &replacement.replace);
         } else {
-            let lower_result = result.to_lowercase();
-            let lower_find = replacement.find.to_lowercase();
-            let find_len = replacement.find.len();
-
-            let mut positions: Vec<usize> = Vec::new();
-            let mut start = 0;
-            while let Some(pos) = lower_result[start..].find(&lower_find) {
-                positions.push(start + pos);
-                start += pos + find_len;
-            }
-
-            for &pos in positions.iter().rev() {
-                result.replace_range(pos..pos + find_len, &replacement.replace);
+            let escaped = regex::escape(&replacement.find);
+            if let Ok(re) = regex::RegexBuilder::new(&escaped)
+                .case_insensitive(true)
+                .build()
+            {
+                result = re.replace_all(&result, replacement.replace.as_str()).to_string();
             }
         }
     }

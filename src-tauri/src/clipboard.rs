@@ -191,25 +191,35 @@ fn paste_via_clipboard(
 fn try_send_key_combo_linux(paste_method: &PasteMethod) -> Result<bool, String> {
     if is_wayland() {
         if !is_kde_wayland() && is_wtype_available() {
-            send_key_combo_via_wtype(paste_method)?;
-            return Ok(true);
+            match send_key_combo_via_wtype(paste_method) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("wtype failed, trying fallback: {}", e),
+            }
         }
         if is_dotool_available() {
-            send_key_combo_via_dotool(paste_method)?;
-            return Ok(true);
+            match send_key_combo_via_dotool(paste_method) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("dotool failed, trying fallback: {}", e),
+            }
         }
         if is_ydotool_available() {
-            send_key_combo_via_ydotool(paste_method)?;
-            return Ok(true);
+            match send_key_combo_via_ydotool(paste_method) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("ydotool failed, trying fallback: {}", e),
+            }
         }
     } else {
         if is_xdotool_available() {
-            send_key_combo_via_xdotool(paste_method)?;
-            return Ok(true);
+            match send_key_combo_via_xdotool(paste_method) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("xdotool failed, trying fallback: {}", e),
+            }
         }
         if is_ydotool_available() {
-            send_key_combo_via_ydotool(paste_method)?;
-            return Ok(true);
+            match send_key_combo_via_ydotool(paste_method) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("ydotool failed, trying fallback: {}", e),
+            }
         }
     }
 
@@ -221,24 +231,34 @@ fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<boo
     if preferred_tool != TypingTool::Auto {
         return match preferred_tool {
             TypingTool::Wtype if is_wtype_available() => {
-                type_text_via_wtype(text)?;
-                Ok(true)
+                match type_text_via_wtype(text) {
+                    Ok(()) => Ok(true),
+                    Err(e) => Err(format!("Wtype failed: {}", e)),
+                }
             }
             TypingTool::Kwtype if is_kwtype_available() => {
-                type_text_via_kwtype(text)?;
-                Ok(true)
+                match type_text_via_kwtype(text) {
+                    Ok(()) => Ok(true),
+                    Err(e) => Err(format!("Kwtype failed: {}", e)),
+                }
             }
             TypingTool::Dotool if is_dotool_available() => {
-                type_text_via_dotool(text)?;
-                Ok(true)
+                match type_text_via_dotool(text) {
+                    Ok(()) => Ok(true),
+                    Err(e) => Err(format!("Dotool failed: {}", e)),
+                }
             }
             TypingTool::Ydotool if is_ydotool_available() => {
-                type_text_via_ydotool(text)?;
-                Ok(true)
+                match type_text_via_ydotool(text) {
+                    Ok(()) => Ok(true),
+                    Err(e) => Err(format!("Ydotool failed: {}", e)),
+                }
             }
             TypingTool::Xdotool if is_xdotool_available() => {
-                type_text_via_xdotool(text)?;
-                Ok(true)
+                match type_text_via_xdotool(text) {
+                    Ok(()) => Ok(true),
+                    Err(e) => Err(format!("Xdotool failed: {}", e)),
+                }
             }
             _ => Err(format!(
                 "Typing tool {:?} is not available on this system",
@@ -249,29 +269,41 @@ fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<boo
 
     if is_wayland() {
         if is_kde_wayland() && is_kwtype_available() {
-            type_text_via_kwtype(text)?;
-            return Ok(true);
+            match type_text_via_kwtype(text) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("kwtype failed, trying fallback: {}", e),
+            }
         }
         if !is_kde_wayland() && is_wtype_available() {
-            type_text_via_wtype(text)?;
-            return Ok(true);
+            match type_text_via_wtype(text) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("wtype failed, trying fallback: {}", e),
+            }
         }
         if is_dotool_available() {
-            type_text_via_dotool(text)?;
-            return Ok(true);
+            match type_text_via_dotool(text) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("dotool failed, trying fallback: {}", e),
+            }
         }
         if is_ydotool_available() {
-            type_text_via_ydotool(text)?;
-            return Ok(true);
+            match type_text_via_ydotool(text) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("ydotool failed, trying fallback: {}", e),
+            }
         }
     } else {
         if is_xdotool_available() {
-            type_text_via_xdotool(text)?;
-            return Ok(true);
+            match type_text_via_xdotool(text) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("xdotool failed, trying fallback: {}", e),
+            }
         }
         if is_ydotool_available() {
-            type_text_via_ydotool(text)?;
-            return Ok(true);
+            match type_text_via_ydotool(text) {
+                Ok(()) => return Ok(true),
+                Err(e) => log::warn!("ydotool failed, trying fallback: {}", e),
+            }
         }
     }
 

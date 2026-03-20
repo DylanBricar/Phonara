@@ -266,7 +266,8 @@ impl AudioRecorder {
                 }
             }
 
-            let buf = std::mem::take(&mut output_buffer);
+            let buf = output_buffer.clone();
+            output_buffer.clear();
             if sample_tx.send(AudioChunk::Samples(buf)).is_err() {
                 log::error!("Failed to send samples");
             }
@@ -361,7 +362,7 @@ fn run_consumer(
         out_buf: &mut Vec<f32>,
     ) {
         if let Some(vad_arc) = vad {
-            let mut det = vad_arc.lock().unwrap();
+            let mut det = vad_arc.lock().unwrap_or_else(|e| e.into_inner());
             match det.push_frame(samples).unwrap_or(VadFrame::Speech(samples)) {
                 VadFrame::Speech(buf) => {
                     if recording {
@@ -431,7 +432,7 @@ fn run_consumer(
                     stop_flag.store(false, Ordering::SeqCst);
                     visualizer.reset();
                     if let Some(v) = &vad {
-                        v.lock().unwrap().soft_reset();
+                        v.lock().unwrap_or_else(|e| e.into_inner()).soft_reset();
                     }
                 }
                 Cmd::Stop(reply_tx) => {
