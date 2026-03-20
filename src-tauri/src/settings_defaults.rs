@@ -272,6 +272,22 @@ pub fn default_extra_recording_buffer_ms() -> u64 {
     0
 }
 
+pub fn default_api_server_enabled() -> bool {
+    false
+}
+
+pub fn default_api_server_port() -> u16 {
+    8787
+}
+
+pub fn default_wake_word_sensitivity() -> f32 {
+    0.5
+}
+
+pub fn default_live_transcription_mode() -> LiveTranscriptionMode {
+    LiveTranscriptionMode::Off
+}
+
 pub fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
     let mut changed = false;
     for provider in default_post_process_providers() {
@@ -425,6 +441,7 @@ pub fn get_default_settings() -> AppSettings {
         selected_model: String::new(),
         always_on_microphone: false,
         selected_microphone: None,
+        prioritized_microphones: Vec::new(),
         clamshell_microphone: None,
         selected_output_device: None,
         translate_to_english: false,
@@ -481,5 +498,12 @@ pub fn get_default_settings() -> AppSettings {
         theme_mode: ThemeMode::default(),
         accent_color: AccentColor::default(),
         extra_recording_buffer_ms: default_extra_recording_buffer_ms(),
+        api_server_enabled: default_api_server_enabled(),
+        api_server_port: default_api_server_port(),
+        wake_word_enabled: false,
+        wake_word_sensitivity: default_wake_word_sensitivity(),
+        wake_word_model: None,
+        live_transcription_enabled: false,
+        live_transcription_mode: default_live_transcription_mode(),
     }
 }

@@ -1,5 +1,6 @@
 pub mod handler;
 pub mod handy_keys;
+pub mod gnome_shortcuts;
 mod tauri_impl;
 
 use log::error;

@@ -1,6 +1,7 @@
 mod actions;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
+mod api_server;
 mod audio_feedback;
 pub mod audio_toolkit;
 pub mod cli;
@@ -24,6 +25,7 @@ mod transcription_coordinator;
 mod tray;
 mod tray_i18n;
 mod utils;
+mod wake_word;
 
 pub use cli::CliArgs;
 #[cfg(debug_assertions)]
@@ -508,6 +510,12 @@ pub fn run(cli_args: CliArgs) {
             app.manage(actions::ActiveActionState(std::sync::Mutex::new(None)));
 
             initialize_core_logic(&app_handle);
+
+            let settings = get_settings(&app_handle);
+            if settings.api_server_enabled {
+                let tm = app.state::<Arc<TranscriptionManager>>().inner().clone();
+                api_server::start_api_server(tm, settings.api_server_port);
+            }
 
             if cli_args.no_tray {
                 tray::set_tray_visibility(&app_handle, false);

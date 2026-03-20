@@ -45,6 +45,7 @@ enum LoadedEngine {
     SenseVoice(SenseVoiceEngine),
     GeminiApi,
     OpenAiApi,
+    Qwen3,
 }
 
 fn load_engine_with_recovery<F>(
@@ -384,6 +385,7 @@ impl TranscriptionManager {
                     LoadedEngine::SenseVoice(ref mut e) => e.unload_model(),
                     LoadedEngine::GeminiApi => {}
                     LoadedEngine::OpenAiApi => {}
+                    LoadedEngine::Qwen3 => {}
                 }
             }
             *engine = None;
@@ -583,6 +585,9 @@ impl TranscriptionManager {
                     return Err(anyhow::anyhow!(error_msg));
                 }
                 LoadedEngine::OpenAiApi
+            }
+            EngineType::Qwen3 => {
+                return Err(anyhow::anyhow!("Qwen3-ASR engine requires a newer version of transcribe-rs. Please update to use this engine."));
             }
         };
 
@@ -937,6 +942,9 @@ impl TranscriptionManager {
                         }
                         LoadedEngine::OpenAiApi => {
                             unreachable!("OpenAiApi handled before catch_unwind")
+                        }
+                        LoadedEngine::Qwen3 => {
+                            unreachable!("Qwen3 not yet loaded")
                         }
                     }
                 },

@@ -55,8 +55,10 @@ hound = "3.5.1"
 base64 = "0.22"
 log = "0.4.25"
 env_filter = "0.1.0"
-tokio = { version = "1.43.0", features = ["time"] }
+tokio = { version = "1.43.0", features = ["time", "rt", "macros"] }
 vad-rs = { git = "https://github.com/cjpais/vad-rs", default-features = false }
+axum = { version = "0.8", features = ["multipart"] }
+tower-http = { version = "0.6", features = ["cors"] }
 enigo = "0.6.1"
 arboard = "3.6"
 rodio = { git = "https://github.com/cjpais/rodio.git" }

@@ -296,6 +296,20 @@ pub enum SoundTheme {
     Custom,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum LiveTranscriptionMode {
+    Off,
+    Overlay,
+    Clipboard,
+}
+
+impl Default for LiveTranscriptionMode {
+    fn default() -> Self {
+        LiveTranscriptionMode::Off
+    }
+}
+
 impl SoundTheme {
     fn as_str(&self) -> &'static str {
         match self {
@@ -354,6 +368,8 @@ pub struct AppSettings {
     pub always_on_microphone: bool,
     #[serde(default)]
     pub selected_microphone: Option<String>,
+    #[serde(default)]
+    pub prioritized_microphones: Vec<String>,
     #[serde(default)]
     pub clamshell_microphone: Option<String>,
     #[serde(default)]
@@ -466,6 +482,20 @@ pub struct AppSettings {
     pub accent_color: AccentColor,
     #[serde(default = "default_extra_recording_buffer_ms")]
     pub extra_recording_buffer_ms: u64,
+    #[serde(default = "default_api_server_enabled")]
+    pub api_server_enabled: bool,
+    #[serde(default = "default_api_server_port")]
+    pub api_server_port: u16,
+    #[serde(default)]
+    pub wake_word_enabled: bool,
+    #[serde(default = "default_wake_word_sensitivity")]
+    pub wake_word_sensitivity: f32,
+    #[serde(default)]
+    pub wake_word_model: Option<String>,
+    #[serde(default)]
+    pub live_transcription_enabled: bool,
+    #[serde(default = "default_live_transcription_mode")]
+    pub live_transcription_mode: LiveTranscriptionMode,
 }
 
 impl AppSettings {

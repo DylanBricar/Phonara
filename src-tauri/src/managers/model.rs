@@ -52,6 +52,7 @@ pub enum EngineType {
     SenseVoice,
     GeminiApi,
     OpenAiApi,
+    Qwen3,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
