@@ -3,12 +3,17 @@ use crate::managers::transcription::TranscriptionManager;
 use crate::settings;
 use crate::tray_i18n::get_tray_translations;
 use log::error;
-use std::sync::Arc;
+use once_cell::sync::Lazy;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::TrayIcon;
 use tauri::{AppHandle, Manager, Theme};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+
+static LAST_TRAY_CLICK: Lazy<Mutex<Option<Instant>>> = Lazy::new(|| Mutex::new(None));
+const DOUBLE_CLICK_THRESHOLD_MS: u64 = 350;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TrayIconState {
@@ -202,6 +207,42 @@ pub fn copy_last_transcript(app: &AppHandle) {
         return;
     }
 
+}
+
+pub fn handle_tray_click(app: &AppHandle) {
+    let mut last_click = match LAST_TRAY_CLICK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+
+    let now = Instant::now();
+    let is_double_click = if let Some(last_instant) = *last_click {
+        now.duration_since(last_instant) < Duration::from_millis(DOUBLE_CLICK_THRESHOLD_MS)
+    } else {
+        false
+    };
+
+    *last_click = Some(now);
+
+    if is_double_click {
+        if let Some(main_window) = app.get_webview_window("main") {
+            if let Err(e) = main_window.unminimize() {
+                error!("Failed to unminimize window: {}", e);
+            }
+            if let Err(e) = main_window.show() {
+                error!("Failed to show window: {}", e);
+            }
+            if let Err(e) = main_window.set_focus() {
+                error!("Failed to focus window: {}", e);
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
+                    error!("Failed to set activation policy to Regular: {}", e);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -73,6 +73,8 @@ pub struct ModelInfo {
     pub is_recommended: bool,
     pub supported_languages: Vec<String>,
     pub is_custom: bool,
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -139,6 +141,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -162,6 +165,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -185,6 +189,7 @@ impl ModelManager {
                 is_recommended: true,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -208,6 +213,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -232,6 +238,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -257,6 +264,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: french_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -280,6 +288,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: french_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -303,6 +312,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: french_languages,
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -326,6 +336,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: vec!["en".to_string()],
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -357,6 +368,7 @@ impl ModelManager {
                 is_recommended: true,
                 supported_languages: parakeet_v3_languages,
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -380,6 +392,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: vec!["en".to_string()],
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -405,6 +418,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: vec!["en".to_string()],
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -430,6 +444,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: vec!["en".to_string()],
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -455,6 +470,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: vec!["en".to_string()],
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -485,6 +501,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: sense_voice_languages,
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -510,6 +527,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -535,6 +553,7 @@ impl ModelManager {
                 is_recommended: false,
                 supported_languages: whisper_languages.clone(),
                 is_custom: false,
+                sha256: None,
             },
         );
 
@@ -830,10 +849,49 @@ impl ModelManager {
                     is_recommended: false,
                     supported_languages: vec![],
                     is_custom: true,
+                    sha256: None,
                 },
             );
         }
 
+        Ok(())
+    }
+
+    fn compute_sha256(path: &std::path::Path) -> Result<String> {
+        use sha2::{Sha256, Digest};
+        use std::io::Read;
+
+        let mut file = std::fs::File::open(path)?;
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 65536];
+        loop {
+            let n = file.read(&mut buffer)?;
+            if n == 0 { break; }
+            hasher.update(&buffer[..n]);
+        }
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
+    fn verify_sha256(&self, model_id: &str, file_path: &std::path::Path) -> Result<()> {
+        let expected = {
+            let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
+            models.get(model_id).and_then(|m| m.sha256.clone())
+        };
+
+        let Some(expected_hash) = expected else {
+            return Ok(());
+        };
+
+        let actual_hash = Self::compute_sha256(file_path)?;
+        if actual_hash != expected_hash {
+            let _ = std::fs::remove_file(file_path);
+            return Err(anyhow::anyhow!(
+                "SHA256 mismatch for model {}: expected {}, got {}. Corrupt file deleted, please re-download.",
+                model_id, expected_hash, actual_hash
+            ));
+        }
+
+        info!("SHA256 verified for model {}", model_id);
         Ok(())
     }
 
@@ -1103,6 +1161,8 @@ impl ModelManager {
                 ));
             }
         }
+
+        self.verify_sha256(model_id, &partial_path)?;
 
         if model_info.is_directory {
             {
@@ -1388,6 +1448,7 @@ mod tests {
                 is_recommended: false,
                 supported_languages: vec!["en".to_string()],
                 is_custom: false,
+                sha256: None,
             },
         );
 

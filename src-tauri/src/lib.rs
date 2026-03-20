@@ -13,6 +13,7 @@ mod helpers;
 mod input;
 mod llm_client;
 mod managers;
+mod ocr;
 mod overlay;
 mod settings;
 mod settings_defaults;
@@ -192,8 +193,8 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         .show_menu_on_left_click(true)
         .icon_as_template(true)
         .on_tray_icon_event(|tray_icon, event| {
-            if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
-                show_main_window(tray_icon.app_handle());
+            if let tauri::tray::TrayIconEvent::Click { .. } = event {
+                tray::handle_tray_click(tray_icon.app_handle());
             }
         })
         .on_menu_event(|app, event| match event.id.as_ref() {

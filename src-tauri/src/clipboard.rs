@@ -1,4 +1,5 @@
 use crate::input::{self, EnigoState};
+use crate::cli::CliArgs;
 #[cfg(target_os = "linux")]
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
@@ -731,7 +732,13 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         }
     }
 
-    if should_send_auto_submit(settings.auto_submit, paste_method) {
+    let auto_submit = if let Some(cli_args) = app_handle.try_state::<CliArgs>() {
+        cli_args.auto_submit.is_some() || settings.auto_submit
+    } else {
+        settings.auto_submit
+    };
+
+    if should_send_auto_submit(auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
         send_return_key(&mut enigo, settings.auto_submit_key)?;
     }

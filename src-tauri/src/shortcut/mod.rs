@@ -403,6 +403,10 @@ fn register_all_shortcuts_for_implementation(
             .cloned()
             .unwrap_or_else(|| default_binding.clone());
 
+        if binding.current_binding.is_empty() {
+            continue;
+        }
+
         if validate_shortcut_for_implementation(&binding.current_binding, implementation)
             .is_err()
         {

@@ -23,4 +23,7 @@ pub struct CliArgs {
 
     #[arg(long, help = "Start transcription immediately on launch")]
     pub transcribe: bool,
+
+    #[arg(long, help = "Force auto-submit after transcription (enter, ctrl+enter, cmd+enter)")]
+    pub auto_submit: Option<String>,
 }

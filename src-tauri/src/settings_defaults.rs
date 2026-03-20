@@ -37,6 +37,10 @@ pub fn default_selected_language() -> String {
     "auto".to_string()
 }
 
+pub fn default_secondary_selected_language() -> String {
+    "auto".to_string()
+}
+
 pub fn default_overlay_position() -> OverlayPosition {
     #[cfg(target_os = "linux")]
     return OverlayPosition::None;
@@ -347,6 +351,17 @@ pub fn get_default_settings() -> AppSettings {
     let default_post_process_shortcut = "alt+shift+space";
 
     bindings.insert(
+        "transcribe_secondary".to_string(),
+        ShortcutBinding {
+            id: "transcribe_secondary".to_string(),
+            name: "Transcribe Secondary".to_string(),
+            description: "Converts your speech into text using the secondary language setting.".to_string(),
+            default_binding: String::new(),
+            current_binding: String::new(),
+        },
+    );
+
+    bindings.insert(
         "transcribe_with_post_process".to_string(),
         ShortcutBinding {
             id: "transcribe_with_post_process".to_string(),
@@ -414,6 +429,7 @@ pub fn get_default_settings() -> AppSettings {
         selected_output_device: None,
         translate_to_english: false,
         selected_language: "auto".to_string(),
+        secondary_selected_language: default_secondary_selected_language(),
         overlay_position: default_overlay_position(),
         overlay_high_visibility: false,
         debug_mode: false,

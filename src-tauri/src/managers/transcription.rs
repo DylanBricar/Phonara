@@ -645,7 +645,7 @@ impl TranscriptionManager {
             .map(|info| info.name)
     }
 
-    pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
+    pub fn transcribe(&self, audio: Vec<f32>, language_override: Option<String>) -> Result<String> {
         self.last_activity.store(
             SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -680,7 +680,7 @@ impl TranscriptionManager {
                 chunks.len()
             );
             let mut all_results = Vec::new();
-            let mut forced_language: Option<String> = None;
+            let mut forced_language: Option<String> = language_override.clone();
             let total_chunks = chunks.len();
             for (i, chunk) in chunks.into_iter().enumerate() {
                 let chunk_duration = chunk.len() as f32 / WHISPER_SAMPLE_RATE as f32;
@@ -723,7 +723,7 @@ impl TranscriptionManager {
             return Ok(final_result);
         }
 
-        self.transcribe_single(audio, None)
+        self.transcribe_single(audio, language_override)
     }
 
     fn transcribe_single(&self, audio: Vec<f32>, language_override: Option<String>) -> Result<String> {

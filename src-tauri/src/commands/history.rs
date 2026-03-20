@@ -104,7 +104,7 @@ pub async fn reprocess_history_entry(
         .map_err(|e| e.to_string())?;
 
     let new_text = transcription_manager
-        .transcribe(samples)
+        .transcribe(samples, None)
         .map_err(|e| e.to_string())?;
 
     let model_name = transcription_manager.get_current_model_name();

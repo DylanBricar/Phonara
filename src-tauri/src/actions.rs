@@ -55,10 +55,17 @@ fn sanitize_error_for_logging(error: &str, api_key: &str) -> String {
 
 fn substitute_template_variables(prompt: &str, language: &str) -> String {
     let now = Local::now();
-    prompt
+    let mut result = prompt
         .replace("$time_local", &now.format("%H:%M:%S").to_string())
         .replace("$date", &now.format("%Y-%m-%d").to_string())
-        .replace("$language", language)
+        .replace("$language", language);
+
+    if result.contains("${OCR}") || result.contains("${ocr}") {
+        let ocr_text = crate::ocr::fetch_ocr_text();
+        result = result.replace("${OCR}", &ocr_text).replace("${ocr}", &ocr_text);
+    }
+
+    result
 }
 
 fn build_system_prompt(prompt_template: &str, language: &str) -> String {
@@ -498,7 +505,12 @@ impl ShortcutAction for TranscribeAction {
                 }
 
                 let samples_clone = samples.clone();
-                match tm.transcribe(samples) {
+                let effective_language = if binding_id == "transcribe_secondary" {
+                    settings_for_model.secondary_selected_language.clone()
+                } else {
+                    settings_for_model.selected_language.clone()
+                };
+                match tm.transcribe(samples, Some(effective_language.clone())) {
                     Ok(transcription) => {
                         let mut transcription = transcription;
 
@@ -513,7 +525,7 @@ impl ShortcutAction for TranscribeAction {
                                     match tm.load_model(long_model_id) {
                                         Ok(()) => {
                                             switched_model = true;
-                                            match tm.transcribe(samples_clone.clone()) {
+                                            match tm.transcribe(samples_clone.clone(), Some(effective_language.clone())) {
                                                 Ok(retry_result) => {
                                                     if !retry_result.is_empty() {
                                                         transcription = retry_result;
@@ -708,6 +720,12 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
     let mut map = HashMap::new();
     map.insert(
         "transcribe".to_string(),
+        Arc::new(TranscribeAction {
+            post_process: false,
+        }) as Arc<dyn ShortcutAction>,
+    );
+    map.insert(
+        "transcribe_secondary".to_string(),
         Arc::new(TranscribeAction {
             post_process: false,
         }) as Arc<dyn ShortcutAction>,
