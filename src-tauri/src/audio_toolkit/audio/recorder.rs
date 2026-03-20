@@ -378,32 +378,6 @@ fn run_consumer(
         }
     }
 
-    fn process_raw_samples(
-        raw: &[f32],
-        visualizer: &mut AudioVisualiser,
-        level_cb: &Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
-        pause_flag: &Option<Arc<AtomicBool>>,
-        frame_resampler: &mut FrameResampler,
-        recording: bool,
-        vad: &Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
-        processed_samples: &mut Vec<f32>,
-    ) {
-        if let Some(buckets) = visualizer.feed(raw) {
-            if let Some(cb) = level_cb {
-                cb(buckets);
-            }
-        }
-
-        let is_paused = pause_flag
-            .as_ref()
-            .map_or(false, |f| f.load(Ordering::Relaxed));
-        if !is_paused {
-            frame_resampler.push(raw, &mut |frame: &[f32]| {
-                handle_frame(frame, recording, vad, processed_samples)
-            });
-        }
-    }
-
     loop {
         let chunk = match sample_rx.recv() {
             Ok(c) => c,
@@ -412,16 +386,20 @@ fn run_consumer(
 
         match chunk {
             AudioChunk::Samples(raw) => {
-                process_raw_samples(
-                    &raw,
-                    &mut visualizer,
-                    &level_cb,
-                    &pause_flag,
-                    &mut frame_resampler,
-                    recording,
-                    &vad,
-                    &mut processed_samples,
-                );
+                if let Some(buckets) = visualizer.feed(&raw) {
+                    if let Some(cb) = &level_cb {
+                        cb(buckets);
+                    }
+                }
+
+                let is_paused = pause_flag
+                    .as_ref()
+                    .map_or(false, |f| f.load(Ordering::Relaxed));
+                if !is_paused {
+                    frame_resampler.push(&raw, &mut |frame: &[f32]| {
+                        handle_frame(frame, recording, &vad, &mut processed_samples)
+                    });
+                }
             }
             AudioChunk::EndOfStream => {}
         }

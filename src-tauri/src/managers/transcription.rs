@@ -47,6 +47,50 @@ enum LoadedEngine {
     OpenAiApi,
 }
 
+fn load_engine_with_recovery<F>(
+    app_handle: &AppHandle,
+    model_id: &str,
+    model_name: &str,
+    engine_label: &str,
+    loader: F,
+) -> Result<LoadedEngine>
+where
+    F: FnOnce() -> Result<LoadedEngine> + std::panic::UnwindSafe,
+{
+    match catch_unwind(loader) {
+        Ok(Ok(engine)) => Ok(engine),
+        Ok(Err(e)) => {
+            let _ = app_handle.emit(
+                "model-state-changed",
+                ModelStateEvent {
+                    event_type: "loading_failed".to_string(),
+                    model_id: Some(model_id.to_string()),
+                    model_name: Some(model_name.to_string()),
+                    error: Some(e.to_string()),
+                },
+            );
+            Err(e)
+        }
+        Err(_) => {
+            let error_msg = format!(
+                "{} model loading crashed - model file may be corrupted or incompatible with your system",
+                engine_label
+            );
+            log::error!("{}", error_msg);
+            let _ = app_handle.emit(
+                "model-state-changed",
+                ModelStateEvent {
+                    event_type: "loading_failed".to_string(),
+                    model_id: Some(model_id.to_string()),
+                    model_name: Some(model_name.to_string()),
+                    error: Some(error_msg.clone()),
+                },
+            );
+            Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg))
+        }
+    }
+}
+
 const MAX_CHUNK_SECS: f32 = 25.0;
 const CHUNK_THRESHOLD_SECS: f32 = 28.0;
 const OVERLAP_SAMPLES: usize = 8000;
@@ -54,6 +98,9 @@ const TARGET_RMS: f32 = 0.05;
 const MIN_RMS_FOR_NORMALIZATION: f32 = 0.02;
 
 fn normalize_audio(samples: Vec<f32>) -> Vec<f32> {
+    if samples.is_empty() {
+        return Vec::new();
+    }
     let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
     if rms < 1e-6 {
         return Vec::new();
@@ -64,6 +111,16 @@ fn normalize_audio(samples: Vec<f32>) -> Vec<f32> {
     let gain = TARGET_RMS / rms;
     debug!("Normalizing audio: rms={:.4} -> {:.4} (gain={:.1}x)", rms, TARGET_RMS, gain);
     samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
+}
+
+fn apply_post_processing(text: &str, settings: &crate::settings::AppSettings) -> String {
+    let corrected = if !settings.custom_words.is_empty() {
+        apply_custom_words(text, &settings.custom_words, settings.word_correction_threshold)
+    } else {
+        text.to_string()
+    };
+    let replaced = apply_text_replacements(&corrected, &settings.text_replacements);
+    filter_transcription_output(&replaced)
 }
 
 fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
@@ -407,211 +464,81 @@ impl TranscriptionManager {
 
         let loaded_engine = match model_info.engine_type {
             EngineType::Whisper => {
-                let load_result = catch_unwind(AssertUnwindSafe(|| {
-                    let mut engine = WhisperEngine::new();
-                    let settings = get_settings(&self.app_handle);
-                    let whisper_params = transcribe_rs::engines::whisper::WhisperModelParams {
-                        use_gpu: settings.whisper_use_gpu,
-                        ..Default::default()
-                    };
-                    engine.load_model_with_params(&model_path, whisper_params).map_err(|e| {
-                        let error_msg = format!("Failed to load whisper model {}: {}", model_id, e);
-                        let _ = self.app_handle.emit(
-                            "model-state-changed",
-                            ModelStateEvent {
-                                event_type: "loading_failed".to_string(),
-                                model_id: Some(model_id.to_string()),
-                                model_name: Some(model_info.name.clone()),
-                                error: Some(error_msg.clone()),
-                            },
-                        );
-                        anyhow::anyhow!(error_msg)
-                    })?;
-                    Ok(LoadedEngine::Whisper(engine))
-                }));
-                match load_result {
-                    Ok(Ok(engine)) => engine,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => {
-                        let error_msg = "Whisper model loading crashed - model file may be corrupted or incompatible with your system";
-                        log::error!("{}", error_msg);
-                        let _ = self.app_handle.emit(
-                            "model-state-changed",
-                            ModelStateEvent {
-                                event_type: "loading_failed".to_string(),
-                                model_id: Some(model_id.to_string()),
-                                model_name: Some(model_info.name.clone()),
-                                error: Some(error_msg.to_string()),
-                            },
-                        );
-                        return Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg));
-                    }
-                }
+                let app_handle = &self.app_handle;
+                let model_id_str = model_id.to_string();
+                let model_name_str = model_info.name.clone();
+                let mp = model_path.clone();
+                load_engine_with_recovery(
+                    app_handle, &model_id_str, &model_name_str, "Whisper",
+                    AssertUnwindSafe(|| {
+                        let mut engine = WhisperEngine::new();
+                        let settings = get_settings(app_handle);
+                        let whisper_params = transcribe_rs::engines::whisper::WhisperModelParams {
+                            use_gpu: settings.whisper_use_gpu,
+                            ..Default::default()
+                        };
+                        engine.load_model_with_params(&mp, whisper_params).map_err(|e| {
+                            anyhow::anyhow!("Failed to load whisper model {}: {}", model_id_str, e)
+                        })?;
+                        Ok(LoadedEngine::Whisper(engine))
+                    }),
+                )?
             }
             EngineType::Parakeet => {
-                let load_result = catch_unwind(AssertUnwindSafe(|| {
-                    let mut engine = ParakeetEngine::new();
-                    engine
-                        .load_model_with_params(&model_path, ParakeetModelParams::int8())
-                        .map_err(|e| {
-                            let error_msg =
-                                format!("Failed to load parakeet model {}: {}", model_id, e);
-                            let _ = self.app_handle.emit(
-                                "model-state-changed",
-                                ModelStateEvent {
-                                    event_type: "loading_failed".to_string(),
-                                    model_id: Some(model_id.to_string()),
-                                    model_name: Some(model_info.name.clone()),
-                                    error: Some(error_msg.clone()),
-                                },
-                            );
-                            anyhow::anyhow!(error_msg)
+                let model_id_str = model_id.to_string();
+                let mp = model_path.clone();
+                load_engine_with_recovery(
+                    &self.app_handle, &model_id_str, &model_info.name, "Parakeet",
+                    AssertUnwindSafe(|| {
+                        let mut engine = ParakeetEngine::new();
+                        engine.load_model_with_params(&mp, ParakeetModelParams::int8()).map_err(|e| {
+                            anyhow::anyhow!("Failed to load parakeet model {}: {}", model_id_str, e)
                         })?;
-                    Ok(LoadedEngine::Parakeet(engine))
-                }));
-                match load_result {
-                    Ok(Ok(engine)) => engine,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => {
-                        let error_msg = "Parakeet model loading crashed - model file may be corrupted or incompatible with your system";
-                        log::error!("{}", error_msg);
-                        let _ = self.app_handle.emit(
-                            "model-state-changed",
-                            ModelStateEvent {
-                                event_type: "loading_failed".to_string(),
-                                model_id: Some(model_id.to_string()),
-                                model_name: Some(model_info.name.clone()),
-                                error: Some(error_msg.to_string()),
-                            },
-                        );
-                        return Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg));
-                    }
-                }
+                        Ok(LoadedEngine::Parakeet(engine))
+                    }),
+                )?
             }
             EngineType::Moonshine => {
-                let load_result = catch_unwind(AssertUnwindSafe(|| {
-                    let mut engine = MoonshineEngine::new();
-                    engine
-                        .load_model_with_params(
-                            &model_path,
-                            MoonshineModelParams::variant(ModelVariant::Base),
-                        )
-                        .map_err(|e| {
-                            let error_msg =
-                                format!("Failed to load moonshine model {}: {}", model_id, e);
-                            let _ = self.app_handle.emit(
-                                "model-state-changed",
-                                ModelStateEvent {
-                                    event_type: "loading_failed".to_string(),
-                                    model_id: Some(model_id.to_string()),
-                                    model_name: Some(model_info.name.clone()),
-                                    error: Some(error_msg.clone()),
-                                },
-                            );
-                            anyhow::anyhow!(error_msg)
+                let model_id_str = model_id.to_string();
+                let mp = model_path.clone();
+                load_engine_with_recovery(
+                    &self.app_handle, &model_id_str, &model_info.name, "Moonshine",
+                    AssertUnwindSafe(|| {
+                        let mut engine = MoonshineEngine::new();
+                        engine.load_model_with_params(&mp, MoonshineModelParams::variant(ModelVariant::Base)).map_err(|e| {
+                            anyhow::anyhow!("Failed to load moonshine model {}: {}", model_id_str, e)
                         })?;
-                    Ok(LoadedEngine::Moonshine(engine))
-                }));
-                match load_result {
-                    Ok(Ok(engine)) => engine,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => {
-                        let error_msg = "Moonshine model loading crashed - model file may be corrupted or incompatible with your system";
-                        log::error!("{}", error_msg);
-                        let _ = self.app_handle.emit(
-                            "model-state-changed",
-                            ModelStateEvent {
-                                event_type: "loading_failed".to_string(),
-                                model_id: Some(model_id.to_string()),
-                                model_name: Some(model_info.name.clone()),
-                                error: Some(error_msg.to_string()),
-                            },
-                        );
-                        return Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg));
-                    }
-                }
+                        Ok(LoadedEngine::Moonshine(engine))
+                    }),
+                )?
             }
             EngineType::MoonshineStreaming => {
-                let load_result = catch_unwind(AssertUnwindSafe(|| {
-                    let mut engine = MoonshineStreamingEngine::new();
-                    engine
-                        .load_model_with_params(&model_path, StreamingModelParams::default())
-                        .map_err(|e| {
-                            let error_msg = format!(
-                                "Failed to load moonshine streaming model {}: {}",
-                                model_id, e
-                            );
-                            let _ = self.app_handle.emit(
-                                "model-state-changed",
-                                ModelStateEvent {
-                                    event_type: "loading_failed".to_string(),
-                                    model_id: Some(model_id.to_string()),
-                                    model_name: Some(model_info.name.clone()),
-                                    error: Some(error_msg.clone()),
-                                },
-                            );
-                            anyhow::anyhow!(error_msg)
+                let model_id_str = model_id.to_string();
+                let mp = model_path.clone();
+                load_engine_with_recovery(
+                    &self.app_handle, &model_id_str, &model_info.name, "Moonshine streaming",
+                    AssertUnwindSafe(|| {
+                        let mut engine = MoonshineStreamingEngine::new();
+                        engine.load_model_with_params(&mp, StreamingModelParams::default()).map_err(|e| {
+                            anyhow::anyhow!("Failed to load moonshine streaming model {}: {}", model_id_str, e)
                         })?;
-                    Ok(LoadedEngine::MoonshineStreaming(engine))
-                }));
-                match load_result {
-                    Ok(Ok(engine)) => engine,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => {
-                        let error_msg = "Moonshine streaming model loading crashed - model file may be corrupted or incompatible with your system";
-                        log::error!("{}", error_msg);
-                        let _ = self.app_handle.emit(
-                            "model-state-changed",
-                            ModelStateEvent {
-                                event_type: "loading_failed".to_string(),
-                                model_id: Some(model_id.to_string()),
-                                model_name: Some(model_info.name.clone()),
-                                error: Some(error_msg.to_string()),
-                            },
-                        );
-                        return Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg));
-                    }
-                }
+                        Ok(LoadedEngine::MoonshineStreaming(engine))
+                    }),
+                )?
             }
             EngineType::SenseVoice => {
-                let load_result = catch_unwind(AssertUnwindSafe(|| {
-                    let mut engine = SenseVoiceEngine::new();
-                    engine
-                        .load_model_with_params(&model_path, SenseVoiceModelParams::int8())
-                        .map_err(|e| {
-                            let error_msg =
-                                format!("Failed to load SenseVoice model {}: {}", model_id, e);
-                            let _ = self.app_handle.emit(
-                                "model-state-changed",
-                                ModelStateEvent {
-                                    event_type: "loading_failed".to_string(),
-                                    model_id: Some(model_id.to_string()),
-                                    model_name: Some(model_info.name.clone()),
-                                    error: Some(error_msg.clone()),
-                                },
-                            );
-                            anyhow::anyhow!(error_msg)
+                let model_id_str = model_id.to_string();
+                let mp = model_path.clone();
+                load_engine_with_recovery(
+                    &self.app_handle, &model_id_str, &model_info.name, "SenseVoice",
+                    AssertUnwindSafe(|| {
+                        let mut engine = SenseVoiceEngine::new();
+                        engine.load_model_with_params(&mp, SenseVoiceModelParams::int8()).map_err(|e| {
+                            anyhow::anyhow!("Failed to load SenseVoice model {}: {}", model_id_str, e)
                         })?;
-                    Ok(LoadedEngine::SenseVoice(engine))
-                }));
-                match load_result {
-                    Ok(Ok(engine)) => engine,
-                    Ok(Err(e)) => return Err(e),
-                    Err(_) => {
-                        let error_msg = "SenseVoice model loading crashed - model file may be corrupted or incompatible with your system";
-                        log::error!("{}", error_msg);
-                        let _ = self.app_handle.emit(
-                            "model-state-changed",
-                            ModelStateEvent {
-                                event_type: "loading_failed".to_string(),
-                                model_id: Some(model_id.to_string()),
-                                model_name: Some(model_info.name.clone()),
-                                error: Some(error_msg.to_string()),
-                            },
-                        );
-                        return Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg));
-                    }
-                }
+                        Ok(LoadedEngine::SenseVoice(engine))
+                    }),
+                )?
             }
             EngineType::GeminiApi => {
                 let settings = get_settings(&self.app_handle);
@@ -785,13 +712,7 @@ impl TranscriptionManager {
             }
             let final_result = all_results.join(" ");
             let settings = get_settings(&self.app_handle);
-            let final_result = if !settings.custom_words.is_empty() {
-                apply_custom_words(&final_result, &settings.custom_words, settings.word_correction_threshold)
-            } else {
-                final_result
-            };
-            let final_result = apply_text_replacements(&final_result, &settings.text_replacements);
-            let final_result = filter_transcription_output(&final_result);
+            let final_result = apply_post_processing(&final_result, &settings);
             info!(
                 "Chunked transcription completed in {}ms: {} chunks, {} chars",
                 st.elapsed().as_millis(),
@@ -850,17 +771,7 @@ impl TranscriptionManager {
                     )
                 })?;
 
-                let corrected = if !settings.custom_words.is_empty() {
-                    apply_custom_words(
-                        &result,
-                        &settings.custom_words,
-                        settings.word_correction_threshold,
-                    )
-                } else {
-                    result
-                };
-                let replaced = apply_text_replacements(&corrected, &settings.text_replacements);
-                let final_result = filter_transcription_output(&replaced);
+                let final_result = apply_post_processing(&result, &settings);
 
                 let et = std::time::Instant::now();
                 info!(
@@ -900,17 +811,7 @@ impl TranscriptionManager {
                     )
                 })?;
 
-                let corrected = if !settings.custom_words.is_empty() {
-                    apply_custom_words(
-                        &result,
-                        &settings.custom_words,
-                        settings.word_correction_threshold,
-                    )
-                } else {
-                    result
-                };
-                let replaced = apply_text_replacements(&corrected, &settings.text_replacements);
-                let final_result = filter_transcription_output(&replaced);
+                let final_result = apply_post_processing(&result, &settings);
 
                 let et = std::time::Instant::now();
                 info!(
@@ -1086,19 +987,7 @@ impl TranscriptionManager {
             }
         };
 
-        let corrected_result = if !settings.custom_words.is_empty() {
-            apply_custom_words(
-                &result.text,
-                &settings.custom_words,
-                settings.word_correction_threshold,
-            )
-        } else {
-            result.text
-        };
-
-        let replaced_result = apply_text_replacements(&corrected_result, &settings.text_replacements);
-
-        let filtered_result = filter_transcription_output(&replaced_result);
+        let filtered_result = apply_post_processing(&result.text, &settings);
 
         let et = std::time::Instant::now();
         let translation_note = if settings.translate_to_english {

@@ -23,14 +23,20 @@ fn ensure_ascii_path(path: &std::path::Path) -> std::path::PathBuf {
     }
     info!("Model path contains non-ASCII characters, using temp copy");
     let temp_dir = std::env::temp_dir().join("phonara_models");
-    let _ = std::fs::create_dir_all(&temp_dir);
+    if let Err(e) = std::fs::create_dir_all(&temp_dir) {
+        warn!("Failed to create temp model directory: {}", e);
+        return path.to_path_buf();
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&temp_dir, std::fs::Permissions::from_mode(0o700));
+    }
     if let Some(filename) = path.file_name() {
         let dest = temp_dir.join(filename);
-        if !dest.exists() {
-            if let Err(e) = std::fs::copy(path, &dest) {
-                warn!("Failed to copy model to ASCII path: {}", e);
-                return path.to_path_buf();
-            }
+        if let Err(e) = std::fs::copy(path, &dest) {
+            warn!("Failed to copy model to ASCII path: {}", e);
+            return path.to_path_buf();
         }
         return dest;
     }
@@ -556,12 +562,12 @@ impl ModelManager {
     }
 
     pub fn get_available_models(&self) -> Vec<ModelInfo> {
-        let models = self.available_models.lock().unwrap();
+        let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
         models.values().cloned().collect()
     }
 
     pub fn get_model_info(&self, model_id: &str) -> Option<ModelInfo> {
-        let models = self.available_models.lock().unwrap();
+        let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
         models.get(model_id).cloned()
     }
 
@@ -639,7 +645,7 @@ impl ModelManager {
     }
 
     fn update_download_status(&self) -> Result<()> {
-        let mut models = self.available_models.lock().unwrap();
+        let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
 
         for model in models.values_mut() {
             if matches!(model.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
@@ -653,7 +659,7 @@ impl ModelManager {
                     .join(format!("{}.extracting", &model.filename));
 
                 let is_currently_extracting = {
-                    let extracting = self.extracting_models.lock().unwrap();
+                    let extracting = self.extracting_models.lock().unwrap_or_else(|e| e.into_inner());
                     extracting.contains(&model.id)
                 };
                 if extracting_path.exists() && !is_currently_extracting {
@@ -691,7 +697,7 @@ impl ModelManager {
         let mut settings = get_settings(&self.app_handle);
 
         if !settings.selected_model.is_empty() {
-            let models = self.available_models.lock().unwrap();
+            let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             let exists = models.contains_key(&settings.selected_model);
             drop(models);
 
@@ -706,7 +712,7 @@ impl ModelManager {
         }
 
         if settings.selected_model.is_empty() {
-            let models = self.available_models.lock().unwrap();
+            let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(available_model) = models.values().find(|model| {
                 model.is_downloaded && !matches!(model.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi)
             }) {
@@ -833,7 +839,7 @@ impl ModelManager {
 
     pub async fn download_model(&self, model_id: &str) -> Result<()> {
         let model_info = {
-            let models = self.available_models.lock().unwrap();
+            let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             models.get(model_id).cloned()
         };
 
@@ -894,7 +900,7 @@ impl ModelManager {
         };
 
         {
-            let mut models = self.available_models.lock().unwrap();
+            let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(model) = models.get_mut(model_id) {
                 model.is_downloading = true;
             }
@@ -902,11 +908,14 @@ impl ModelManager {
 
         let cancel_flag = Arc::new(AtomicBool::new(false));
         {
-            let mut flags = self.cancel_flags.lock().unwrap();
+            let mut flags = self.cancel_flags.lock().unwrap_or_else(|e| e.into_inner());
             flags.insert(model_id.to_string(), cancel_flag.clone());
         }
 
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         let mut request = client.get(&url);
 
         if resume_from > 0 {
@@ -963,7 +972,7 @@ impl ModelManager {
             && response.status() != reqwest::StatusCode::PARTIAL_CONTENT
         {
             {
-                let mut models = self.available_models.lock().unwrap();
+                let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(model) = models.get_mut(model_id) {
                     model.is_downloading = false;
                 }
@@ -1015,14 +1024,14 @@ impl ModelManager {
                 info!("Download cancelled for: {}", model_id);
 
                 {
-                    let mut models = self.available_models.lock().unwrap();
+                    let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(model) = models.get_mut(model_id) {
                         model.is_downloading = false;
                     }
                 }
 
                 {
-                    let mut flags = self.cancel_flags.lock().unwrap();
+                    let mut flags = self.cancel_flags.lock().unwrap_or_else(|e| e.into_inner());
                     flags.remove(model_id);
                 }
 
@@ -1031,7 +1040,7 @@ impl ModelManager {
 
             let chunk = chunk.map_err(|e| {
                 {
-                    let mut models = self.available_models.lock().unwrap();
+                    let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(model) = models.get_mut(model_id) {
                         model.is_downloading = false;
                     }
@@ -1082,7 +1091,7 @@ impl ModelManager {
             if actual_size != total_size {
                 let _ = fs::remove_file(&partial_path);
                 {
-                    let mut models = self.available_models.lock().unwrap();
+                    let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(model) = models.get_mut(model_id) {
                         model.is_downloading = false;
                     }
@@ -1097,7 +1106,7 @@ impl ModelManager {
 
         if model_info.is_directory {
             {
-                let mut extracting = self.extracting_models.lock().unwrap();
+                let mut extracting = self.extracting_models.lock().unwrap_or_else(|e| e.into_inner());
                 extracting.insert(model_id.to_string());
             }
 
@@ -1123,7 +1132,7 @@ impl ModelManager {
                 let error_msg = format!("Failed to extract archive: {}", e);
                 let _ = fs::remove_dir_all(&temp_extract_dir);
                 {
-                    let mut extracting = self.extracting_models.lock().unwrap();
+                    let mut extracting = self.extracting_models.lock().unwrap_or_else(|e| e.into_inner());
                     extracting.remove(model_id);
                 }
                 let _ = self.app_handle.emit(
@@ -1157,7 +1166,7 @@ impl ModelManager {
 
             info!("Successfully extracted archive for model: {}", model_id);
             {
-                let mut extracting = self.extracting_models.lock().unwrap();
+                let mut extracting = self.extracting_models.lock().unwrap_or_else(|e| e.into_inner());
                 extracting.remove(model_id);
             }
             let _ = self.app_handle.emit("model-extraction-completed", model_id);
@@ -1168,7 +1177,7 @@ impl ModelManager {
         }
 
         {
-            let mut models = self.available_models.lock().unwrap();
+            let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(model) = models.get_mut(model_id) {
                 model.is_downloading = false;
                 model.is_downloaded = true;
@@ -1177,7 +1186,7 @@ impl ModelManager {
         }
 
         {
-            let mut flags = self.cancel_flags.lock().unwrap();
+            let mut flags = self.cancel_flags.lock().unwrap_or_else(|e| e.into_inner());
             flags.remove(model_id);
         }
 
@@ -1195,7 +1204,7 @@ impl ModelManager {
         debug!("ModelManager: delete_model called for: {}", model_id);
 
         let model_info = {
-            let models = self.available_models.lock().unwrap();
+            let models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             models.get(model_id).cloned()
         };
 
@@ -1245,7 +1254,7 @@ impl ModelManager {
         }
 
         if model_info.is_custom {
-            let mut models = self.available_models.lock().unwrap();
+            let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             models.remove(model_id);
             debug!("ModelManager: removed custom model from available models");
         } else {
@@ -1311,7 +1320,7 @@ impl ModelManager {
         debug!("ModelManager: cancel_download called for: {}", model_id);
 
         {
-            let flags = self.cancel_flags.lock().unwrap();
+            let flags = self.cancel_flags.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(flag) = flags.get(model_id) {
                 flag.store(true, Ordering::Relaxed);
                 info!("Cancellation flag set for: {}", model_id);
@@ -1321,7 +1330,7 @@ impl ModelManager {
         }
 
         {
-            let mut models = self.available_models.lock().unwrap();
+            let mut models = self.available_models.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(model) = models.get_mut(model_id) {
                 model.is_downloading = false;
             }

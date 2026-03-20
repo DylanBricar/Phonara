@@ -582,10 +582,29 @@ fn send_key_combo_via_xdotool(paste_method: &PasteMethod) -> Result<(), String> 
 }
 
 fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String> {
-    let output = Command::new(script_path)
-        .arg(text)
-        .output()
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let script = std::path::Path::new(script_path);
+    if !script.is_file() {
+        return Err(format!("External script not found or not a file: '{}'", script_path));
+    }
+
+    let mut child = Command::new(script_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
         .map_err(|e| format!("Failed to execute external script '{}': {}", script_path, e))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(text.as_bytes())
+            .map_err(|e| format!("Failed to write to script stdin: {}", e))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for external script '{}': {}", script_path, e))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

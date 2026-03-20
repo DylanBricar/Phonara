@@ -272,48 +272,52 @@ impl AudioRecordingManager {
 
     pub fn apply_mute(&self) {
         let settings = get_settings(&self.app_handle);
+
+        if !settings.mute_while_recording || !*self.is_open.lock().unwrap() {
+            return;
+        }
+
         let mut did_mute_guard = self.did_mute.lock().unwrap();
 
-        if settings.mute_while_recording && *self.is_open.lock().unwrap() {
-            #[cfg(target_os = "macos")]
-            {
-                use std::process::Command;
-                let result = Command::new("osascript")
-                    .arg("-e")
-                    .arg("set v to (get volume settings)\nif (output muted of v) is false and (output volume of v) > 0 then\nset volume output muted true\nreturn \"muted\"\nelse\nreturn \"skip\"\nend if")
-                    .output();
-                match result {
-                    Ok(output) => {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        if stdout.trim() == "muted" {
-                            *did_mute_guard = true;
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(100));
-                                if let Ok(verify) = Command::new("osascript")
-                                    .arg("-e")
-                                    .arg("return (output muted of (get volume settings)) as text")
-                                    .output()
-                                {
-                                    let mute_state = String::from_utf8_lossy(&verify.stdout);
-                                    if mute_state.trim() != "true" {
-                                        log::warn!("Mute verification failed: output device may not support software muting (USB audio interface limitation)");
-                                    }
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            let result = Command::new("osascript")
+                .arg("-e")
+                .arg("set v to (get volume settings)\nif (output muted of v) is false and (output volume of v) > 0 then\nset volume output muted true\nreturn \"muted\"\nelse\nreturn \"skip\"\nend if")
+                .output();
+            match result {
+                Ok(output) => {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    if stdout.trim() == "muted" {
+                        *did_mute_guard = true;
+                        let did_mute_arc = Arc::clone(&self.did_mute);
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_millis(100));
+                            if let Ok(verify) = Command::new("osascript")
+                                .arg("-e")
+                                .arg("return (output muted of (get volume settings)) as text")
+                                .output()
+                            {
+                                let mute_state = String::from_utf8_lossy(&verify.stdout);
+                                if mute_state.trim() != "true" {
+                                    log::warn!("Mute verification failed: output device may not support software muting (USB audio interface limitation)");
+                                    *did_mute_arc.lock().unwrap_or_else(|e| e.into_inner()) = false;
                                 }
-                            });
-                        }
+                            }
+                        });
                     }
-                    Err(_) => {}
                 }
+                Err(_) => {}
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            if is_system_already_muted() {
                 return;
             }
-            #[cfg(not(target_os = "macos"))]
-            {
-                if is_system_already_muted() {
-                    return;
-                }
-                set_mute(true);
-                *did_mute_guard = true;
-            }
+            set_mute(true);
+            *did_mute_guard = true;
         }
     }
 
@@ -365,6 +369,10 @@ impl AudioRecordingManager {
     }
 
     pub fn stop_microphone_stream(&self) {
+        if *self.is_recording.lock().unwrap() {
+            return;
+        }
+
         let mut open_flag = self.is_open.lock().unwrap();
         if !*open_flag {
             return;
@@ -377,10 +385,6 @@ impl AudioRecordingManager {
         *did_mute_guard = false;
 
         if let Some(rec) = self.recorder.lock().unwrap().as_mut() {
-            if *self.is_recording.lock().unwrap() {
-                let _ = rec.stop();
-                *self.is_recording.lock().unwrap() = false;
-            }
             let _ = rec.close();
         }
 
@@ -456,35 +460,41 @@ impl AudioRecordingManager {
 
     pub fn try_start_recording(&self, binding_id: &str) -> Result<(), String> {
         self.is_paused.store(false, Ordering::Relaxed);
-        let mut state = self.state.lock().unwrap();
 
-        if let RecordingState::Idle = *state {
-            if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
-                self.lazy_close_gen.fetch_add(1, Ordering::SeqCst);
-                if let Err(e) = self.start_microphone_stream() {
-                    let msg = format!("{e}");
-                    error!("Failed to open microphone stream: {msg}");
-                    return Err(msg);
-                }
+        {
+            let state = self.state.lock().unwrap();
+            if !matches!(*state, RecordingState::Idle) {
+                return Err("Already recording".to_string());
             }
-
-            if let Some(rec) = self.recorder.lock().unwrap().as_ref() {
-                if rec.start().is_ok() {
-                    *self.is_recording.lock().unwrap() = true;
-                    *state = RecordingState::Recording {
-                        binding_id: binding_id.to_string(),
-                    };
-                    return Ok(());
-                }
-            }
-            Err("Recorder not available".to_string())
-        } else {
-            Err("Already recording".to_string())
         }
+
+        if matches!(*self.mode.lock().unwrap(), MicrophoneMode::OnDemand) {
+            self.lazy_close_gen.fetch_add(1, Ordering::SeqCst);
+            if let Err(e) = self.start_microphone_stream() {
+                let msg = format!("{e}");
+                error!("Failed to open microphone stream: {msg}");
+                return Err(msg);
+            }
+        }
+
+        if let Some(rec) = self.recorder.lock().unwrap().as_ref() {
+            if rec.start().is_ok() {
+                *self.is_recording.lock().unwrap() = true;
+                *self.state.lock().unwrap() = RecordingState::Recording {
+                    binding_id: binding_id.to_string(),
+                };
+                return Ok(());
+            }
+        }
+        Err("Recorder not available".to_string())
     }
 
     pub fn update_selected_device(&self) -> Result<(), anyhow::Error> {
-        if *self.is_open.lock().unwrap() {
+        let was_open = *self.is_open.lock().unwrap();
+        if was_open {
+            if *self.is_recording.lock().unwrap() {
+                return Err(anyhow::anyhow!("Cannot change device while recording"));
+            }
             self.stop_microphone_stream();
             self.start_microphone_stream()?;
         }

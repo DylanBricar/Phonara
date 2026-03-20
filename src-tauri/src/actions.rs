@@ -46,6 +46,13 @@ fn strip_invisible_chars(s: &str) -> String {
     s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
 }
 
+fn sanitize_error_for_logging(error: &str, api_key: &str) -> String {
+    if api_key.is_empty() {
+        return error.to_string();
+    }
+    error.replace(api_key, "[REDACTED]")
+}
+
 fn substitute_template_variables(prompt: &str, language: &str) -> String {
     let now = Local::now();
     prompt
@@ -108,6 +115,11 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     if api_key.is_empty() {
         api_key = std::env::var(format!("{}_API_KEY", provider.id.to_uppercase().replace("-", "_")))
             .unwrap_or_default();
+    }
+
+    if api_key.is_empty() && provider.requires_api_key {
+        error!("No API key configured for provider '{}' which requires one", provider.id);
+        return None;
     }
 
     if provider.supports_structured_output {
@@ -196,7 +208,9 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
                 error!("LLM API response has no content");
                 return None;
             }
-            Err(_e) => {
+            Err(e) => {
+                let err_str = sanitize_error_for_logging(&e.to_string(), &api_key);
+                error!("Structured LLM post-processing failed for provider '{}': {}", provider.id, err_str);
             }
         }
     }
@@ -204,7 +218,7 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     let processed_prompt = substitute_template_variables(&prompt, &settings.selected_language)
         .replace("${output}", transcription);
 
-    match crate::llm_client::send_chat_completion(&provider, api_key, &model, processed_prompt)
+    match crate::llm_client::send_chat_completion(&provider, api_key.clone(), &model, processed_prompt)
         .await
     {
         Ok(Some(content)) => {
@@ -216,10 +230,11 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
             None
         }
         Err(e) => {
+            let err_str = sanitize_error_for_logging(&e.to_string(), &api_key);
             error!(
                 "LLM post-processing failed for provider '{}': {}. Falling back to original transcription.",
                 provider.id,
-                e
+                err_str
             );
             None
         }
@@ -309,11 +324,16 @@ async fn process_action(
             .unwrap_or_default();
     }
 
+    if api_key.is_empty() && provider.requires_api_key {
+        error!("No API key configured for provider '{}' which requires one", provider.id);
+        return None;
+    }
+
     let system_prompt = "You are a text processing assistant. Output ONLY the final processed text. Do not add any explanation, commentary, preamble, or formatting such as markdown code blocks. Just output the raw result text, nothing else.".to_string();
 
     match crate::llm_client::send_chat_completion_with_schema(
         &provider,
-        api_key,
+        api_key.clone(),
         &model,
         full_prompt,
         Some(system_prompt),
@@ -329,9 +349,10 @@ async fn process_action(
             None
         }
         Err(e) => {
+            let err_str = sanitize_error_for_logging(&e.to_string(), &api_key);
             error!(
                 "Action processing failed for provider '{}': {}",
-                provider.id, e
+                provider.id, err_str
             );
             None
         }
