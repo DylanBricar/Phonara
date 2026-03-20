@@ -16,6 +16,27 @@ use std::time::{Duration, Instant, SystemTime};
 use tar::Archive;
 use tauri::{AppHandle, Emitter, Manager};
 
+fn ensure_ascii_path(path: &std::path::Path) -> std::path::PathBuf {
+    let path_str = path.to_string_lossy();
+    if path_str.is_ascii() {
+        return path.to_path_buf();
+    }
+    info!("Model path contains non-ASCII characters, using temp copy");
+    let temp_dir = std::env::temp_dir().join("phonara_models");
+    let _ = std::fs::create_dir_all(&temp_dir);
+    if let Some(filename) = path.file_name() {
+        let dest = temp_dir.join(filename);
+        if !dest.exists() {
+            if let Err(e) = std::fs::copy(path, &dest) {
+                warn!("Failed to copy model to ASCII path: {}", e);
+                return path.to_path_buf();
+            }
+        }
+        return dest;
+    }
+    path.to_path_buf()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum EngineType {
     Whisper,
@@ -1267,7 +1288,7 @@ impl ModelManager {
 
         if model_info.is_directory {
             if model_path.exists() && model_path.is_dir() && !partial_path.exists() {
-                Ok(model_path)
+                Ok(ensure_ascii_path(&model_path))
             } else {
                 Err(anyhow::anyhow!(
                     "Complete model directory not found: {}",
@@ -1276,7 +1297,7 @@ impl ModelManager {
             }
         } else {
             if model_path.exists() && !partial_path.exists() {
-                Ok(model_path)
+                Ok(ensure_ascii_path(&model_path))
             } else {
                 Err(anyhow::anyhow!(
                     "Complete model file not found: {}",

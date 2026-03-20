@@ -48,7 +48,7 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     let parts: Vec<String> = raw.split('+').map(|p| p.trim().to_lowercase()).collect();
     for part in &parts {
         if part == "fn" || part == "function" {
-            return Err("The 'fn' key is not supported by Tauri global shortcuts".into());
+            return Err("The 'fn' key is not supported by Tauri global shortcuts. Try enabling HandyKeys in Experimental settings for extended key support".into());
         }
     }
 
@@ -57,7 +57,7 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     if has_non_modifier {
         Ok(())
     } else {
-        Err("Tauri shortcuts must include a main key (letter, number, F-key, etc.) in addition to modifiers".into())
+        Err("Tauri shortcuts must include a main key (letter, number, F-key, etc.) in addition to modifiers. Try enabling HandyKeys in Experimental settings for single-key and extended key support".into())
     }
 }
 
@@ -77,10 +77,6 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
             return Err(error_msg);
         }
     };
-
-    if app.global_shortcut().is_registered(shortcut) {
-        let _ = app.global_shortcut().unregister(shortcut);
-    }
 
     let binding_id_for_closure = binding.id.clone();
 

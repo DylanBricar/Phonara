@@ -137,6 +137,13 @@ fn should_force_show_permissions_window(app: &AppHandle) -> bool {
 }
 
 fn initialize_core_logic(app_handle: &AppHandle) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if !is_x86_feature_detected!("sse4.1") {
+            log::error!("This CPU does not support SSE4.1 instructions required for transcription");
+        }
+    }
+
     let recording_manager = Arc::new(match AudioRecordingManager::new(app_handle) {
         Ok(manager) => manager,
         Err(_) => {
@@ -270,6 +277,19 @@ fn show_main_window_command(app: AppHandle) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(cli_args: CliArgs) {
+    std::panic::set_hook(Box::new(|panic_info| {
+        let msg = if let Some(s) = panic_info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = panic_info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        let location = panic_info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column())).unwrap_or_default();
+        log::error!("PANIC at {}: {}", location, msg);
+        eprintln!("PANIC at {}: {}", location, msg);
+    }));
+
     let console_filter = build_console_filter();
 
     let specta_builder = Builder::<tauri::Wry>::new().commands(collect_commands![

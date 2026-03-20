@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub enum SoundType {
@@ -101,7 +102,16 @@ fn play_sound_at_path(app: &AppHandle, path: &Path) -> Result<(), Box<dyn std::e
     let settings = settings::get_settings(app);
     let volume = settings.audio_feedback_volume;
     let selected_device = settings.selected_output_device.clone();
-    play_audio_file(path, selected_device, volume)
+
+    thread::sleep(Duration::from_millis(50));
+
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        play_audio_file(path, selected_device, volume)
+    }))
+    .unwrap_or_else(|_| {
+        error!("Panic occurred while playing sound");
+        Err("Sound playback panicked".into())
+    })
 }
 
 #[cfg(target_os = "macos")]

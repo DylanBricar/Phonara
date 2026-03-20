@@ -60,8 +60,11 @@ impl TranscriptionCoordinator {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut stage = Stage::Idle;
                 let mut last_press: Option<Instant> = None;
+                let mut stage_entered_at = Instant::now();
 
-                while let Ok(cmd) = rx.recv() {
+                loop {
+                    match rx.recv_timeout(Duration::from_secs(30)) {
+                        Ok(cmd) => {
                     match cmd {
                         Command::Input {
                             binding_id,
@@ -80,6 +83,7 @@ impl TranscriptionCoordinator {
                             if push_to_talk {
                                 if is_pressed && matches!(stage, Stage::Idle) {
                                     start(&app, &mut stage, &binding_id, &hotkey_string);
+                                    stage_entered_at = Instant::now();
                                 } else if !is_pressed {
                                     if let Stage::Recording {
                                         binding_id: ref bid,
@@ -88,6 +92,7 @@ impl TranscriptionCoordinator {
                                     {
                                         if bid == &binding_id {
                                             stop(&app, &mut stage, &binding_id, &hotkey_string);
+                                            stage_entered_at = Instant::now();
                                         }
                                     }
                                 }
@@ -95,12 +100,14 @@ impl TranscriptionCoordinator {
                                 match &stage {
                                     Stage::Idle => {
                                         start(&app, &mut stage, &binding_id, &hotkey_string);
+                                        stage_entered_at = Instant::now();
                                     }
                                     Stage::Recording {
                                         binding_id: ref bid,
                                         ..
                                     } if bid == &binding_id => {
                                         stop(&app, &mut stage, &binding_id, &hotkey_string);
+                                        stage_entered_at = Instant::now();
                                     }
                                     _ => {}
                                 }
@@ -114,10 +121,12 @@ impl TranscriptionCoordinator {
                                     || matches!(stage, Stage::Recording { .. }))
                             {
                                 stage = Stage::Idle;
+                                stage_entered_at = Instant::now();
                             }
                         }
                         Command::ProcessingFinished => {
                             stage = Stage::Idle;
+                            stage_entered_at = Instant::now();
                         }
                         Command::SelectAction { key } => {
                             if let Stage::Recording {
@@ -137,6 +146,27 @@ impl TranscriptionCoordinator {
                                         emit_action_selected(&app, key, &action.name);
                                     }
                                 }
+                            }
+                        }
+                    }
+                        }
+                        Err(_) => {
+                            match &stage {
+                                Stage::Recording { .. } => {
+                                    if stage_entered_at.elapsed() > Duration::from_secs(600) {
+                                        error!("Recording stuck for > 10 minutes, auto-cancelling");
+                                        stage = Stage::Idle;
+                                        stage_entered_at = Instant::now();
+                                    }
+                                }
+                                Stage::Processing => {
+                                    if stage_entered_at.elapsed() > Duration::from_secs(300) {
+                                        error!("Processing stuck for > 5 minutes, auto-resetting");
+                                        stage = Stage::Idle;
+                                        stage_entered_at = Instant::now();
+                                    }
+                                }
+                                _ => {}
                             }
                         }
                     }

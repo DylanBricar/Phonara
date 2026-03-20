@@ -20,4 +20,7 @@ pub struct CliArgs {
 
     #[arg(long)]
     pub debug: bool,
+
+    #[arg(long, help = "Start transcription immediately on launch")]
+    pub transcribe: bool,
 }
