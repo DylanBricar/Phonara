@@ -639,6 +639,12 @@ impl TranscriptionManager {
 
         let audio = normalize_audio(audio);
 
+        if audio.is_empty() {
+            debug!("Audio is near-silence after normalization, skipping transcription");
+            self.maybe_unload_immediately("near-silence audio");
+            return Ok(String::new());
+        }
+
         let chunks = chunk_audio_by_silence(&audio);
         if chunks.len() > 1 {
             info!(

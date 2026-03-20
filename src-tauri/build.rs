@@ -175,7 +175,7 @@ fn build_apple_intelligence_bridge() {
         .expect("Unable to determine Swift toolchain lib directory");
     let sdk_swift_lib = Path::new(&sdk_path).join("usr/lib/swift");
 
-    // Use macOS 26.0 as deployment target so @Generable macro compiles.
+    // Use macOS 26.0 as deployment target because FoundationModels requires macOS 26.0.
     // Runtime availability is guarded via @available(macOS 26.0, *) in Swift.
     // Weak linking for FoundationModels is handled via cargo:rustc-link-arg below.
     let deploy_target = if has_foundation_models {

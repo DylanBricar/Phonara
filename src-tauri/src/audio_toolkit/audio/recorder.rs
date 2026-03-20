@@ -461,7 +461,6 @@ fn run_consumer(
                     });
 
                     let _ = reply_tx.send(std::mem::take(&mut processed_samples));
-                    stop_flag.store(false, Ordering::SeqCst);
                 }
                 Cmd::Shutdown => {
                     stop_flag.store(true, Ordering::SeqCst);
