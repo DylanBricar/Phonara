@@ -21,13 +21,36 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get version from tauri.conf.json
+      - name: Compute next version
         id: get-version
-        shell: bash
-        run: |
-          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | cut -d'"' -f4)
-          echo "Application version from tauri.conf.json: $VERSION"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100
+            });
+            const tags = releases
+              .map(r => r.tag_name)
+              .filter(t => /^v\d+\.\d+\.\d+$/.test(t))
+              .sort((a, b) => {
+                const pa = a.slice(1).split('.').map(Number);
+                const pb = b.slice(1).split('.').map(Number);
+                return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
+              });
+            let next;
+            if (tags.length === 0) {
+              next = '0.1.0';
+            } else {
+              const latest = tags[tags.length - 1].slice(1).split('.').map(Number);
+              latest[2] += 1;
+              next = latest.join('.');
+            }
+            core.info(`Next version: ${next}`);
+            core.setOutput('version', next);
+            return next;
 
       - name: Create Draft Release
         id: create-release
