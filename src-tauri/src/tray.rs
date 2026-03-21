@@ -235,12 +235,6 @@ pub fn handle_tray_click(app: &AppHandle) {
             if let Err(e) = main_window.set_focus() {
                 error!("Failed to focus window: {}", e);
             }
-            #[cfg(target_os = "macos")]
-            {
-                if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
-                    error!("Failed to set activation policy to Regular: {}", e);
-                }
-            }
         }
     }
 }

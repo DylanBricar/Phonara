@@ -102,12 +102,6 @@ pub(crate) fn show_main_window(app: &AppHandle) {
         if let Err(e) = main_window.set_focus() {
             log::error!("Failed to focus window: {}", e);
         }
-        #[cfg(target_os = "macos")]
-        {
-            if let Err(e) = app.set_activation_policy(tauri::ActivationPolicy::Regular) {
-                log::error!("Failed to set activation policy to Regular: {}", e);
-            }
-        }
     } else {
         let webview_labels = app.webview_windows().keys().cloned().collect::<Vec<_>>();
         log::error!(
@@ -173,13 +167,6 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     #[cfg(unix)]
     signal_handle::setup_signal_handler(app_handle.clone(), signals);
 
-    #[cfg(target_os = "macos")]
-    {
-        let settings = settings::get_settings(app_handle);
-        if settings.start_hidden && settings.show_tray_icon {
-            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-        }
-    }
     let initial_theme = tray::get_current_theme(app_handle);
     let initial_icon_path = tray::get_icon_path(initial_theme, tray::TrayIconState::Idle);
 
@@ -550,16 +537,6 @@ pub fn run(cli_args: CliArgs) {
                 }
                 api.prevent_close();
                 let _res = window.hide();
-
-                #[cfg(target_os = "macos")]
-                {
-                    let res = window
-                        .app_handle()
-                        .set_activation_policy(tauri::ActivationPolicy::Accessory);
-                    if let Err(e) = res {
-                        log::error!("Failed to set activation policy: {}", e);
-                    }
-                }
             }
             tauri::WindowEvent::ThemeChanged(_theme) => {
                 utils::change_tray_icon(&window.app_handle(), utils::TrayIconState::Idle);
