@@ -183,8 +183,8 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         .show_menu_on_left_click(true)
         .icon_as_template(true)
         .on_tray_icon_event(|tray_icon, event| {
-            if let tauri::tray::TrayIconEvent::Click { .. } = event {
-                tray::handle_tray_click(tray_icon.app_handle());
+            if let tauri::tray::TrayIconEvent::DoubleClick { .. } = event {
+                show_main_window(tray_icon.app_handle());
             }
         })
         .on_menu_event(|app, event| match event.id.as_ref() {
@@ -541,6 +541,13 @@ pub fn run(cli_args: CliArgs) {
             tauri::WindowEvent::ThemeChanged(_theme) => {
                 utils::change_tray_icon(&window.app_handle(), utils::TrayIconState::Idle);
             }
+            tauri::WindowEvent::Focused(true) => {
+                // Re-register shortcuts on window focus - fixes hotkeys
+                // lost after Windows sleep/wake
+                if window.app_handle().try_state::<commands::ShortcutsInitialized>().is_some() {
+                    crate::shortcut::init_shortcuts(window.app_handle());
+                }
+            }
             _ => {}
         })
         .invoke_handler(specta_builder.invoke_handler())
@@ -550,6 +557,12 @@ pub fn run(cli_args: CliArgs) {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = &event {
                 show_main_window(app);
+            }
+            if let tauri::RunEvent::Resumed = &event {
+                // Re-register shortcuts after system resume (sleep/wake)
+                if app.try_state::<commands::ShortcutsInitialized>().is_some() {
+                    crate::shortcut::init_shortcuts(app);
+                }
             }
             let _ = (app, event);
         });

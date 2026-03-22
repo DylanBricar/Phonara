@@ -1,4 +1,4 @@
-use log::error;
+use log::{error, info};
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -78,6 +78,13 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
         }
     };
 
+    // Skip if already registered — calling on_shortcut on an existing
+    // shortcut corrupts the handler map and breaks ALL shortcuts
+    if app.global_shortcut().is_registered(shortcut) {
+        info!("[SC] Skip register '{}' (already registered)", binding.current_binding);
+        return Ok(());
+    }
+
     let binding_id_for_closure = binding.id.clone();
 
     app.global_shortcut()
@@ -102,6 +109,7 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
             error_msg
         })?;
 
+    info!("Registered shortcut: {} = '{}'", binding.id, binding.current_binding);
     Ok(())
 }
 

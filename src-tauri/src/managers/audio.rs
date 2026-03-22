@@ -415,26 +415,53 @@ impl AudioRecordingManager {
                 return;
             }
 
+            let gen_arc_inner = Arc::clone(&gen_arc);
             tokio::task::spawn_blocking(move || {
+                // Recheck generation to avoid racing with a new recording
+                if gen_arc_inner.load(Ordering::SeqCst) != gen {
+                    return;
+                }
+
                 if *is_recording.lock().unwrap() {
                     return;
                 }
 
-                let mut open_flag = is_open.lock().unwrap();
+                // Use try_lock to avoid blocking the coordinator thread
+                // if a new recording is starting concurrently
+                let mut open_flag = match is_open.try_lock() {
+                    Ok(guard) => guard,
+                    Err(_) => return,
+                };
                 if !*open_flag {
                     return;
                 }
 
-                let mut did_mute_guard = did_mute.lock().unwrap();
+                let mut did_mute_guard = match did_mute.try_lock() {
+                    Ok(guard) => guard,
+                    Err(_) => return,
+                };
                 if *did_mute_guard {
                     set_mute(false);
                 }
                 *did_mute_guard = false;
+                drop(did_mute_guard);
 
-                if let Some(rec) = recorder.lock().unwrap().as_mut() {
+                // Mark as closed and release ALL locks BEFORE rec.close()
+                // because rec.close() can take 10+ seconds on wireless headsets
+                // and would block start_microphone_stream on the coordinator thread
+                *open_flag = false;
+                drop(open_flag);
+
+                // Take the recorder out, drop the lock, THEN close
+                // so start_microphone_stream can create a new recorder
+                let old_rec = if let Ok(mut rec_guard) = recorder.try_lock() {
+                    rec_guard.take()
+                } else {
+                    None
+                };
+                if let Some(mut rec) = old_rec {
                     let _ = rec.close();
                 }
-                *open_flag = false;
             }).await.ok();
         });
     }
