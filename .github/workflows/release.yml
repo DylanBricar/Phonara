@@ -52,6 +52,69 @@ jobs:
             core.setOutput('version', next);
             return next;
 
+      - name: Generate changelog
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          result-encoding: string
+          script: |
+            const version = '${{ steps.get-version.outputs.version }}';
+
+            // Find previous release tag
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 5
+            });
+            const prevTag = releases.find(r => !r.draft)?.tag_name || '';
+
+            // Get commits since previous release
+            let commits = [];
+            if (prevTag) {
+              const { data: comparison } = await github.rest.repos.compareCommits({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                base: prevTag,
+                head: 'main'
+              });
+              commits = comparison.commits.map(c => c.commit.message.split('\n')[0]);
+            }
+
+            // Group by type
+            const groups = {
+              '🚀 Features': [],
+              '🐛 Bug Fixes': [],
+              '🔧 Improvements': [],
+              '📦 CI / Build': [],
+              '📝 Other': []
+            };
+
+            for (const msg of commits) {
+              if (msg.startsWith('feat')) groups['🚀 Features'].push(msg);
+              else if (msg.startsWith('fix')) groups['🐛 Bug Fixes'].push(msg);
+              else if (msg.startsWith('refactor') || msg.startsWith('perf') || msg.startsWith('chore')) groups['🔧 Improvements'].push(msg);
+              else if (msg.startsWith('ci') || msg.startsWith('build')) groups['📦 CI / Build'].push(msg);
+              else if (!msg.startsWith('merge') && !msg.startsWith('Merge')) groups['📝 Other'].push(msg);
+            }
+
+            // Build markdown
+            let body = `## What's new in v${version}\n\n`;
+            for (const [title, items] of Object.entries(groups)) {
+              if (items.length === 0) continue;
+              body += `### ${title}\n`;
+              for (const item of items) {
+                const clean = item.replace(/^(feat|fix|refactor|perf|chore|ci|build)(\(.*?\))?:\s*/, '');
+                body += `- ${clean}\n`;
+              }
+              body += '\n';
+            }
+
+            if (prevTag) {
+              body += `**Full Changelog**: https://github.com/${{ github.repository }}/compare/${prevTag}...v${version}\n`;
+            }
+
+            return body;
+
       - name: Create Draft Release
         id: create-release
         uses: actions/github-script@v7
@@ -62,9 +125,9 @@ jobs:
               repo: context.repo.repo,
               tag_name: `v${{ steps.get-version.outputs.version }}`,
               name: `v${{ steps.get-version.outputs.version }}`,
+              body: `${{ steps.changelog.outputs.result }}`,
               draft: true,
-              prerelease: false,
-              generate_release_notes: true
+              prerelease: false
             })
             return data.id
 
