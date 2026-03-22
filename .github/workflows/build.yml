@@ -36,6 +36,10 @@ on:
         required: false
         type: boolean
         default: true
+      version:
+        required: false
+        type: string
+        default: ""
       repository:
         required: false
         type: string
@@ -280,6 +284,22 @@ jobs:
             patched_platform="${{ inputs.asset-prefix }}_${patched_platform}"
           fi
           echo "platform=${patched_platform}" >> $GITHUB_OUTPUT
+
+      - name: Patch version in project files
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        run: |
+          VERSION="${{ inputs.version }}"
+          echo "Patching version to $VERSION"
+          # tauri.conf.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
+          # Cargo.toml (first version = line)
+          sed -i "0,/^version = \"[^\"]*\"/s//version = \"$VERSION\"/" src-tauri/Cargo.toml
+          # package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          echo "Patched to $VERSION"
+          grep '"version"' src-tauri/tauri.conf.json package.json
+          grep '^version' src-tauri/Cargo.toml | head -1
 
       - name: Build with Tauri (signed)
         if: ${{ inputs.sign-binaries && inputs.apple_signing }}
