@@ -32,6 +32,10 @@ on:
         required: false
         type: boolean
         default: false
+      apple_signing:
+        required: false
+        type: boolean
+        default: true
       repository:
         required: false
         type: string
@@ -230,7 +234,7 @@ jobs:
         run: rustup target add ${{ inputs.target }}
 
       - name: import Apple Developer Certificate
-        if: contains(inputs.platform, 'macos') && inputs.sign-binaries
+        if: contains(inputs.platform, 'macos') && inputs.apple_signing
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -246,7 +250,7 @@ jobs:
           security find-identity -v -p codesigning build.keychain
 
       - name: verify certificate
-        if: contains(inputs.platform, 'macos') && inputs.sign-binaries
+        if: contains(inputs.platform, 'macos') && inputs.apple_signing
         run: |
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
@@ -278,7 +282,7 @@ jobs:
           echo "platform=${patched_platform}" >> $GITHUB_OUTPUT
 
       - name: Build with Tauri (signed)
-        if: ${{ inputs.sign-binaries }}
+        if: ${{ inputs.sign-binaries && inputs.apple_signing }}
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -304,10 +308,15 @@ jobs:
           args: ${{ inputs.build-args }}
 
       - name: Build with Tauri (unsigned)
-        if: ${{ !inputs.sign-binaries }}
+        if: ${{ !inputs.sign-binaries || !inputs.apple_signing }}
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_CLIENT_ID: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_SECRET || '' }}
+          AZURE_TENANT_ID: ${{ inputs.sign-binaries && secrets.AZURE_TENANT_ID || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
           WHISPER_NO_AVX: ${{ contains(inputs.platform, 'ubuntu') && !contains(inputs.platform, 'arm') && 'ON' || '' }}
           WHISPER_NO_AVX2: ${{ contains(inputs.platform, 'ubuntu') && !contains(inputs.platform, 'arm') && 'ON' || '' }}
         with:

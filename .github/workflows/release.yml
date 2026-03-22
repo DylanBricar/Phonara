@@ -79,21 +79,27 @@ jobs:
           - platform: "macos-15" # for Arm based macs (M1 and above).
             args: "--target aarch64-apple-darwin"
             target: "aarch64-apple-darwin"
+            apple_signing: false
           - platform: "macos-latest" # for Intel based macs.
             args: "--target x86_64-apple-darwin"
             target: "x86_64-apple-darwin"
+            apple_signing: false
           - platform: "ubuntu-22.04" # Build .deb on 22.04
             args: "--bundles deb"
             target: "x86_64-unknown-linux-gnu"
+            apple_signing: true
           - platform: "ubuntu-24.04" # Build AppImage and RPM on 24.04
             args: "--bundles appimage,rpm"
             target: "x86_64-unknown-linux-gnu"
+            apple_signing: true
           - platform: "ubuntu-24.04-arm" # Build for ARM64 Linux
             args: "--bundles appimage,deb,rpm"
             target: "aarch64-unknown-linux-gnu"
+            apple_signing: true
           - platform: "windows-latest" # Windows x64
             args: "--bundles nsis,msi"
             target: "x86_64-pc-windows-msvc"
+            apple_signing: true
 
     uses: ./.github/workflows/build.yml
     with:
@@ -101,6 +107,7 @@ jobs:
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
       sign-binaries: false
+      apple_signing: ${{ matrix.apple_signing }}
       asset-prefix: "phonara"
       upload-artifacts: false
       release-id: ${{ needs.create-release.outputs.release-id }}

@@ -7,6 +7,7 @@ pub mod audio_toolkit;
 pub mod cli;
 mod clipboard;
 mod commands;
+mod crash_logging;
 pub mod gemini_client;
 mod http_client;
 pub mod openai_client;
@@ -56,6 +57,7 @@ use crate::settings::get_settings;
 
 pub static FILE_LOG_LEVEL: AtomicU8 = AtomicU8::new(log::LevelFilter::Debug as u8);
 pub static TRAY_ICON_ENABLED: AtomicBool = AtomicBool::new(true);
+pub static APP_SHUTDOWN_STARTED: AtomicBool = AtomicBool::new(false);
 
 fn level_filter_from_u8(value: u8) -> log::LevelFilter {
     match value {
@@ -245,6 +247,31 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     }
 
     utils::create_recording_overlay(app_handle);
+}
+
+fn shutdown_core_logic(app_handle: &AppHandle, reason: &str) {
+    if APP_SHUTDOWN_STARTED.swap(true, Ordering::SeqCst) {
+        log::debug!("Shutdown already in progress, ignoring duplicate request: {reason}");
+        return;
+    }
+
+    log::info!("Starting app shutdown cleanup: {reason}");
+
+    crate::shortcut::handler::reset_cancel_confirmation();
+
+    if let Some(audio_manager) = app_handle.try_state::<Arc<AudioRecordingManager>>() {
+        audio_manager.shutdown();
+    }
+
+    if let Some(transcription_manager) = app_handle.try_state::<Arc<TranscriptionManager>>() {
+        if transcription_manager.is_model_loaded() {
+            if let Err(err) = transcription_manager.unload_model() {
+                log::warn!("Failed to unload model during shutdown: {err}");
+            }
+        }
+    }
+
+    log::info!("App shutdown cleanup complete");
 }
 
 #[tauri::command]
@@ -483,6 +510,13 @@ pub fn run(cli_args: CliArgs) {
         .setup(move |app| {
             let mut settings = get_settings(&app.handle());
 
+            if let Err(err) = crash_logging::install_panic_logging(&app.handle())
+                .map(|path| log::info!("Crash logs will be written to {}", path.display()))
+            {
+                log::warn!("Failed to initialize crash logging: {err}");
+            }
+
+            // CLI --debug flag overrides debug_mode and log level (runtime-only, not persisted)
             if cli_args.debug {
                 settings.debug_mode = true;
                 settings.log_level = settings::LogLevel::Trace;
@@ -537,6 +571,23 @@ pub fn run(cli_args: CliArgs) {
                 }
                 api.prevent_close();
                 let _res = window.hide();
+
+                let tray_visible = TRAY_ICON_ENABLED.load(Ordering::Relaxed)
+                    && !window.app_handle().state::<CliArgs>().no_tray;
+
+                #[cfg(target_os = "macos")]
+                {
+                    if tray_visible {
+                        // Tray is available: hide the dock icon, app lives in the tray
+                        let res = window
+                            .app_handle()
+                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        if let Err(e) = res {
+                            log::error!("Failed to set activation policy: {}", e);
+                        }
+                    }
+                    // No tray: keep the dock icon visible so the user can reopen
+                }
             }
             tauri::WindowEvent::ThemeChanged(_theme) => {
                 utils::change_tray_icon(&window.app_handle(), utils::TrayIconState::Idle);
@@ -554,6 +605,11 @@ pub fn run(cli_args: CliArgs) {
         .build(tauri::generate_context!())
         .expect("failed to build tauri application")
         .run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { code, .. } = &event {
+                let reason = format!("exit requested with code {:?}", code);
+                shutdown_core_logic(app, &reason);
+            }
+
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = &event {
                 show_main_window(app);

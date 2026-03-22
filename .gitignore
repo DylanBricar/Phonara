@@ -40,3 +40,6 @@ blob-report/
 
 # Secrets
 secrets.env
+
+# Local release helpers / secrets
+.claude/skills/release-macos/

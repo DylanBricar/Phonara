@@ -2,7 +2,7 @@ use crate::audio_toolkit::{list_input_devices, vad::SmoothedVad, AudioRecorder, 
 use crate::helpers::clamshell;
 use crate::settings::{get_settings, AppSettings};
 use crate::utils;
-use log::error;
+use log::{debug, error};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -614,5 +614,18 @@ impl AudioRecordingManager {
                 self.schedule_lazy_close();
             }
         }
+    }
+
+    pub fn shutdown(&self) {
+        debug!("Shutting down AudioRecordingManager");
+        self.cancel_recording();
+        self.stop_microphone_stream();
+        self.remove_mute();
+    }
+}
+
+impl Drop for AudioRecordingManager {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }

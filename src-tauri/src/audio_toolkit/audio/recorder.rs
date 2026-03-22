@@ -1,8 +1,10 @@
 use std::{
     io::Error,
+    panic::{self, AssertUnwindSafe},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc::{self, RecvTimeoutError},
+        Arc, Mutex,
     },
     time::Duration,
 };
@@ -109,7 +111,7 @@ impl AudioRecorder {
         let stop_flag = Arc::clone(&self.stop_flag);
 
         let worker = std::thread::spawn(move || {
-            let init_result = (|| -> Result<(cpal::Stream, u32), String> {
+            let worker_result = panic::catch_unwind(AssertUnwindSafe(|| -> Result<(), String> {
                 let config = AudioRecorder::get_preferred_config(&thread_device)
                     .map_err(|e| format!("Failed to get audio config for device {:?}: {}", thread_device.name(), e))?;
 
@@ -148,17 +150,32 @@ impl AudioRecorder {
 
                 stream.play().map_err(|e| format!("Failed to start audio stream: {}", e))?;
 
-                Ok((stream, sample_rate))
-            })();
+                let _ = init_tx.send(Ok(sample_rate));
 
-            match init_result {
-                Ok((_stream, sample_rate)) => {
-                    let _ = init_tx.send(Ok(sample_rate));
-                    run_consumer(sample_rate, vad, sample_rx, cmd_rx, level_cb, pause_flag, Arc::clone(&stop_flag));
+                // Keep the stream alive while we process samples.
+                run_consumer(sample_rate, vad, sample_rx, cmd_rx, level_cb, pause_flag, Arc::clone(&stop_flag));
+                Ok(())
+            }));
+
+            match worker_result {
+                Ok(Ok(())) => {
+                    log::debug!("Audio recorder worker exited cleanly");
                 }
-                Err(e) => {
-                    log::error!("{}", e);
-                    let _ = init_tx.send(Err(e));
+                Ok(Err(err)) => {
+                    log::error!("Audio recorder worker exited with error: {err}");
+                    let _ = init_tx.send(Err(err));
+                }
+                Err(panic_payload) => {
+                    let panic_message = if let Some(message) = panic_payload.downcast_ref::<&str>()
+                    {
+                        (*message).to_string()
+                    } else if let Some(message) = panic_payload.downcast_ref::<String>() {
+                        message.clone()
+                    } else {
+                        "non-string panic payload".to_string()
+                    };
+                    log::error!("Audio recorder worker panicked: {panic_message}");
+                    let _ = init_tx.send(Err(panic_message));
                 }
             }
         });
@@ -379,31 +396,7 @@ fn run_consumer(
     }
 
     loop {
-        let chunk = match sample_rx.recv() {
-            Ok(c) => c,
-            Err(_) => break,
-        };
-
-        match chunk {
-            AudioChunk::Samples(raw) => {
-                if let Some(buckets) = visualizer.feed(&raw) {
-                    if let Some(cb) = &level_cb {
-                        cb(buckets);
-                    }
-                }
-
-                let is_paused = pause_flag
-                    .as_ref()
-                    .map_or(false, |f| f.load(Ordering::Relaxed));
-                if !is_paused {
-                    frame_resampler.push(&raw, &mut |frame: &[f32]| {
-                        handle_frame(frame, recording, &vad, &mut processed_samples)
-                    });
-                }
-            }
-            AudioChunk::EndOfStream => {}
-        }
-
+        // Process any pending commands first (non-blocking)
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
                 Cmd::Start => {
@@ -449,5 +442,66 @@ fn run_consumer(
                 }
             }
         }
+
+        // Wait for audio data with timeout so we can check commands again
+        let chunk = match sample_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(c) => c,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => break,
+        };
+
+        match chunk {
+            AudioChunk::Samples(raw) => {
+                if let Some(buckets) = visualizer.feed(&raw) {
+                    if let Some(cb) = &level_cb {
+                        cb(buckets);
+                    }
+                }
+
+                let is_paused = pause_flag
+                    .as_ref()
+                    .map_or(false, |f| f.load(Ordering::Relaxed));
+                if !is_paused {
+                    frame_resampler.push(&raw, &mut |frame: &[f32]| {
+                        handle_frame(frame, recording, &vad, &mut processed_samples)
+                    });
+                }
+            }
+            AudioChunk::EndOfStream => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{run_consumer, AudioChunk, Cmd};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
+    #[test]
+    fn shutdown_command_exits_without_waiting_for_samples() {
+        let (sample_tx, sample_rx) = mpsc::channel::<AudioChunk>();
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        let stop_flag_clone = Arc::clone(&stop_flag);
+
+        let worker = std::thread::spawn(move || {
+            run_consumer(16_000, None, sample_rx, cmd_rx, None, None, stop_flag_clone);
+        });
+
+        cmd_tx.send(Cmd::Shutdown).expect("send shutdown");
+
+        let (joined_tx, joined_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = worker.join();
+            let _ = joined_tx.send(());
+        });
+
+        joined_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker should exit after shutdown");
+
+        drop(sample_tx);
     }
 }
