@@ -568,11 +568,6 @@ impl TranscriptionManager {
                                         parts.push(prompt.clone());
                                     }
                                 }
-                                if let Some(ref prompt) = settings.whisper_initial_prompt {
-                                    if !prompt.is_empty() {
-                                        parts.push(prompt.clone());
-                                    }
-                                }
                                 if parts.is_empty() {
                                     None
                                 } else {

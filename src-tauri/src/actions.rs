@@ -408,6 +408,8 @@ async fn process_action(
         full_prompt,
         Some(system_prompt),
         None,
+        None,
+        None,
     )
     .await
     {
@@ -735,7 +737,7 @@ impl ShortcutAction for TranscribeAction {
 
                             let mut final_text = transcription.clone();
                             let mut post_processed_text: Option<String> = None;
-                            let mut post_process_prompt: Option<String> = None;
+                            let post_process_prompt: Option<String> = None;
 
                             // Post-processing via LLM
                             let processed = if post_process {

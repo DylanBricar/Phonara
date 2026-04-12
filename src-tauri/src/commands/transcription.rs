@@ -101,7 +101,7 @@ pub async fn transcribe_file(
     let _ = app.emit("file-transcription-progress", "transcribing");
 
     let tm = transcription_manager.inner().clone();
-    let result = tokio::task::spawn_blocking(move || tm.transcribe(samples, None))
+    let result = tokio::task::spawn_blocking(move || tm.transcribe(samples))
         .await
         .map_err(|e| format!("Transcription task failed: {}", e))?
         .map_err(|e| format!("Transcription failed: {}", e))?;
