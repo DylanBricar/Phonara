@@ -1,5 +1,5 @@
-use crate::input::{self, EnigoState};
 use crate::cli::CliArgs;
+use crate::input::{self, EnigoState};
 #[cfg(target_os = "linux")]
 use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
@@ -171,8 +171,8 @@ fn paste_via_clipboard(
 
     #[cfg(target_os = "linux")]
     {
-        let use_wl_for_restore = use_wl_copy
-            && matches!(&saved_content, SavedClipboardContent::Text(_));
+        let use_wl_for_restore =
+            use_wl_copy && matches!(&saved_content, SavedClipboardContent::Text(_));
         if use_wl_for_restore {
             if let SavedClipboardContent::Text(ref text_content) = saved_content {
                 let _ = write_clipboard_via_wl_copy(text_content);
@@ -231,36 +231,26 @@ fn try_send_key_combo_linux(paste_method: &PasteMethod) -> Result<bool, String> 
 fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<bool, String> {
     if preferred_tool != TypingTool::Auto {
         return match preferred_tool {
-            TypingTool::Wtype if is_wtype_available() => {
-                match type_text_via_wtype(text) {
-                    Ok(()) => Ok(true),
-                    Err(e) => Err(format!("Wtype failed: {}", e)),
-                }
-            }
-            TypingTool::Kwtype if is_kwtype_available() => {
-                match type_text_via_kwtype(text) {
-                    Ok(()) => Ok(true),
-                    Err(e) => Err(format!("Kwtype failed: {}", e)),
-                }
-            }
-            TypingTool::Dotool if is_dotool_available() => {
-                match type_text_via_dotool(text) {
-                    Ok(()) => Ok(true),
-                    Err(e) => Err(format!("Dotool failed: {}", e)),
-                }
-            }
-            TypingTool::Ydotool if is_ydotool_available() => {
-                match type_text_via_ydotool(text) {
-                    Ok(()) => Ok(true),
-                    Err(e) => Err(format!("Ydotool failed: {}", e)),
-                }
-            }
-            TypingTool::Xdotool if is_xdotool_available() => {
-                match type_text_via_xdotool(text) {
-                    Ok(()) => Ok(true),
-                    Err(e) => Err(format!("Xdotool failed: {}", e)),
-                }
-            }
+            TypingTool::Wtype if is_wtype_available() => match type_text_via_wtype(text) {
+                Ok(()) => Ok(true),
+                Err(e) => Err(format!("Wtype failed: {}", e)),
+            },
+            TypingTool::Kwtype if is_kwtype_available() => match type_text_via_kwtype(text) {
+                Ok(()) => Ok(true),
+                Err(e) => Err(format!("Kwtype failed: {}", e)),
+            },
+            TypingTool::Dotool if is_dotool_available() => match type_text_via_dotool(text) {
+                Ok(()) => Ok(true),
+                Err(e) => Err(format!("Dotool failed: {}", e)),
+            },
+            TypingTool::Ydotool if is_ydotool_available() => match type_text_via_ydotool(text) {
+                Ok(()) => Ok(true),
+                Err(e) => Err(format!("Ydotool failed: {}", e)),
+            },
+            TypingTool::Xdotool if is_xdotool_available() => match type_text_via_xdotool(text) {
+                Ok(()) => Ok(true),
+                Err(e) => Err(format!("Xdotool failed: {}", e)),
+            },
             _ => Err(format!(
                 "Typing tool {:?} is not available on this system",
                 preferred_tool
@@ -606,13 +596,17 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
         .map_err(|e| format!("Failed to execute external script '{}': {}", script_path, e))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(text.as_bytes())
+        stdin
+            .write_all(text.as_bytes())
             .map_err(|e| format!("Failed to write to script stdin: {}", e))?;
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for external script '{}': {}", script_path, e))?;
+    let output = child.wait_with_output().map_err(|e| {
+        format!(
+            "Failed to wait for external script '{}': {}",
+            script_path, e
+        )
+    })?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

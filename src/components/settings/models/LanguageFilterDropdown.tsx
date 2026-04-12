@@ -93,9 +93,7 @@ export const LanguageFilterDropdown: React.FC<LanguageFilterDropdownProps> = ({
                   setSearch("");
                 }
               }}
-              placeholder={t(
-                "settings.general.language.searchPlaceholder",
-              )}
+              placeholder={t("settings.general.language.searchPlaceholder")}
               className="w-full px-2 py-1 text-sm bg-mid-gray/10 border border-mid-gray/40 rounded-md focus:outline-none focus:ring-1 focus:ring-logo-primary"
             />
           </div>

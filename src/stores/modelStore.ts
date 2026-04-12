@@ -115,8 +115,7 @@ export const useModelStore = create<ModelsStore>()(
         if (result.status === "ok") {
           set({ currentModel: result.data });
         }
-      } catch {
-      }
+      } catch {}
     },
 
     checkFirstRun: async () => {

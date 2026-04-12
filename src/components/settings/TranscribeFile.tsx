@@ -98,8 +98,7 @@ export const TranscribeFile: React.FC = () => {
         await navigator.clipboard.writeText(state.text);
         setCopied(true);
         copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
-      } catch {
-      }
+      } catch {}
     }
   }, [state]);
 

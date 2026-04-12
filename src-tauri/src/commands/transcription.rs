@@ -185,8 +185,8 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         let result = resampler
             .process(&[&last_chunk], None)
             .map_err(|e| format!("Resampling failed: {}", e))?;
-        let expected = (remaining.len() as f64 * target_rate as f64 / sample_rate as f64).ceil()
-            as usize;
+        let expected =
+            (remaining.len() as f64 * target_rate as f64 / sample_rate as f64).ceil() as usize;
         let take = expected.min(result[0].len());
         output.extend_from_slice(&result[0][..take]);
     }

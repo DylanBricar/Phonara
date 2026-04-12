@@ -139,8 +139,7 @@ const PostProcessingActionsComponent: React.FC = () => {
       }
       await refreshSettings();
       setEditingAction(null);
-    } catch {
-    }
+    } catch {}
   };
 
   const handleDelete = async (key: number) => {
@@ -150,8 +149,7 @@ const PostProcessingActionsComponent: React.FC = () => {
       if (editingAction?.key === key) {
         setEditingAction(null);
       }
-    } catch {
-    }
+    } catch {}
   };
 
   return (

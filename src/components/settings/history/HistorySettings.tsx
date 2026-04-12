@@ -174,8 +174,7 @@ export const HistorySettings: React.FC = () => {
   const copyToClipboard = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch {
-    }
+    } catch {}
   }, []);
 
   const getAudioUrl = useCallback(
@@ -298,143 +297,150 @@ interface HistoryEntryProps {
   retryTranscription: (id: number) => Promise<void>;
 }
 
-const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(({
-  entry,
-  onToggleSaved,
-  onCopyText,
-  getAudioUrl,
-  deleteAudio,
-  retryTranscription,
-}) => {
-  const { t, i18n } = useTranslation();
-  const [showCopied, setShowCopied] = useState(false);
-  const [retrying, setRetrying] = useState(false);
-  const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(
+  ({
+    entry,
+    onToggleSaved,
+    onCopyText,
+    getAudioUrl,
+    deleteAudio,
+    retryTranscription,
+  }) => {
+    const { t, i18n } = useTranslation();
+    const [showCopied, setShowCopied] = useState(false);
+    const [retrying, setRetrying] = useState(false);
+    const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const hasTranscription = entry.transcription_text.trim().length > 0;
+    const hasTranscription = entry.transcription_text.trim().length > 0;
 
-  const handleLoadAudio = useCallback(
-    () => getAudioUrl(entry.file_name),
-    [getAudioUrl, entry.file_name],
-  );
+    const handleLoadAudio = useCallback(
+      () => getAudioUrl(entry.file_name),
+      [getAudioUrl, entry.file_name],
+    );
 
-  useEffect(() => {
-    return () => { clearTimeout(copiedTimerRef.current); };
-  }, []);
+    useEffect(() => {
+      return () => {
+        clearTimeout(copiedTimerRef.current);
+      };
+    }, []);
 
-  const handleCopyText = () => {
-    if (!hasTranscription) {
-      return;
-    }
+    const handleCopyText = () => {
+      if (!hasTranscription) {
+        return;
+      }
 
-    onCopyText();
-    setShowCopied(true);
-    clearTimeout(copiedTimerRef.current);
-    copiedTimerRef.current = setTimeout(() => setShowCopied(false), 2000);
-  };
+      onCopyText();
+      setShowCopied(true);
+      clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setShowCopied(false), 2000);
+    };
 
-  const handleDeleteEntry = async () => {
-    try {
-      await deleteAudio(entry.id);
-    } catch (error) {
-      console.error("Failed to delete entry:", error);
-      toast.error(t("settings.history.deleteError"));
-    }
-  };
+    const handleDeleteEntry = async () => {
+      try {
+        await deleteAudio(entry.id);
+      } catch (error) {
+        console.error("Failed to delete entry:", error);
+        toast.error(t("settings.history.deleteError"));
+      }
+    };
 
-  const handleRetranscribe = async () => {
-    try {
-      setRetrying(true);
-      await retryTranscription(entry.id);
-    } catch (error) {
-      console.error("Failed to re-transcribe:", error);
-      toast.error(t("settings.history.retranscribeError"));
-    } finally {
-      setRetrying(false);
-    }
-  };
+    const handleRetranscribe = async () => {
+      try {
+        setRetrying(true);
+        await retryTranscription(entry.id);
+      } catch (error) {
+        console.error("Failed to re-transcribe:", error);
+        toast.error(t("settings.history.retranscribeError"));
+      } finally {
+        setRetrying(false);
+      }
+    };
 
-  const formattedDate = formatDateTime(String(entry.timestamp), i18n.language);
+    const formattedDate = formatDateTime(
+      String(entry.timestamp),
+      i18n.language,
+    );
 
-  return (
-    <div className="px-4 py-2 pb-5 flex flex-col gap-3">
-      <div className="flex justify-between items-center">
-        <p className="text-sm font-medium">{formattedDate}</p>
-        <div className="flex items-center">
-          <IconButton
-            onClick={handleCopyText}
-            disabled={!hasTranscription || retrying}
-            title={t("settings.history.copyToClipboard")}
-          >
-            {showCopied ? (
-              <Check width={16} height={16} />
-            ) : (
-              <Copy width={16} height={16} />
-            )}
-          </IconButton>
-          <IconButton
-            onClick={onToggleSaved}
-            disabled={retrying}
-            active={entry.saved}
-            title={
-              entry.saved
-                ? t("settings.history.unsave")
-                : t("settings.history.save")
-            }
-          >
-            <Star
-              width={16}
-              height={16}
-              fill={entry.saved ? "currentColor" : "none"}
-            />
-          </IconButton>
-          <IconButton
-            onClick={handleRetranscribe}
-            disabled={retrying}
-            title={t("settings.history.retranscribe")}
-          >
-            <RotateCcw
-              width={16}
-              height={16}
-              style={
-                retrying
-                  ? { animation: "spin 1s linear infinite reverse" }
-                  : undefined
+    return (
+      <div className="px-4 py-2 pb-5 flex flex-col gap-3">
+        <div className="flex justify-between items-center">
+          <p className="text-sm font-medium">{formattedDate}</p>
+          <div className="flex items-center">
+            <IconButton
+              onClick={handleCopyText}
+              disabled={!hasTranscription || retrying}
+              title={t("settings.history.copyToClipboard")}
+            >
+              {showCopied ? (
+                <Check width={16} height={16} />
+              ) : (
+                <Copy width={16} height={16} />
+              )}
+            </IconButton>
+            <IconButton
+              onClick={onToggleSaved}
+              disabled={retrying}
+              active={entry.saved}
+              title={
+                entry.saved
+                  ? t("settings.history.unsave")
+                  : t("settings.history.save")
               }
-            />
-          </IconButton>
-          <IconButton
-            onClick={handleDeleteEntry}
-            disabled={retrying}
-            title={t("settings.history.delete")}
-          >
-            <Trash2 width={16} height={16} />
-          </IconButton>
+            >
+              <Star
+                width={16}
+                height={16}
+                fill={entry.saved ? "currentColor" : "none"}
+              />
+            </IconButton>
+            <IconButton
+              onClick={handleRetranscribe}
+              disabled={retrying}
+              title={t("settings.history.retranscribe")}
+            >
+              <RotateCcw
+                width={16}
+                height={16}
+                style={
+                  retrying
+                    ? { animation: "spin 1s linear infinite reverse" }
+                    : undefined
+                }
+              />
+            </IconButton>
+            <IconButton
+              onClick={handleDeleteEntry}
+              disabled={retrying}
+              title={t("settings.history.delete")}
+            >
+              <Trash2 width={16} height={16} />
+            </IconButton>
+          </div>
         </div>
-      </div>
 
-      <p
-        className={`italic text-sm pb-2 ${
-          retrying
-            ? ""
+        <p
+          className={`italic text-sm pb-2 ${
+            retrying
+              ? ""
+              : hasTranscription
+                ? "text-text/90 select-text cursor-text whitespace-pre-wrap break-words"
+                : "text-text/40"
+          }`}
+          style={
+            retrying
+              ? { animation: "transcribe-pulse 3s ease-in-out infinite" }
+              : undefined
+          }
+        >
+          {retrying
+            ? t("settings.history.transcribing")
             : hasTranscription
-              ? "text-text/90 select-text cursor-text whitespace-pre-wrap break-words"
-              : "text-text/40"
-        }`}
-        style={
-          retrying
-            ? { animation: "transcribe-pulse 3s ease-in-out infinite" }
-            : undefined
-        }
-      >
-        {retrying
-          ? t("settings.history.transcribing")
-          : hasTranscription
-            ? entry.transcription_text
-            : t("settings.history.transcriptionFailed")}
-      </p>
+              ? entry.transcription_text
+              : t("settings.history.transcriptionFailed")}
+        </p>
 
-      <AudioPlayer onLoadRequest={handleLoadAudio} className="w-full" />
-    </div>
-  );
-});
+        <AudioPlayer onLoadRequest={handleLoadAudio} className="w-full" />
+      </div>
+    );
+  },
+);

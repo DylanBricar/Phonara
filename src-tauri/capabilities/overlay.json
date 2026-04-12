@@ -3,7 +3,5 @@
   "identifier": "overlay",
   "description": "Minimal capabilities for the recording overlay window",
   "windows": ["recording_overlay"],
-  "permissions": [
-    "core:default"
-  ]
+  "permissions": ["core:default"]
 }

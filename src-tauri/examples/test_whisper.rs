@@ -22,20 +22,31 @@ fn load_wav(path: &std::path::Path) -> Result<(Vec<f32>, f64), Box<dyn std::erro
 
 fn normalize_audio(samples: &[f32], target_rms: f32) -> Vec<f32> {
     let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
-    if rms >= 0.02 || rms < 1e-6 { return samples.to_vec(); }
+    if rms >= 0.02 || rms < 1e-6 {
+        return samples.to_vec();
+    }
     let gain = target_rms / rms;
-    samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
+    samples
+        .iter()
+        .map(|s| (s * gain).clamp(-1.0, 1.0))
+        .collect()
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model_dir = PathBuf::from("C:/Users/YourTech/AppData/Roaming/com.dylanbricar.phonara/models");
-    let rec_dir = PathBuf::from("C:/Users/YourTech/AppData/Roaming/com.dylanbricar.phonara/recordings");
+    let model_dir =
+        PathBuf::from("C:/Users/YourTech/AppData/Roaming/com.dylanbricar.phonara/models");
+    let rec_dir =
+        PathBuf::from("C:/Users/YourTech/AppData/Roaming/com.dylanbricar.phonara/recordings");
 
     let all_files: Vec<String> = std::fs::read_dir(&rec_dir)?
         .filter_map(|e| e.ok())
         .filter_map(|e| {
             let name = e.file_name().to_string_lossy().to_string();
-            if name.ends_with(".wav") { Some(name) } else { None }
+            if name.ends_with(".wav") {
+                Some(name)
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -44,7 +55,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== Whisper distil-fr CPU + normalization (ALL files) ===");
     let model_path = model_dir.join("whisper-distil-fr-q5_0.bin");
     let mut engine = WhisperEngine::new();
-    let model_params = WhisperModelParams { use_gpu: false, ..Default::default() };
+    let model_params = WhisperModelParams {
+        use_gpu: false,
+        ..Default::default()
+    };
     engine.load_model_with_params(&model_path, model_params)?;
     println!("Loaded (CPU mode)\n");
 
@@ -67,12 +81,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let text: String = result.text.trim().chars().take(120).collect();
         let is_fail = text.is_empty() || text.chars().all(|c| c == '!' || c == ' ');
         let status = if is_fail { "FAIL" } else { "OK" };
-        if is_fail { fail_count += 1; } else { ok_count += 1; }
-        println!("  [{}] [{}] ({:.1}s rms={:.4}) {:>6}ms: \"{}\"", status, test_file, dur, rms, ms, text);
+        if is_fail {
+            fail_count += 1;
+        } else {
+            ok_count += 1;
+        }
+        println!(
+            "  [{}] [{}] ({:.1}s rms={:.4}) {:>6}ms: \"{}\"",
+            status, test_file, dur, rms, ms, text
+        );
     }
 
     engine.unload_model();
-    println!("\nResults: {}/{} OK, {} FAIL", ok_count, all_files.len(), fail_count);
+    println!(
+        "\nResults: {}/{} OK, {} FAIL",
+        ok_count,
+        all_files.len(),
+        fail_count
+    );
 
     Ok(())
 }

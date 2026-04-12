@@ -65,8 +65,7 @@ export const RecordingsDirectory: React.FC<RecordingsDirectoryProps> =
           await refreshSettings();
           setShowRestart(true);
         }
-      } catch {
-      }
+      } catch {}
       setIsUpdating(false);
     };
 

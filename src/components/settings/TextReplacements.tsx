@@ -107,9 +107,7 @@ export const TextReplacements: React.FC<TextReplacementsProps> = React.memo(
             </label>
             <Button
               onClick={handleAddRule}
-              disabled={
-                !findText.trim() || isUpdating("text_replacements")
-              }
+              disabled={!findText.trim() || isUpdating("text_replacements")}
               variant="primary"
               size="md"
             >
@@ -132,9 +130,7 @@ export const TextReplacements: React.FC<TextReplacementsProps> = React.memo(
                   variant="secondary"
                   size="sm"
                   className="inline-flex items-center gap-1 cursor-pointer"
-                  aria-label={t(
-                    "settings.advanced.textReplacements.remove",
-                  )}
+                  aria-label={t("settings.advanced.textReplacements.remove")}
                 >
                   <span className="font-mono text-xs">{rule.find}</span>
                   <span className="text-mid-gray">→</span>

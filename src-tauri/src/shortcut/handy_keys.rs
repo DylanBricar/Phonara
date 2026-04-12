@@ -120,7 +120,6 @@ impl HandyKeysState {
                 }
             }
         }
-
     }
 
     fn do_register(
@@ -254,7 +253,6 @@ impl HandyKeysState {
                 thread::sleep(std::time::Duration::from_millis(10));
             }
         }
-
     }
 
     pub fn stop_recording(&self) -> Result<(), String> {

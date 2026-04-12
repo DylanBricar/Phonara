@@ -129,7 +129,6 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
 
-
     return () => {
       cleanup = true;
       window.removeEventListener("keydown", handleKeyDown);

@@ -80,14 +80,18 @@ export const ModelsSettings: React.FC = () => {
 
   const handleModelSelect = async (modelId: string) => {
     if (modelId === "gemini-api") {
-      setGeminiKeyInput(hasGeminiKey ? (geminiApiKey || "") : "");
-      setGeminiModelInput((getSetting("gemini_model") as string) || "gemini-2.0-flash");
+      setGeminiKeyInput(hasGeminiKey ? geminiApiKey || "" : "");
+      setGeminiModelInput(
+        (getSetting("gemini_model") as string) || "gemini-2.0-flash",
+      );
       setShowGeminiKeyDialog(true);
       return;
     }
     if (modelId === "openai-api") {
-      setOpenaiKeyInput(hasOpenaiKey ? (openaiApiKey || "") : "");
-      setOpenaiModelInput((getSetting("openai_model") as string) || "gpt-4o-mini-transcribe");
+      setOpenaiKeyInput(hasOpenaiKey ? openaiApiKey || "" : "");
+      setOpenaiModelInput(
+        (getSetting("openai_model") as string) || "gpt-4o-mini-transcribe",
+      );
       setShowOpenaiKeyDialog(true);
       return;
     }
@@ -131,39 +135,46 @@ export const ModelsSettings: React.FC = () => {
     }
   };
 
-  const handleModelDownload = useCallback(async (modelId: string) => {
-    await downloadModel(modelId);
-  }, [downloadModel]);
+  const handleModelDownload = useCallback(
+    async (modelId: string) => {
+      await downloadModel(modelId);
+    },
+    [downloadModel],
+  );
 
-  const handleModelDelete = useCallback(async (modelId: string) => {
-    const model = models.find((m: ModelInfo) => m.id === modelId);
-    const modelName = model?.name || modelId;
-    const isActive = modelId === currentModel;
+  const handleModelDelete = useCallback(
+    async (modelId: string) => {
+      const model = models.find((m: ModelInfo) => m.id === modelId);
+      const modelName = model?.name || modelId;
+      const isActive = modelId === currentModel;
 
-    const confirmed = await ask(
-      isActive
-        ? t("settings.models.deleteActiveConfirm", { modelName })
-        : t("settings.models.deleteConfirm", { modelName }),
-      {
-        title: t("settings.models.deleteTitle"),
-        kind: "warning",
-      },
-    );
+      const confirmed = await ask(
+        isActive
+          ? t("settings.models.deleteActiveConfirm", { modelName })
+          : t("settings.models.deleteConfirm", { modelName }),
+        {
+          title: t("settings.models.deleteTitle"),
+          kind: "warning",
+        },
+      );
 
-    if (confirmed) {
+      if (confirmed) {
+        try {
+          await deleteModel(modelId);
+        } catch {}
+      }
+    },
+    [models, currentModel, t, deleteModel],
+  );
+
+  const handleModelCancel = useCallback(
+    async (modelId: string) => {
       try {
-        await deleteModel(modelId);
-      } catch {
-        }
-    }
-  }, [models, currentModel, t, deleteModel]);
-
-  const handleModelCancel = useCallback(async (modelId: string) => {
-    try {
-      await cancelDownload(modelId);
-    } catch {
-    }
-  }, [cancelDownload]);
+        await cancelDownload(modelId);
+      } catch {}
+    },
+    [cancelDownload],
+  );
 
   const filteredModels = useMemo(() => {
     const query = modelSearchQuery.toLowerCase().trim();
@@ -173,8 +184,10 @@ export const ModelsSettings: React.FC = () => {
       }
       if (query) {
         const translatedName = getTranslatedModelName(model, t).toLowerCase();
-        const translatedDesc =
-          getTranslatedModelDescription(model, t).toLowerCase();
+        const translatedDesc = getTranslatedModelDescription(
+          model,
+          t,
+        ).toLowerCase();
         if (
           !translatedName.includes(query) &&
           !translatedDesc.includes(query) &&

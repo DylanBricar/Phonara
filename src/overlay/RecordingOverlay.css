@@ -6,7 +6,8 @@
   gap: 6px;
   padding: 0 12px;
   background: var(--overlay-bg, #1a1a1a);
-  border: var(--overlay-border-width, 1px) solid var(--overlay-border-color, rgba(255, 255, 255, 0.12));
+  border: var(--overlay-border-width, 1px) solid
+    var(--overlay-border-color, rgba(255, 255, 255, 0.12));
   border-radius: calc(var(--overlay-height, 44px) / 2.5);
   opacity: 0;
   transform: translateY(8px) scale(0.96);
@@ -205,4 +206,3 @@
 .recording-overlay.state-processing {
   border-color: rgba(168, 85, 247, 0.5);
 }
-

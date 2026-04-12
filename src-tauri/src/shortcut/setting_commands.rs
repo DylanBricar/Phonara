@@ -28,10 +28,7 @@ pub fn change_whisper_initial_prompt_setting(
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_whisper_use_gpu_setting(
-    app: AppHandle,
-    enabled: bool,
-) -> Result<(), String> {
+pub fn change_whisper_use_gpu_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.whisper_use_gpu = enabled;
     settings::write_settings(&app, settings);
@@ -168,10 +165,7 @@ pub fn delete_saved_processing_model(app: AppHandle, id: String) -> Result<(), S
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_overlay_high_visibility_setting(
-    app: AppHandle,
-    enabled: bool,
-) -> Result<(), String> {
+pub fn change_overlay_high_visibility_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.overlay_high_visibility = enabled;
     settings::write_settings(&app, settings);
@@ -324,7 +318,11 @@ pub fn clear_recordings_directory(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn set_custom_sound_path(app: AppHandle, sound_type: String, path: String) -> Result<(), String> {
+pub fn set_custom_sound_path(
+    app: AppHandle,
+    sound_type: String,
+    path: String,
+) -> Result<(), String> {
     let file = std::path::Path::new(&path);
     if !file.is_file() {
         return Err(format!("File does not exist: {}", path));

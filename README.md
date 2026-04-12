@@ -115,11 +115,11 @@ bun run tauri build
 
 For text input, install the appropriate tool for your display server:
 
-| Display Server | Tool | Install |
-|---|---|---|
-| X11 | `xdotool` | `sudo apt install xdotool` |
-| Wayland | `wtype` | `sudo apt install wtype` |
-| Both | `dotool` | `sudo apt install dotool` |
+| Display Server | Tool      | Install                    |
+| -------------- | --------- | -------------------------- |
+| X11            | `xdotool` | `sudo apt install xdotool` |
+| Wayland        | `wtype`   | `sudo apt install wtype`   |
+| Both           | `dotool`  | `sudo apt install dotool`  |
 
 The recording overlay is disabled by default on Linux. Runtime dependency `libgtk-layer-shell.so.0` may need to be installed separately.
 
@@ -134,10 +134,10 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 
 ### Last Processed Upstream Commits
 
-| Source | Last Commit Hash |
-|---|---|
-| [cjpais/Handy](https://github.com/cjpais/Handy) | `82297fa` |
-| [Melvynx/Parler](https://github.com/Melvynx/Parler) | `daff123` |
+| Source                                              | Last Commit Hash |
+| --------------------------------------------------- | ---------------- |
+| [cjpais/Handy](https://github.com/cjpais/Handy)     | `82297fa`        |
+| [Melvynx/Parler](https://github.com/Melvynx/Parler) | `daff123`        |
 
 ### How to Contribute
 

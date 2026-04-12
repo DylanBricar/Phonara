@@ -591,9 +591,12 @@ impl HistoryManager {
         let path = self.recordings_dir.join(file_name);
         // If the file exists, verify the resolved path stays within recordings_dir
         if path.exists() {
-            let canonical = path.canonicalize()
+            let canonical = path
+                .canonicalize()
                 .map_err(|e| anyhow!("Failed to resolve path: {}", e))?;
-            let canonical_dir = self.recordings_dir.canonicalize()
+            let canonical_dir = self
+                .recordings_dir
+                .canonicalize()
                 .map_err(|e| anyhow!("Failed to resolve recordings dir: {}", e))?;
             if !canonical.starts_with(&canonical_dir) {
                 return Err(anyhow!("Path traversal detected"));

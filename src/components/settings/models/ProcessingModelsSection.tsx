@@ -82,8 +82,7 @@ export const ProcessingModelsSection: React.FC = () => {
       setSelectedProviderId("");
       setSelectedModel("");
       setApiKey("");
-    } catch {
-    }
+    } catch {}
   }, [selectedProviderId, selectedModel, providers, refreshSettings]);
 
   const handleDelete = useCallback(
@@ -91,8 +90,7 @@ export const ProcessingModelsSection: React.FC = () => {
       try {
         await commands.deleteSavedProcessingModel(id);
         await refreshSettings();
-      } catch {
-        }
+      } catch {}
     },
     [refreshSettings],
   );
@@ -199,7 +197,9 @@ export const ProcessingModelsSection: React.FC = () => {
                   )}
                   <button
                     onClick={handleFetchModels}
-                    disabled={isFetching || (providerRequiresApiKey && !apiKey.trim())}
+                    disabled={
+                      isFetching || (providerRequiresApiKey && !apiKey.trim())
+                    }
                     className="flex items-center justify-center h-8 w-8 rounded-md bg-mid-gray/10 hover:bg-mid-gray/20 transition-colors disabled:opacity-40"
                     title={t("settings.models.processingModels.fetchModels")}
                   >

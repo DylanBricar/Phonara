@@ -1,6 +1,6 @@
-use enigo::{Enigo, Keyboard, Settings};
 #[cfg(not(target_os = "windows"))]
 use enigo::Key;
+use enigo::{Enigo, Keyboard, Settings};
 use std::sync::Mutex;
 use tauri::AppHandle;
 
@@ -22,8 +22,8 @@ pub fn get_cursor_position(app_handle: &AppHandle) -> Option<(i32, i32)> {
 #[cfg(target_os = "windows")]
 mod win_sendinput {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
-        KEYEVENTF_KEYUP, VK_CONTROL, VK_INSERT, VK_SHIFT, VK_V,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
+        VK_CONTROL, VK_INSERT, VK_SHIFT, VK_V,
     };
 
     fn kbd_input(vk: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {

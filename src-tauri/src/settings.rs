@@ -1034,7 +1034,10 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 
                 if updated {
                     debug!("Settings updated with new bindings");
-                    store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
+                    store.set(
+                        "settings",
+                        serde_json::to_value(&settings).expect("AppSettings must be serializable"),
+                    );
                 }
 
                 settings
@@ -1043,18 +1046,28 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
                 warn!("Failed to parse settings: {}", e);
                 // Fall back to default settings if parsing fails
                 let default_settings = get_default_settings();
-                store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
+                store.set(
+                    "settings",
+                    serde_json::to_value(&default_settings)
+                        .expect("AppSettings must be serializable"),
+                );
                 default_settings
             }
         }
     } else {
         let default_settings = get_default_settings();
-        store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
+        store.set(
+            "settings",
+            serde_json::to_value(&default_settings).expect("AppSettings must be serializable"),
+        );
         default_settings
     };
 
     if ensure_post_process_defaults(&mut settings) {
-        store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
+        store.set(
+            "settings",
+            serde_json::to_value(&settings).expect("AppSettings must be serializable"),
+        );
     }
 
     settings
@@ -1068,17 +1081,26 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     let mut settings = if let Some(settings_value) = store.get("settings") {
         serde_json::from_value::<AppSettings>(settings_value).unwrap_or_else(|_| {
             let default_settings = get_default_settings();
-            store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
+            store.set(
+                "settings",
+                serde_json::to_value(&default_settings).expect("AppSettings must be serializable"),
+            );
             default_settings
         })
     } else {
         let default_settings = get_default_settings();
-        store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
+        store.set(
+            "settings",
+            serde_json::to_value(&default_settings).expect("AppSettings must be serializable"),
+        );
         default_settings
     };
 
     if ensure_post_process_defaults(&mut settings) {
-        store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
+        store.set(
+            "settings",
+            serde_json::to_value(&settings).expect("AppSettings must be serializable"),
+        );
     }
 
     settings
@@ -1089,7 +1111,10 @@ pub fn write_settings(app: &AppHandle, settings: AppSettings) {
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
 
-    store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
+    store.set(
+        "settings",
+        serde_json::to_value(&settings).expect("AppSettings must be serializable"),
+    );
 }
 
 pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {

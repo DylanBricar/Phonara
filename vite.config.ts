@@ -26,8 +26,8 @@ export default defineConfig(async () => ({
       },
       output: {
         manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-i18n': ['i18next', 'react-i18next'],
+          "vendor-react": ["react", "react-dom"],
+          "vendor-i18n": ["i18next", "react-i18next"],
         },
       },
     },

@@ -8,7 +8,8 @@ import { getLanguageDirection } from "@/lib/utils/rtl";
 
 type OverlayState = "recording" | "transcribing" | "processing";
 
-const isValidHexColor = (v: string): boolean => /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
+const isValidHexColor = (v: string): boolean =>
+  /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);
 
 interface ShowOverlayPayload {
   state: OverlayState;
@@ -220,19 +221,37 @@ const RecordingOverlay: React.FC = () => {
         listen<ShowOverlayPayload>("show-overlay", async (event) => {
           await syncLanguageFromSettings();
           const payload = event.payload;
-          const overlayState = typeof payload === "string" ? payload as OverlayState : payload.state;
+          const overlayState =
+            typeof payload === "string"
+              ? (payload as OverlayState)
+              : payload.state;
           setState(overlayState);
           const styles: Record<string, string> = {};
           if (typeof payload === "object") {
             if (payload.borderColor && isValidHexColor(payload.borderColor))
               styles["--overlay-border-color"] = payload.borderColor;
-            if (payload.backgroundColor && isValidHexColor(payload.backgroundColor))
+            if (
+              payload.backgroundColor &&
+              isValidHexColor(payload.backgroundColor)
+            )
               styles["--overlay-bg"] = payload.backgroundColor;
-            if (typeof payload.borderWidth === "number" && payload.borderWidth >= 0 && payload.borderWidth <= 10)
+            if (
+              typeof payload.borderWidth === "number" &&
+              payload.borderWidth >= 0 &&
+              payload.borderWidth <= 10
+            )
               styles["--overlay-border-width"] = `${payload.borderWidth}px`;
-            if (payload.customWidth && payload.customWidth >= 120 && payload.customWidth <= 500)
+            if (
+              payload.customWidth &&
+              payload.customWidth >= 120 &&
+              payload.customWidth <= 500
+            )
               styles["--overlay-width"] = `${payload.customWidth}px`;
-            if (payload.customHeight && payload.customHeight >= 30 && payload.customHeight <= 80)
+            if (
+              payload.customHeight &&
+              payload.customHeight >= 30 &&
+              payload.customHeight <= 80
+            )
               styles["--overlay-height"] = `${payload.customHeight}px`;
           }
           setCustomStyle(styles);

@@ -14,7 +14,12 @@ export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
   grouped = false,
 }) => {
   const statusTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => { clearTimeout(statusTimerRef.current); }, []);
+  useEffect(
+    () => () => {
+      clearTimeout(statusTimerRef.current);
+    },
+    [],
+  );
   const { t } = useTranslation();
   const { refreshSettings } = useSettings();
   const [status, setStatus] = useState<string | null>(null);
@@ -33,9 +38,7 @@ export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
         setStatus(result.error);
       }
     } catch (err) {
-      setStatus(
-        err instanceof Error ? err.message : "Export failed",
-      );
+      setStatus(err instanceof Error ? err.message : "Export failed");
     }
     statusTimerRef.current = setTimeout(() => setStatus(null), 3000);
   };
@@ -55,9 +58,7 @@ export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
         setStatus(result.error);
       }
     } catch (err) {
-      setStatus(
-        err instanceof Error ? err.message : "Import failed",
-      );
+      setStatus(err instanceof Error ? err.message : "Import failed");
     }
     statusTimerRef.current = setTimeout(() => setStatus(null), 3000);
   };
@@ -76,9 +77,7 @@ export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
         <Button variant="secondary" size="md" onClick={handleImport}>
           {t("settings.about.exportImport.import")}
         </Button>
-        {status && (
-          <span className="text-xs text-mid-gray">{status}</span>
-        )}
+        {status && <span className="text-xs text-mid-gray">{status}</span>}
       </div>
     </SettingContainer>
   );

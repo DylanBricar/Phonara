@@ -370,7 +370,8 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
                     monitor_y + monitor_height - height - OVERLAY_BOTTOM_OFFSET
                 }
             };
-            let _ = overlay_window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+            let _ = overlay_window
+                .set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
         }
 
         let _ = overlay_window.show();

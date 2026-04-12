@@ -90,8 +90,7 @@ export const syncLanguageFromSettings = async () => {
         await i18n.changeLanguage(supported);
       }
     }
-  } catch {
-  }
+  } catch {}
 };
 
 syncLanguageFromSettings();

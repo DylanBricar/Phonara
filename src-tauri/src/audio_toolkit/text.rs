@@ -237,9 +237,7 @@ static FILLER_REGEX_CACHE: OnceLock<Mutex<HashMap<String, Vec<Regex>>>> = OnceLo
 fn build_filler_patterns(words: &[&str]) -> Vec<Regex> {
     words
         .iter()
-        .filter_map(|word| {
-            Regex::new(&format!(r"(?i)\b{}\b[,.]?", regex::escape(word))).ok()
-        })
+        .filter_map(|word| Regex::new(&format!(r"(?i)\b{}\b[,.]?", regex::escape(word))).ok())
         .collect()
 }
 
@@ -432,8 +430,7 @@ fn collapse_spaced_repeated_punctuation(text: &str) -> String {
             .iter()
             .map(|&punct| {
                 let escaped = regex::escape(punct);
-                let pattern =
-                    Regex::new(&format!(r"{e}(?:\s*{e})+", e = escaped)).unwrap();
+                let pattern = Regex::new(&format!(r"{e}(?:\s*{e})+", e = escaped)).unwrap();
                 (pattern, punct)
             })
             .collect()
@@ -450,7 +447,6 @@ fn is_punctuation_only(text: &str) -> bool {
     let trimmed = text.trim();
     !trimmed.is_empty() && !trimmed.chars().any(|c| c.is_alphanumeric())
 }
-
 
 #[cfg(test)]
 mod tests {

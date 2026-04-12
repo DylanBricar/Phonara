@@ -43,8 +43,7 @@ export const TextDisplay: React.FC<TextDisplayProps> = ({
       if (onCopy) {
         onCopy(value);
       }
-    } catch {
-    }
+    } catch {}
   };
 
   const displayValue = value || placeholder;

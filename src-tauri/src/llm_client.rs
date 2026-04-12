@@ -162,7 +162,6 @@ pub async fn send_chat_completion_with_schema(
     reasoning_effort: Option<String>,
     reasoning: Option<ReasoningConfig>,
 ) -> Result<Option<String>, String> {
-
     let base_url = get_effective_base_url(provider);
     let url = format!("{}/chat/completions", base_url);
 

@@ -30,8 +30,7 @@ export const AboutSettings: React.FC = () => {
   const handleDonateClick = async () => {
     try {
       await openUrl("https://github.com/DylanBricar/Phonara");
-    } catch {
-    }
+    } catch {}
   };
 
   return (

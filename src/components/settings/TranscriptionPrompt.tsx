@@ -173,9 +173,7 @@ export const TranscriptionPrompt: React.FC<TranscriptionPromptProps> =
             value={localValue}
             onChange={(e) => setLocalValue(e.target.value)}
             onBlur={handleBlur}
-            placeholder={t(
-              "settings.advanced.transcriptionPrompt.placeholder",
-            )}
+            placeholder={t("settings.advanced.transcriptionPrompt.placeholder")}
             rows={3}
             disabled={isUpdating("transcription_prompt")}
           />

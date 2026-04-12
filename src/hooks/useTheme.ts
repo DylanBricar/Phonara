@@ -17,9 +17,7 @@ const ACCENT_PALETTE: Record<
   yellow: ["#e6b800", "#6e5800", "#facc15", "#fef08a", "#ca8a04"],
 };
 
-function paletteFromHex(
-  hex: string,
-): [string, string, string, string, string] {
+function paletteFromHex(hex: string): [string, string, string, string, string] {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
@@ -106,5 +104,10 @@ export function useTheme() {
       root.style.setProperty("--color-background", "#fbfbfb");
     }
     root.style.setProperty("--color-background-ui", uiColor);
-  }, [settings?.theme_mode, settings?.accent_color, systemAccentColor, systemIsDark]);
+  }, [
+    settings?.theme_mode,
+    settings?.accent_color,
+    systemAccentColor,
+    systemIsDark,
+  ]);
 }

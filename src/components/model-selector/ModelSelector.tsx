@@ -112,8 +112,7 @@ const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
                 setPendingModelId(null);
               }
             }
-          } catch {
-          }
+          } catch {}
         }, 500);
       },
     );

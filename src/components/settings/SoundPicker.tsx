@@ -22,7 +22,9 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
   const { getSetting, updateSetting, refreshSettings } = useSettings();
   const playTestSound = useSettingsStore((state) => state.playTestSound);
   const customSounds = useSettingsStore((state) => state.customSounds);
-  const checkCustomSounds = useSettingsStore((state) => state.checkCustomSounds);
+  const checkCustomSounds = useSettingsStore(
+    (state) => state.checkCustomSounds,
+  );
 
   const selectedTheme = getSetting("sound_theme") ?? "marimba";
   const customStartSound = getSetting("custom_start_sound");
@@ -33,8 +35,16 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
     { value: "pop", label: "Pop" },
   ];
 
-  if (customSounds.start || customSounds.stop || customStartSound || customStopSound) {
-    options.push({ value: "custom", label: t("settings.sound.soundTheme.custom") });
+  if (
+    customSounds.start ||
+    customSounds.stop ||
+    customStartSound ||
+    customStopSound
+  ) {
+    options.push({
+      value: "custom",
+      label: t("settings.sound.soundTheme.custom"),
+    });
   }
 
   const handlePlayBothSounds = async () => {

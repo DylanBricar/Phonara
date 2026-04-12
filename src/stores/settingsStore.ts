@@ -107,16 +107,14 @@ export const useSettingsStore = create<SettingsStore>()(
     playTestSound: async (soundType: "start" | "stop") => {
       try {
         await commands.playTestSound(soundType);
-      } catch {
-      }
+      } catch {}
     },
 
     checkCustomSounds: async () => {
       try {
         const sounds = await commands.checkCustomSounds();
         get().setCustomSounds(sounds);
-      } catch {
-      }
+      } catch {}
     },
 
     updateSetting: async <K extends keyof Settings>(
@@ -190,7 +188,6 @@ export const useSettingsStore = create<SettingsStore>()(
           throw new Error(result.data.error || "Failed to update binding");
         }
       } catch (error) {
-
         if (originalBinding && get().settings) {
           set((state) => ({
             settings: state.settings
@@ -373,8 +370,7 @@ export const useSettingsStore = create<SettingsStore>()(
         if (result.status === "ok") {
           set({ defaultSettings: result.data });
         }
-      } catch {
-      }
+      } catch {}
     },
 
     initialize: async () => {

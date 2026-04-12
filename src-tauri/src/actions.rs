@@ -698,12 +698,11 @@ impl ShortcutAction for TranscribeAction {
                     // blocking the async runtime thread.
                     let transcription_time = Instant::now();
                     let tm_clone = Arc::clone(&tm);
-                    let transcription_result = tauri::async_runtime::spawn_blocking(
-                        move || tm_clone.transcribe(samples),
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Transcription task panicked: {}", e))
-                    .and_then(|r| r);
+                    let transcription_result =
+                        tauri::async_runtime::spawn_blocking(move || tm_clone.transcribe(samples))
+                            .await
+                            .map_err(|e| anyhow::anyhow!("Transcription task panicked: {}", e))
+                            .and_then(|r| r);
 
                     // Await WAV save and verify
                     let wav_saved = match wav_handle.await {
@@ -749,14 +748,8 @@ impl ShortcutAction for TranscribeAction {
 
                             // Post-processing via LLM
                             let processed = if post_process {
-                                match process_action(
-                                    &settings,
-                                    &transcription,
-                                    "",
-                                    None,
-                                    None,
-                                )
-                                .await
+                                match process_action(&settings, &transcription, "", None, None)
+                                    .await
                                 {
                                     Some(result) => {
                                         post_processed_text = Some(result.clone());
@@ -767,16 +760,15 @@ impl ShortcutAction for TranscribeAction {
                                             post_process_prompt,
                                         }
                                     }
-                                    None => {
-                                        ProcessedTranscription {
-                                            final_text,
-                                            post_processed_text,
-                                            post_process_prompt,
-                                        }
-                                    }
+                                    None => ProcessedTranscription {
+                                        final_text,
+                                        post_processed_text,
+                                        post_process_prompt,
+                                    },
                                 }
                             } else {
-                                process_transcription_output(&ah, &transcription, post_process).await
+                                process_transcription_output(&ah, &transcription, post_process)
+                                    .await
                             };
 
                             // Save to history if WAV was saved

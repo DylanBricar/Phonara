@@ -1,4 +1,8 @@
-import type { AppSettings as Settings, TextReplacement, LogLevel } from "@/bindings";
+import type {
+  AppSettings as Settings,
+  TextReplacement,
+  LogLevel,
+} from "@/bindings";
 import { commands } from "@/bindings";
 
 export const settingUpdaters: {
@@ -89,9 +93,7 @@ export const settingUpdaters: {
     commands.changeOpenaiApiKeySetting((value as string | null) ?? ""),
   openai_model: (value) => commands.changeOpenaiModelSetting(value as string),
   overlay_border_color: (value) =>
-    commands.changeOverlayBorderColorSetting(
-      (value as string | null) ?? null,
-    ),
+    commands.changeOverlayBorderColorSetting((value as string | null) ?? null),
   overlay_background_color: (value) =>
     commands.changeOverlayBackgroundColorSetting(
       (value as string | null) ?? null,

@@ -89,12 +89,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSectionChange,
 }) => {
   const { t } = useTranslation();
-  const debugMode = useSettingsStore((state) => state.settings?.debug_mode ?? false);
+  const debugMode = useSettingsStore(
+    (state) => state.settings?.debug_mode ?? false,
+  );
 
   const availableSections = useMemo(
     () =>
       Object.entries(SECTIONS_CONFIG)
-        .filter(([, config]) => !("debugOnly" in config && config.debugOnly) || debugMode)
+        .filter(
+          ([, config]) =>
+            !("debugOnly" in config && config.debugOnly) || debugMode,
+        )
         .map(([id, config]) => ({ id: id as SidebarSection, ...config })),
     [debugMode],
   );
@@ -102,7 +107,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <nav className="flex flex-col w-48 h-full border-e border-mid-gray/20 items-center px-2">
       <PhonaraTextLogo width={120} className="m-4 flex justify-center" />
-      <div className="flex flex-col w-full items-center gap-1 pt-2 border-t border-mid-gray/20" role="tablist">
+      <div
+        className="flex flex-col w-full items-center gap-1 pt-2 border-t border-mid-gray/20"
+        role="tablist"
+      >
         {availableSections.map((section) => {
           const Icon = section.icon;
           const isActive = activeSection === section.id;

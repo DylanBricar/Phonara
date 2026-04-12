@@ -652,10 +652,7 @@ pub fn update_custom_words(app: AppHandle, words: Vec<String>) -> Result<(), Str
 
 #[tauri::command]
 #[specta::specta]
-pub fn update_transcription_prompt(
-    app: AppHandle,
-    prompt: Option<String>,
-) -> Result<(), String> {
+pub fn update_transcription_prompt(app: AppHandle, prompt: Option<String>) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.transcription_prompt = prompt;
     settings::write_settings(&app, settings);
@@ -669,7 +666,12 @@ pub fn get_system_accent_color() -> Option<String> {
     {
         use std::process::Command;
         let output = Command::new("reg")
-            .args(["query", "HKCU\\SOFTWARE\\Microsoft\\Windows\\DWM", "/v", "AccentColor"])
+            .args([
+                "query",
+                "HKCU\\SOFTWARE\\Microsoft\\Windows\\DWM",
+                "/v",
+                "AccentColor",
+            ])
             .output()
             .ok()?;
         let stdout = String::from_utf8_lossy(&output.stdout);

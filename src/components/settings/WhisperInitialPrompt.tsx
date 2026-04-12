@@ -52,9 +52,7 @@ export const WhisperInitialPrompt: React.FC<WhisperInitialPromptProps> =
           onChange={(e) => setLocalValue(e.target.value)}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          placeholder={t(
-            "settings.advanced.whisperInitialPrompt.placeholder",
-          )}
+          placeholder={t("settings.advanced.whisperInitialPrompt.placeholder")}
           variant="compact"
           disabled={isUpdating("whisper_initial_prompt")}
         />

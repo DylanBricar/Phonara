@@ -169,8 +169,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           await audio.play();
         }
       }
-    } catch {
-    }
+    } catch {}
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
