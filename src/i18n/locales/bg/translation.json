@@ -213,7 +213,8 @@
         "translation": "Превод",
         "allLanguages": "Всички езици"
       },
-      "noModelsMatch": "Няма модели, отговарящи на този филтър."
+      "noModelsMatch": "Няма модели, отговарящи на този филтър.",
+      "searchPlaceholder": "Search models..."
     },
     "sound": {
       "title": "Звук",
@@ -576,7 +577,8 @@
     "off": "Изкл.",
     "yes": "Да",
     "no": "Не",
-    "noOptionsFound": "Няма намерени опции"
+    "noOptionsFound": "Няма намерени опции",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Необходими са разрешения за достъпност",

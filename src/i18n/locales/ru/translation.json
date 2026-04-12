@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "Нет моделей, соответствующих этому фильтру.",
       "yourModels": "Загруженные модели",
-      "availableModels": "Доступны для загрузки"
+      "availableModels": "Доступны для загрузки",
+      "searchPlaceholder": "Поиск моделей..."
     },
     "general": {
       "title": "Общие",
@@ -581,7 +582,8 @@
     "off": "Выключенный",
     "yes": "Да",
     "no": "Нет",
-    "noOptionsFound": "Вариантов не найдено"
+    "noOptionsFound": "Вариантов не найдено",
+    "clear": "Очистить"
   },
   "accessibility": {
     "permissionsRequired": "Требуются разрешения на доступ",

@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "Bu filtreyle eşleşen model yok.",
       "yourModels": "İndirilen modeller",
-      "availableModels": "İndirilebilir"
+      "availableModels": "İndirilebilir",
+      "searchPlaceholder": "Model ara..."
     },
     "general": {
       "title": "Genel",
@@ -581,7 +582,8 @@
     "off": "Kapalı",
     "yes": "Evet",
     "no": "Hayır",
-    "noOptionsFound": "Seçenek bulunamadı"
+    "noOptionsFound": "Seçenek bulunamadı",
+    "clear": "Temizle"
   },
   "accessibility": {
     "permissionsRequired": "Erişilebilirlik İzinleri Gerekli",

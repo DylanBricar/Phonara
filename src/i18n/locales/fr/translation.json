@@ -226,7 +226,8 @@
         "cancel": "Annuler",
         "fetchModels": "Récupérer les modèles",
         "alreadySaved": "Ce modèle est déjà enregistré."
-      }
+      },
+      "searchPlaceholder": "Rechercher des modèles..."
     },
     "general": {
       "title": "Général",
@@ -824,7 +825,8 @@
     "off": "Désactivé",
     "yes": "Oui",
     "no": "Non",
-    "noOptionsFound": "Aucune option trouvée"
+    "noOptionsFound": "Aucune option trouvée",
+    "clear": "Effacer"
   },
   "accessibility": {
     "permissionsRequired": "Autorisations d'accessibilité requises",

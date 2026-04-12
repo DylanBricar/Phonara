@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "Tomuto filtru neodpovídají žádné modely.",
       "yourModels": "Stažené modely",
-      "availableModels": "Dostupné ke stažení"
+      "availableModels": "Dostupné ke stažení",
+      "searchPlaceholder": "Search models..."
     },
     "general": {
       "title": "Obecné",
@@ -581,7 +582,8 @@
     "off": "Vypnuto",
     "yes": "Ano",
     "no": "Ne",
-    "noOptionsFound": "Nenalezeny žádné možnosti"
+    "noOptionsFound": "Nenalezeny žádné možnosti",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Vyžadována oprávnění usnadnění přístupu",

@@ -213,7 +213,8 @@
         "translation": "Översättning",
         "allLanguages": "Alla språk"
       },
-      "noModelsMatch": "Inga modeller matchar detta filter."
+      "noModelsMatch": "Inga modeller matchar detta filter.",
+      "searchPlaceholder": "Search models..."
     },
     "sound": {
       "title": "Ljud",
@@ -576,7 +577,8 @@
     "off": "Av",
     "yes": "Ja",
     "no": "Nej",
-    "noOptionsFound": "Inga alternativ hittades"
+    "noOptionsFound": "Inga alternativ hittades",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Behörigheter för hjälpmedel krävs",

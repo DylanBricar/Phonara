@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "このフィルターに一致するモデルがありません。",
       "yourModels": "ダウンロード済みモデル",
-      "availableModels": "ダウンロード可能"
+      "availableModels": "ダウンロード可能",
+      "searchPlaceholder": "モデルを検索..."
     },
     "general": {
       "title": "一般",
@@ -581,7 +582,8 @@
     "off": "オフ",
     "yes": "はい",
     "no": "いいえ",
-    "noOptionsFound": "オプションが見つかりません"
+    "noOptionsFound": "オプションが見つかりません",
+    "clear": "クリア"
   },
   "accessibility": {
     "permissionsRequired": "アクセシビリティ権限が必要です",

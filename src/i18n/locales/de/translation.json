@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "Keine Modelle entsprechen diesem Filter.",
       "yourModels": "Heruntergeladene Modelle",
-      "availableModels": "Zum Download verfügbar"
+      "availableModels": "Zum Download verfügbar",
+      "searchPlaceholder": "Modelle suchen..."
     },
     "general": {
       "title": "Allgemein",
@@ -581,7 +582,8 @@
     "off": "Aus",
     "yes": "Ja",
     "no": "Nein",
-    "noOptionsFound": "Keine Optionen gefunden"
+    "noOptionsFound": "Keine Optionen gefunden",
+    "clear": "Löschen"
   },
   "accessibility": {
     "permissionsRequired": "Bedienungshilfen-Berechtigungen erforderlich",

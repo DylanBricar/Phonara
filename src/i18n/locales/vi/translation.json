@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "Không có mô hình nào khớp với bộ lọc này.",
       "yourModels": "Mô hình đã tải",
-      "availableModels": "Có sẵn để tải xuống"
+      "availableModels": "Có sẵn để tải xuống",
+      "searchPlaceholder": "Search models..."
     },
     "general": {
       "title": "Chung",
@@ -590,7 +591,8 @@
     "off": "Tắt",
     "yes": "Có",
     "no": "Không",
-    "noOptionsFound": "Không tìm thấy tùy chọn"
+    "noOptionsFound": "Không tìm thấy tùy chọn",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Cần quyền truy cập",

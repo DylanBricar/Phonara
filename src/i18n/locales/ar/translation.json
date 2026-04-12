@@ -541,7 +541,8 @@
         "translation": "ترجمة",
         "allLanguages": "جميع اللغات"
       },
-      "noModelsMatch": "لا توجد نماذج مطابقة لهذا الفلتر."
+      "noModelsMatch": "لا توجد نماذج مطابقة لهذا الفلتر.",
+      "searchPlaceholder": "Search models..."
     }
   },
   "footer": {
@@ -581,7 +582,8 @@
     "off": "إيقاف",
     "yes": "نعم",
     "no": "لا",
-    "noOptionsFound": "لم يتم العثور على خيارات"
+    "noOptionsFound": "لم يتم العثور على خيارات",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "أذونات إمكانية الوصول مطلوبة",

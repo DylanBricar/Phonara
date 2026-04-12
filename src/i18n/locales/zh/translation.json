@@ -176,7 +176,8 @@
       },
       "noModelsMatch": "没有符合此筛选条件的模型。",
       "yourModels": "已下载的模型",
-      "availableModels": "可供下载"
+      "availableModels": "可供下载",
+      "searchPlaceholder": "搜索模型..."
     },
     "general": {
       "title": "通用",
@@ -581,7 +582,8 @@
     "off": "关",
     "yes": "是",
     "no": "否",
-    "noOptionsFound": "未找到选项"
+    "noOptionsFound": "未找到选项",
+    "clear": "清除"
   },
   "accessibility": {
     "permissionsRequired": "需要辅助功能权限",

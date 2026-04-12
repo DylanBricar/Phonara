@@ -218,7 +218,8 @@
       },
       "noModelsMatch": "Nenhum modelo corresponde a este filtro.",
       "yourModels": "Modelos baixados",
-      "availableModels": "Disponíveis para download"
+      "availableModels": "Disponíveis para download",
+      "searchPlaceholder": "Pesquisar modelos..."
     },
     "sound": {
       "title": "Som",
@@ -581,7 +582,8 @@
     "off": "Desligado",
     "yes": "Sim",
     "no": "Não",
-    "noOptionsFound": "Nenhuma opção encontrada"
+    "noOptionsFound": "Nenhuma opção encontrada",
+    "clear": "Limpar"
   },
   "accessibility": {
     "permissionsRequired": "Permissões de Acessibilidade Necessárias",

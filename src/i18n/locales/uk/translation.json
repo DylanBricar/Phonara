@@ -218,7 +218,8 @@
       },
       "noModelsMatch": "Жодна модель не відповідає цьому фільтру.",
       "yourModels": "Завантажені моделі",
-      "availableModels": "Доступні для завантаження"
+      "availableModels": "Доступні для завантаження",
+      "searchPlaceholder": "Search models..."
     },
     "sound": {
       "title": "Звук",
@@ -581,7 +582,8 @@
     "off": "Вимк.",
     "yes": "Так",
     "no": "Ні",
-    "noOptionsFound": "Опцій не знайдено"
+    "noOptionsFound": "Опцій не знайдено",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Потрібні права доступу",

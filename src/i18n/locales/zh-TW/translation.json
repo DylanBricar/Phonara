@@ -218,7 +218,8 @@
         "translation": "翻譯",
         "allLanguages": "所有語言"
       },
-      "noModelsMatch": "沒有符合此篩選條件的模型"
+      "noModelsMatch": "沒有符合此篩選條件的模型",
+      "searchPlaceholder": "搜尋模型..."
     },
     "sound": {
       "title": "聲音",
@@ -581,7 +582,8 @@
     "off": "關",
     "yes": "是",
     "no": "否",
-    "noOptionsFound": "未找到選項"
+    "noOptionsFound": "未找到選項",
+    "clear": "清除"
   },
   "accessibility": {
     "permissionsRequired": "需要輔助使用權限",

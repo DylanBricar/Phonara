@@ -213,7 +213,8 @@
         "translation": "תרגום",
         "allLanguages": "כל השפות"
       },
-      "noModelsMatch": "אין מודלים שמתאימים לסינון הזה."
+      "noModelsMatch": "אין מודלים שמתאימים לסינון הזה.",
+      "searchPlaceholder": "Search models..."
     },
     "sound": {
       "title": "שמע",
@@ -576,7 +577,8 @@
     "off": "כבוי",
     "yes": "כן",
     "no": "לא",
-    "noOptionsFound": "לא נמצאו אפשרויות"
+    "noOptionsFound": "לא נמצאו אפשרויות",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "נדרשות הרשאות נגישות",
