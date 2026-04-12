@@ -299,12 +299,11 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           echo "Patching version to $VERSION"
-          # tauri.conf.json
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" src-tauri/tauri.conf.json
-          # Cargo.toml (first version = line)
-          sed -i "0,/^version = \"[^\"]*\"/s//version = \"$VERSION\"/" src-tauri/Cargo.toml
-          # package.json
-          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" package.json
+          # Use jq for JSON files (cross-platform, no sed -i issues on macOS)
+          jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
+          # Cargo.toml - use perl for cross-platform in-place editing
+          perl -i -pe "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml
           echo "Patched to $VERSION"
           grep '"version"' src-tauri/tauri.conf.json package.json
           grep '^version' src-tauri/Cargo.toml | head -1
