@@ -292,3 +292,62 @@ pub fn change_accent_color_setting(app: AppHandle, color: String) -> Result<(), 
     settings::write_settings(&app, settings);
     Ok(())
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_recordings_directory(app: AppHandle) -> Result<Option<String>, String> {
+    let settings = settings::get_settings(&app);
+    Ok(settings.custom_recordings_directory)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), String> {
+    let dir = std::path::Path::new(&path);
+    if !dir.is_dir() {
+        return Err(format!("Directory does not exist: {}", path));
+    }
+    let mut settings = settings::get_settings(&app);
+    settings.custom_recordings_directory = Some(path);
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn clear_recordings_directory(app: AppHandle) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.custom_recordings_directory = None;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_custom_sound_path(app: AppHandle, sound_type: String, path: String) -> Result<(), String> {
+    let file = std::path::Path::new(&path);
+    if !file.is_file() {
+        return Err(format!("File does not exist: {}", path));
+    }
+    let mut settings = settings::get_settings(&app);
+    match sound_type.as_str() {
+        "start" => settings.custom_start_sound = Some(path),
+        "stop" => settings.custom_stop_sound = Some(path),
+        _ => return Err(format!("Invalid sound type: {}", sound_type)),
+    }
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn clear_custom_sound_path(app: AppHandle, sound_type: String) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    match sound_type.as_str() {
+        "start" => settings.custom_start_sound = None,
+        "stop" => settings.custom_stop_sound = None,
+        _ => return Err(format!("Invalid sound type: {}", sound_type)),
+    }
+    settings::write_settings(&app, settings);
+    Ok(())
+}

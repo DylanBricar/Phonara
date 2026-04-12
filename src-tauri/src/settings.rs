@@ -165,6 +165,12 @@ pub struct PostProcessProvider {
     pub models_endpoint: Option<String>,
     #[serde(default)]
     pub supports_structured_output: bool,
+    #[serde(default = "default_requires_api_key")]
+    pub requires_api_key: bool,
+}
+
+fn default_requires_api_key() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
@@ -639,6 +645,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "zai".to_string(),
@@ -647,6 +654,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "openrouter".to_string(),
@@ -655,6 +663,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "anthropic".to_string(),
@@ -663,6 +672,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "groq".to_string(),
@@ -671,6 +681,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: false,
+            requires_api_key: true,
         },
         PostProcessProvider {
             id: "cerebras".to_string(),
@@ -679,6 +690,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
+            requires_api_key: true,
         },
     ];
 
@@ -695,6 +707,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             allow_base_url_edit: false,
             models_endpoint: None,
             supports_structured_output: true,
+            requires_api_key: false,
         });
     }
 
@@ -710,6 +723,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: true,
         models_endpoint: Some("/models".to_string()),
         supports_structured_output: false,
+        requires_api_key: false,
     });
 
     providers

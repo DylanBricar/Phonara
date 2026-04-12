@@ -4,7 +4,7 @@ use crate::settings::OverlayPosition;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ShowOverlayPayload {
     state: String,
