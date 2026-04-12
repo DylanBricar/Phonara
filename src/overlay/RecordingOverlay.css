@@ -1,6 +1,6 @@
 .recording-overlay {
-  height: var(--overlay-height, 40px);
-  width: var(--overlay-width, 200px);
+  height: var(--overlay-height, 44px);
+  width: var(--overlay-width, 180px);
   display: flex;
   align-items: center;
   gap: 6px;
