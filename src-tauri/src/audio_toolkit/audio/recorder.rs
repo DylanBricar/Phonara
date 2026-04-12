@@ -96,7 +96,7 @@ impl AudioRecorder {
         let thread_device = device.clone();
         let vad = self.vad.clone();
         let level_cb = self.level_cb.clone();
-        let _pause_flag = self.pause_flag.clone();
+        let pause_flag = self.pause_flag.clone();
         let selected_channel = self.selected_channel;
 
         let worker = std::thread::spawn(move || {
@@ -128,6 +128,7 @@ impl AudioRecorder {
                         channels,
                         stop_flag_for_stream,
                         selected_channel,
+                        pause_flag.clone(),
                     ),
                     cpal::SampleFormat::I8 => AudioRecorder::build_stream::<i8>(
                         &thread_device,
@@ -136,6 +137,7 @@ impl AudioRecorder {
                         channels,
                         stop_flag_for_stream,
                         selected_channel,
+                        pause_flag.clone(),
                     ),
                     cpal::SampleFormat::I16 => AudioRecorder::build_stream::<i16>(
                         &thread_device,
@@ -144,6 +146,7 @@ impl AudioRecorder {
                         channels,
                         stop_flag_for_stream,
                         selected_channel,
+                        pause_flag.clone(),
                     ),
                     cpal::SampleFormat::I32 => AudioRecorder::build_stream::<i32>(
                         &thread_device,
@@ -152,6 +155,7 @@ impl AudioRecorder {
                         channels,
                         stop_flag_for_stream,
                         selected_channel,
+                        pause_flag.clone(),
                     ),
                     cpal::SampleFormat::F32 => AudioRecorder::build_stream::<f32>(
                         &thread_device,
@@ -160,6 +164,7 @@ impl AudioRecorder {
                         channels,
                         stop_flag_for_stream,
                         selected_channel,
+                        pause_flag.clone(),
                     ),
                     sample_format => {
                         return Err(format!("Unsupported sample format: {sample_format:?}"));
@@ -180,6 +185,7 @@ impl AudioRecorder {
                             channels,
                             stop_i16,
                             selected_channel,
+                            pause_flag.clone(),
                         )
                         .map_err(|e| format!("Failed to build input stream: {e}"))?
                     }
@@ -265,6 +271,7 @@ impl AudioRecorder {
         channels: usize,
         stop_flag: Arc<AtomicBool>,
         selected_channel: Option<usize>,
+        pause_flag: Option<Arc<AtomicBool>>,
     ) -> Result<cpal::Stream, cpal::BuildStreamError>
     where
         T: Sample + SizedSample + Send + 'static,
@@ -296,6 +303,15 @@ impl AudioRecorder {
                 return;
             }
             eos_sent = false;
+
+            // When paused, discard incoming audio samples
+            if pause_flag
+                .as_ref()
+                .map(|f| f.load(Ordering::Relaxed))
+                .unwrap_or(false)
+            {
+                return;
+            }
 
             output_buffer.clear();
 
