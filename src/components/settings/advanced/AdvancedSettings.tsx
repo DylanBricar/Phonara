@@ -14,6 +14,7 @@ import { AutoSubmit } from "../AutoSubmit";
 
 import { AppendTrailingSpace } from "../AppendTrailingSpace";
 import { WhisperInitialPrompt } from "../WhisperInitialPrompt";
+import { TranscriptionPrompt } from "../TranscriptionPrompt";
 import { HistoryLimit } from "../HistoryLimit";
 import { RecordingRetentionPeriodSelector } from "../RecordingRetentionPeriod";
 import { RecordingsDirectory } from "../RecordingsDirectory";
@@ -49,6 +50,7 @@ export const AdvancedSettings: React.FC = () => {
         <CustomWords descriptionMode="tooltip" grouped />
         <TextReplacements descriptionMode="tooltip" grouped />
         <WhisperInitialPrompt descriptionMode="tooltip" grouped={true} />
+        <TranscriptionPrompt descriptionMode="tooltip" grouped={true} />
         <AppendTrailingSpace descriptionMode="tooltip" grouped={true} />
       </SettingsGroup>
 

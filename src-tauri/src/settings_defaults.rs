@@ -486,6 +486,7 @@ pub fn get_default_settings() -> AppSettings {
         post_process_actions: Vec::new(),
         saved_processing_models: Vec::new(),
         whisper_initial_prompt: None,
+        transcription_prompt: None,
         whisper_use_gpu: default_whisper_use_gpu(),
         custom_start_sound: None,
         custom_stop_sound: None,

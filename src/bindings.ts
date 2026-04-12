@@ -524,6 +524,14 @@ async showMainWindowCommand() : Promise<Result<null, string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async updateTranscriptionPrompt(prompt: string | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("update_transcription_prompt", { prompt }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async cancelOperation() : Promise<void> {
     await TAURI_INVOKE("cancel_operation");
 },
@@ -864,6 +872,30 @@ async getClamshellMicrophone() : Promise<Result<string, string>> {
 async isRecording() : Promise<boolean> {
     return await TAURI_INVOKE("is_recording");
 },
+async getMicrophoneChannels(deviceName: string) : Promise<Result<number, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_microphone_channels", { deviceName }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async getSelectedChannel() : Promise<Result<number | null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_selected_channel") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setSelectedChannel(channel: number | null) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_selected_channel", { channel }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setModelUnloadTimeout(timeout: ModelUnloadTimeout) : Promise<void> {
     await TAURI_INVOKE("set_model_unload_timeout", { timeout });
 },
@@ -1083,7 +1115,7 @@ historyUpdatePayload: "history-update-payload"
 /** user-defined types **/
 
 export type AccentColor = "blue" | "green" | "red" | "purple" | "orange" | "pink" | "teal" | "yellow" | "system"
-export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; prioritized_microphones?: string[]; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; secondary_selected_language?: string; overlay_position?: OverlayPosition; overlay_high_visibility?: boolean; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; text_replacements?: TextReplacement[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path?: string | null; custom_filler_words?: string[] | null; long_audio_model?: string | null; long_audio_threshold_seconds?: number; gemini_api_key?: string | null; gemini_model?: string; openai_api_key?: string | null; openai_model?: string; post_process_actions?: PostProcessAction[]; saved_processing_models?: SavedProcessingModel[]; whisper_initial_prompt?: string | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; whisper_use_gpu?: boolean; custom_start_sound?: string | null; custom_stop_sound?: string | null; custom_recordings_directory?: string | null; overlay_border_color?: string | null; overlay_background_color?: string | null; overlay_border_width?: number; overlay_custom_width?: number; overlay_custom_height?: number; theme_mode?: ThemeMode; accent_color?: AccentColor; extra_recording_buffer_ms?: number; api_server_enabled?: boolean; api_server_port?: number; api_server_token?: string | null; wake_word_enabled?: boolean; wake_word_sensitivity?: number; wake_word_model?: string | null; live_transcription_enabled?: boolean; live_transcription_mode?: LiveTranscriptionMode }
+export type AppSettings = { bindings: Partial<{ [key in string]: ShortcutBinding }>; push_to_talk: boolean; audio_feedback: boolean; audio_feedback_volume?: number; sound_theme?: SoundTheme; start_hidden?: boolean; autostart_enabled?: boolean; update_checks_enabled?: boolean; selected_model?: string; always_on_microphone?: boolean; selected_microphone?: string | null; prioritized_microphones?: string[]; clamshell_microphone?: string | null; selected_output_device?: string | null; translate_to_english?: boolean; selected_language?: string; secondary_selected_language?: string; overlay_position?: OverlayPosition; overlay_high_visibility?: boolean; debug_mode?: boolean; log_level?: LogLevel; custom_words?: string[]; text_replacements?: TextReplacement[]; model_unload_timeout?: ModelUnloadTimeout; word_correction_threshold?: number; history_limit?: number; recording_retention_period?: RecordingRetentionPeriod; paste_method?: PasteMethod; clipboard_handling?: ClipboardHandling; auto_submit?: boolean; auto_submit_key?: AutoSubmitKey; post_process_enabled?: boolean; post_process_provider_id?: string; post_process_providers?: PostProcessProvider[]; post_process_api_keys?: SecretMap; post_process_models?: Partial<{ [key in string]: string }>; post_process_prompts?: LLMPrompt[]; post_process_selected_prompt_id?: string | null; mute_while_recording?: boolean; append_trailing_space?: boolean; app_language?: string; experimental_enabled?: boolean; lazy_stream_close?: boolean; keyboard_implementation?: KeyboardImplementation; show_tray_icon?: boolean; paste_delay_ms?: number; typing_tool?: TypingTool; external_script_path?: string | null; custom_filler_words?: string[] | null; long_audio_model?: string | null; long_audio_threshold_seconds?: number; gemini_api_key?: string | null; gemini_model?: string; openai_api_key?: string | null; openai_model?: string; post_process_actions?: PostProcessAction[]; saved_processing_models?: SavedProcessingModel[]; whisper_initial_prompt?: string | null; transcription_prompt?: string | null; whisper_accelerator?: WhisperAcceleratorSetting; ort_accelerator?: OrtAcceleratorSetting; whisper_gpu_device?: number; whisper_use_gpu?: boolean; custom_start_sound?: string | null; custom_stop_sound?: string | null; custom_recordings_directory?: string | null; overlay_border_color?: string | null; overlay_background_color?: string | null; overlay_border_width?: number; overlay_custom_width?: number; overlay_custom_height?: number; theme_mode?: ThemeMode; accent_color?: AccentColor; extra_recording_buffer_ms?: number; selected_channel?: number | null; api_server_enabled?: boolean; api_server_port?: number; api_server_token?: string | null; wake_word_enabled?: boolean; wake_word_sensitivity?: number; wake_word_model?: string | null; live_transcription_enabled?: boolean; live_transcription_mode?: LiveTranscriptionMode }
 export type AudioDevice = { index: string; name: string; is_default: boolean }
 export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { whisper: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }

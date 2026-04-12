@@ -310,3 +310,47 @@ pub fn is_recording(app: AppHandle) -> bool {
     let audio_manager = app.state::<Arc<AudioRecordingManager>>();
     audio_manager.is_recording()
 }
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_microphone_channels(device_name: String) -> Result<u16, String> {
+    let devices =
+        list_input_devices().map_err(|e| format!("Failed to list audio devices: {}", e))?;
+
+    if device_name == "default" {
+        // Return channels for the default device
+        return Ok(devices
+            .iter()
+            .find(|d| d.is_default)
+            .map(|d| d.channels)
+            .unwrap_or(1));
+    }
+
+    devices
+        .iter()
+        .find(|d| d.name == device_name)
+        .map(|d| d.channels)
+        .ok_or_else(|| format!("Device '{}' not found", device_name))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_selected_channel(app: AppHandle) -> Result<Option<u16>, String> {
+    let settings = get_settings(&app);
+    Ok(settings.selected_channel)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_selected_channel(app: AppHandle, channel: Option<u16>) -> Result<(), String> {
+    let mut settings = get_settings(&app);
+    settings.selected_channel = channel;
+    write_settings(&app, settings);
+
+    // Recreate the recorder to apply the new channel selection
+    let rm = app.state::<Arc<AudioRecordingManager>>();
+    rm.update_selected_device()
+        .map_err(|e| format!("Failed to update audio recorder: {}", e))?;
+
+    Ok(())
+}

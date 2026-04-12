@@ -558,14 +558,32 @@ impl TranscriptionManager {
                                 Some(normalized)
                             };
 
+                            let initial_prompt = {
+                                let mut parts: Vec<String> = Vec::new();
+                                if !settings.custom_words.is_empty() {
+                                    parts.push(settings.custom_words.join(", "));
+                                }
+                                if let Some(ref prompt) = settings.transcription_prompt {
+                                    if !prompt.is_empty() {
+                                        parts.push(prompt.clone());
+                                    }
+                                }
+                                if let Some(ref prompt) = settings.whisper_initial_prompt {
+                                    if !prompt.is_empty() {
+                                        parts.push(prompt.clone());
+                                    }
+                                }
+                                if parts.is_empty() {
+                                    None
+                                } else {
+                                    Some(parts.join("\n\n"))
+                                }
+                            };
+
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
                                 translate: settings.translate_to_english,
-                                initial_prompt: if settings.custom_words.is_empty() {
-                                    None
-                                } else {
-                                    Some(settings.custom_words.join(", "))
-                                },
+                                initial_prompt,
                                 ..Default::default()
                             };
 

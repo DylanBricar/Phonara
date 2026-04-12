@@ -458,6 +458,8 @@ pub struct AppSettings {
     pub saved_processing_models: Vec<SavedProcessingModel>,
     #[serde(default)]
     pub whisper_initial_prompt: Option<String>,
+    #[serde(default)]
+    pub transcription_prompt: Option<String>,
     #[serde(default = "default_whisper_use_gpu")]
     pub whisper_use_gpu: bool,
     #[serde(default)]

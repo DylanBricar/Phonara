@@ -188,6 +188,7 @@ fn create_audio_recorder(
     vad_path: &Path,
     app_handle: &tauri::AppHandle,
     is_paused: Arc<AtomicBool>,
+    selected_channel: Option<u16>,
 ) -> Result<AudioRecorder, anyhow::Error> {
     let silero = SileroVad::new(vad_path, 0.3)
         .map_err(|e| anyhow::anyhow!("Failed to create SileroVad: {}", e))?;
@@ -198,6 +199,7 @@ fn create_audio_recorder(
     let recorder = AudioRecorder::new()
         .map_err(|e| anyhow::anyhow!("Failed to create AudioRecorder: {}", e))?
         .with_vad(Box::new(smoothed_vad))
+        .with_selected_channel(selected_channel)
         .with_pause_flag(is_paused.clone())
         .with_level_callback({
             let app_handle = app_handle.clone();
@@ -411,6 +413,7 @@ impl AudioRecordingManager {
     pub fn preload_vad(&self) -> Result<(), anyhow::Error> {
         let mut recorder_opt = self.recorder.lock().unwrap();
         if recorder_opt.is_none() {
+            let settings = get_settings(&self.app_handle);
             let vad_path = self
                 .app_handle
                 .path()
@@ -423,6 +426,7 @@ impl AudioRecordingManager {
                 &vad_path,
                 &self.app_handle,
                 Arc::clone(&self.is_paused),
+                settings.selected_channel,
             )?);
         }
         Ok(())
@@ -568,10 +572,15 @@ impl AudioRecordingManager {
     }
 
     pub fn update_selected_device(&self) -> Result<(), anyhow::Error> {
-        // If currently open, restart the microphone stream to use the new device
-        if *self.is_open.lock().unwrap() {
+        // Drop the old recorder so it gets recreated with current settings
+        // (e.g. selected_channel may have changed)
+        let was_open = *self.is_open.lock().unwrap();
+        if was_open {
             self.close_generation.fetch_add(1, Ordering::SeqCst);
             self.stop_microphone_stream();
+        }
+        *self.recorder.lock().unwrap() = None;
+        if was_open {
             self.start_microphone_stream()?;
         }
         Ok(())

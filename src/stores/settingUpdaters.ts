@@ -51,6 +51,8 @@ export const settingUpdaters: {
     commands.changeWhisperInitialPromptSetting(
       (value as string | null) ?? null,
     ),
+  transcription_prompt: (value) =>
+    commands.updateTranscriptionPrompt((value as string | null) ?? null),
   whisper_use_gpu: (value) =>
     commands.changeWhisperUseGpuSetting(value as boolean),
   word_correction_threshold: (value) =>

@@ -37,6 +37,7 @@ pub struct AudioRecorder {
     vad: Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
     pause_flag: Option<Arc<AtomicBool>>,
+    selected_channel: Option<usize>,
 }
 
 impl AudioRecorder {
@@ -48,6 +49,7 @@ impl AudioRecorder {
             vad: None,
             level_cb: None,
             pause_flag: None,
+            selected_channel: None,
         })
     }
 
@@ -66,6 +68,11 @@ impl AudioRecorder {
 
     pub fn with_pause_flag(mut self, flag: Arc<AtomicBool>) -> Self {
         self.pause_flag = Some(flag);
+        self
+    }
+
+    pub fn with_selected_channel(mut self, channel: Option<u16>) -> Self {
+        self.selected_channel = channel.map(|c| c as usize);
         self
     }
 
@@ -90,6 +97,7 @@ impl AudioRecorder {
         let vad = self.vad.clone();
         let level_cb = self.level_cb.clone();
         let _pause_flag = self.pause_flag.clone();
+        let selected_channel = self.selected_channel;
 
         let worker = std::thread::spawn(move || {
             let stop_flag = Arc::new(AtomicBool::new(false));
@@ -119,6 +127,7 @@ impl AudioRecorder {
                         sample_tx,
                         channels,
                         stop_flag_for_stream,
+                        selected_channel,
                     ),
                     cpal::SampleFormat::I8 => AudioRecorder::build_stream::<i8>(
                         &thread_device,
@@ -126,6 +135,7 @@ impl AudioRecorder {
                         sample_tx,
                         channels,
                         stop_flag_for_stream,
+                        selected_channel,
                     ),
                     cpal::SampleFormat::I16 => AudioRecorder::build_stream::<i16>(
                         &thread_device,
@@ -133,6 +143,7 @@ impl AudioRecorder {
                         sample_tx,
                         channels,
                         stop_flag_for_stream,
+                        selected_channel,
                     ),
                     cpal::SampleFormat::I32 => AudioRecorder::build_stream::<i32>(
                         &thread_device,
@@ -140,6 +151,7 @@ impl AudioRecorder {
                         sample_tx,
                         channels,
                         stop_flag_for_stream,
+                        selected_channel,
                     ),
                     cpal::SampleFormat::F32 => AudioRecorder::build_stream::<f32>(
                         &thread_device,
@@ -147,6 +159,7 @@ impl AudioRecorder {
                         sample_tx,
                         channels,
                         stop_flag_for_stream,
+                        selected_channel,
                     ),
                     sample_format => {
                         return Err(format!("Unsupported sample format: {sample_format:?}"));
@@ -166,6 +179,7 @@ impl AudioRecorder {
                             sample_tx_i16,
                             channels,
                             stop_i16,
+                            selected_channel,
                         )
                         .map_err(|e| format!("Failed to build input stream: {e}"))?
                     }
@@ -250,11 +264,26 @@ impl AudioRecorder {
         sample_tx: mpsc::Sender<AudioChunk>,
         channels: usize,
         stop_flag: Arc<AtomicBool>,
+        selected_channel: Option<usize>,
     ) -> Result<cpal::Stream, cpal::BuildStreamError>
     where
         T: Sample + SizedSample + Send + 'static,
         f32: cpal::FromSample<T>,
     {
+        // Resolve the effective channel index (clamp to valid range)
+        let effective_channel = selected_channel.and_then(|ch| {
+            if ch < channels {
+                Some(ch)
+            } else {
+                log::warn!(
+                    "Selected channel {} exceeds device channels {}, averaging all",
+                    ch,
+                    channels
+                );
+                None
+            }
+        });
+
         let mut output_buffer = Vec::new();
         let mut eos_sent = false;
 
@@ -272,7 +301,15 @@ impl AudioRecorder {
 
             if channels == 1 {
                 output_buffer.extend(data.iter().map(|&sample| sample.to_sample::<f32>()));
+            } else if let Some(ch) = effective_channel {
+                // Extract a single channel
+                let frame_count = data.len() / channels;
+                output_buffer.reserve(frame_count);
+                for frame in data.chunks_exact(channels) {
+                    output_buffer.push(frame[ch].to_sample::<f32>());
+                }
             } else {
+                // Average all channels
                 let frame_count = data.len() / channels;
                 output_buffer.reserve(frame_count);
 

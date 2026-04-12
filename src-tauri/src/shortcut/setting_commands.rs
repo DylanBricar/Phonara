@@ -203,6 +203,18 @@ pub fn change_whisper_initial_prompt_setting(
 
 #[tauri::command]
 #[specta::specta]
+pub fn update_transcription_prompt(
+    app: AppHandle,
+    prompt: Option<String>,
+) -> Result<(), String> {
+    let mut settings = settings::get_settings(&app);
+    settings.transcription_prompt = prompt;
+    settings::write_settings(&app, settings);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_whisper_use_gpu_setting(
     app: AppHandle,
     enabled: bool,

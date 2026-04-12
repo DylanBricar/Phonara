@@ -1,4 +1,6 @@
-use crate::settings::PostProcessProvider;
+use std::env;
+
+use crate::settings::{PostProcessProvider, CUSTOM_LLM_BASE_URL_ENV};
 use log::debug;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE, REFERER, USER_AGENT};
 use serde::{Deserialize, Serialize};
@@ -57,6 +59,22 @@ struct ChatChoice {
 #[derive(Debug, Deserialize)]
 struct ChatMessageResponse {
     content: Option<String>,
+}
+
+fn get_effective_base_url(provider: &PostProcessProvider) -> String {
+    if provider.id == "custom" {
+        if let Ok(env_url) = env::var(CUSTOM_LLM_BASE_URL_ENV) {
+            let trimmed = env_url.trim();
+            if !trimmed.is_empty() {
+                debug!(
+                    "Using base URL from environment variable {}: {}",
+                    CUSTOM_LLM_BASE_URL_ENV, trimmed
+                );
+                return trimmed.trim_end_matches('/').to_string();
+            }
+        }
+    }
+    provider.base_url.trim_end_matches('/').to_string()
 }
 
 /// Build headers for API requests based on provider type
@@ -145,7 +163,7 @@ pub async fn send_chat_completion_with_schema(
     reasoning: Option<ReasoningConfig>,
 ) -> Result<Option<String>, String> {
 
-    let base_url = provider.base_url.trim_end_matches('/');
+    let base_url = get_effective_base_url(provider);
     let url = format!("{}/chat/completions", base_url);
 
     debug!("Sending chat completion request to: {}", url);
@@ -228,7 +246,7 @@ pub async fn fetch_models(
         return fetch_gemini_models(&api_key).await;
     }
 
-    let base_url = provider.base_url.trim_end_matches('/');
+    let base_url = get_effective_base_url(provider);
     let url = format!("{}/models", base_url);
 
     debug!("Fetching models from: {}", url);
