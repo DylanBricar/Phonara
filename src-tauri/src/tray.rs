@@ -4,18 +4,33 @@ use crate::managers::transcription::TranscriptionManager;
 use crate::settings;
 use crate::tray_i18n::get_tray_translations;
 use log::{error, info, warn};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIcon;
 use tauri::{AppHandle, Manager, Theme};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TrayIconState {
     Idle,
     Recording,
     Transcribing,
+}
+
+/// Tauri managed state holding the last icon state set via `change_tray_icon`.
+pub struct CurrentTrayIconState(pub Mutex<TrayIconState>);
+
+impl CurrentTrayIconState {
+    pub fn new() -> Self {
+        Self(Mutex::new(TrayIconState::Idle))
+    }
+    pub fn get(&self) -> TrayIconState {
+        *self.0.lock().unwrap()
+    }
+    fn set(&self, state: TrayIconState) {
+        *self.0.lock().unwrap() = state;
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -66,7 +81,9 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
     let tray = app.state::<TrayIcon>();
     let theme = get_current_theme(app);
 
-    let icon_path = get_icon_path(theme, icon.clone());
+    app.state::<CurrentTrayIconState>().set(icon);
+
+    let icon_path = get_icon_path(theme, icon);
 
     let _ = tray.set_icon(Some(
         Image::from_path(
@@ -78,7 +95,7 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
     ));
 
     // Update menu based on state
-    update_tray_menu(app, &icon, None);
+    update_tray_menu(app, None);
 }
 
 pub fn tray_tooltip() -> String {
@@ -93,7 +110,8 @@ fn version_label() -> String {
     }
 }
 
-pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&str>) {
+pub fn update_tray_menu(app: &AppHandle, locale: Option<&str>) {
+    let state = app.state::<CurrentTrayIconState>().get();
     let settings = settings::get_settings(app);
 
     let locale = locale.unwrap_or(&settings.app_language);
@@ -177,7 +195,7 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
     )
     .expect("failed to create unload model item");
 
-    let menu = match state {
+    let menu = match &state {
         TrayIconState::Recording | TrayIconState::Transcribing => {
             let cancel_i = MenuItem::with_id(app, "cancel", &strings.cancel, true, None::<&str>)
                 .expect("failed to create cancel item");

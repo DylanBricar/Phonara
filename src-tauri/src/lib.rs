@@ -31,11 +31,18 @@ use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
 #[cfg(unix)]
-use signal_hook::consts::{SIGUSR1, SIGUSR2};
+use libc;
+#[cfg(unix)]
+use signal_hook::consts::SIGUSR2;
 #[cfg(unix)]
 use signal_hook::iterator::Signals;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
+use std::time::{Duration, Instant};
+
+static LAST_TRAY_CLICK: StdMutex<Option<Instant>> = StdMutex::new(None);
+const DOUBLE_CLICK_THRESHOLD_MS: u64 = 350;
 use tauri::image::Image;
 pub use transcription_coordinator::TranscriptionCoordinator;
 
@@ -164,6 +171,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(model_manager.clone());
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
+    app_handle.manage(tray::CurrentTrayIconState::new());
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -171,10 +179,12 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // This matches the pattern used for Enigo initialization.
 
     #[cfg(unix)]
-    let signals = Signals::new(&[SIGUSR1, SIGUSR2]).unwrap();
+    let sig_post_process = libc::SIGRTMIN() + 1;
+    #[cfg(unix)]
+    let signals = Signals::new(&[sig_post_process, SIGUSR2]).unwrap();
     // Set up signal handlers for toggling transcription
     #[cfg(unix)]
-    signal_handle::setup_signal_handler(app_handle.clone(), signals);
+    signal_handle::setup_signal_handler(app_handle.clone(), signals, sig_post_process);
 
     // Apply macOS Accessory policy if starting hidden and tray is available.
     // If the tray icon is disabled, keep the dock icon so the user can reopen.
@@ -204,6 +214,36 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         .tooltip(tray::tray_tooltip())
         .show_menu_on_left_click(true)
         .icon_as_template(true)
+        .on_tray_icon_event(|tray, event| {
+            use tauri::tray::{TrayIconEvent, MouseButton, MouseButtonState};
+            match event {
+                TrayIconEvent::DoubleClick { button, .. } => {
+                    if matches!(button, MouseButton::Left) {
+                        let app = tray.app_handle();
+                        show_main_window(&app);
+                    }
+                }
+                TrayIconEvent::Click { button, button_state, .. } => {
+                    if matches!(button, MouseButton::Left) && matches!(button_state, MouseButtonState::Up) {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let now = Instant::now();
+                            if let Ok(mut last) = LAST_TRAY_CLICK.lock() {
+                                let is_double = last
+                                    .map(|prev| now.duration_since(prev) <= Duration::from_millis(DOUBLE_CLICK_THRESHOLD_MS))
+                                    .unwrap_or(false);
+                                *last = Some(now);
+                                if is_double {
+                                    let app = tray.app_handle();
+                                    show_main_window(&app);
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        })
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
                 show_main_window(app);
@@ -254,7 +294,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                             log::error!("Failed to switch model via tray: {}", e);
                         }
                     }
-                    tray::update_tray_menu(&app_clone, &tray::TrayIconState::Idle, None);
+                    tray::update_tray_menu(&app_clone, None);
                 });
             }
             _ => {}
@@ -264,7 +304,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(tray);
 
     // Initialize tray menu with idle state
-    utils::update_tray_menu(app_handle, &utils::TrayIconState::Idle, None);
+    tray::update_tray_menu(app_handle, None);
 
     // Apply show_tray_icon setting
     let settings = settings::get_settings(app_handle);
@@ -275,7 +315,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // Refresh tray menu when model state changes
     let app_handle_for_listener = app_handle.clone();
     app_handle.listen("model-state-changed", move |_| {
-        tray::update_tray_menu(&app_handle_for_listener, &tray::TrayIconState::Idle, None);
+        tray::update_tray_menu(&app_handle_for_listener, None);
     });
 
     // Get the autostart manager and configure based on user setting

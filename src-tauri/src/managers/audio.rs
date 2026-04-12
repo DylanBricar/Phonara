@@ -2,7 +2,12 @@ use crate::audio_toolkit::{list_input_devices, vad::SmoothedVad, AudioRecorder, 
 use crate::helpers::clamshell;
 use crate::settings::{get_settings, AppSettings};
 use crate::utils;
+#[cfg(target_os = "macos")]
+use cpal::traits::DeviceTrait;
+#[cfg(target_os = "macos")]
+use cpal::traits::HostTrait;
 use log::{debug, error, info};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -180,7 +185,7 @@ pub enum MicrophoneMode {
 /* ──────────────────────────────────────────────────────────────── */
 
 fn create_audio_recorder(
-    vad_path: &str,
+    vad_path: &Path,
     app_handle: &tauri::AppHandle,
     is_paused: Arc<AtomicBool>,
 ) -> Result<AudioRecorder, anyhow::Error> {
@@ -260,6 +265,25 @@ impl AudioRecordingManager {
 
     /* ---------- helper methods --------------------------------------------- */
 
+    #[cfg(target_os = "macos")]
+    fn is_likely_bluetooth_input(name: &str) -> bool {
+        let normalized = name.to_lowercase();
+        normalized.contains("airpods") || normalized.contains("bluetooth")
+    }
+
+    #[cfg(target_os = "macos")]
+    fn non_bluetooth_priority(name: &str) -> u8 {
+        let normalized = name.to_lowercase();
+        if normalized.contains("built-in")
+            || normalized.contains("internal")
+            || normalized.contains("macbook")
+        {
+            2
+        } else {
+            1
+        }
+    }
+
     fn get_effective_microphone_device(&self, settings: &AppSettings) -> Option<cpal::Device> {
         // Check if we're in clamshell mode and have a clamshell microphone configured
         let use_clamshell_mic = if let Ok(is_clamshell) = clamshell::is_clamshell() {
@@ -268,23 +292,67 @@ impl AudioRecordingManager {
             false
         };
 
-        let device_name = if use_clamshell_mic {
-            settings.clamshell_microphone.as_ref().unwrap()
-        } else {
-            settings.selected_microphone.as_ref()?
-        };
+        if use_clamshell_mic {
+            let device_name = settings.clamshell_microphone.as_ref().unwrap();
+            return match list_input_devices() {
+                Ok(devices) => devices
+                    .into_iter()
+                    .find(|d| d.name == *device_name)
+                    .map(|d| d.device),
+                Err(e) => {
+                    debug!("Failed to list devices, using default: {}", e);
+                    None
+                }
+            };
+        }
 
-        // Find the device by name
-        match list_input_devices() {
-            Ok(devices) => devices
-                .into_iter()
-                .find(|d| d.name == *device_name)
-                .map(|d| d.device),
-            Err(e) => {
-                debug!("Failed to list devices, using default: {}", e);
-                None
+        // Explicit user selection
+        if let Some(device_name) = settings.selected_microphone.as_ref() {
+            return match list_input_devices() {
+                Ok(devices) => devices
+                    .into_iter()
+                    .find(|d| d.name == *device_name)
+                    .map(|d| d.device),
+                Err(e) => {
+                    debug!("Failed to list devices, using default: {}", e);
+                    None
+                }
+            };
+        }
+
+        // No explicit selection — use system default, but on macOS avoid Bluetooth
+        #[cfg(target_os = "macos")]
+        {
+            let host = cpal::default_host();
+            if let Some(default_dev) = host.default_input_device() {
+                let default_name = default_dev.name().unwrap_or_default();
+                if Self::is_likely_bluetooth_input(&default_name) {
+                    debug!(
+                        "Default input '{}' appears to be Bluetooth, looking for alternative",
+                        default_name
+                    );
+                    if let Ok(devices) = list_input_devices() {
+                        let mut non_bt: Vec<_> = devices
+                            .into_iter()
+                            .filter(|d| !Self::is_likely_bluetooth_input(&d.name))
+                            .collect();
+                        non_bt.sort_by(|a, b| {
+                            Self::non_bluetooth_priority(&b.name)
+                                .cmp(&Self::non_bluetooth_priority(&a.name))
+                        });
+                        if let Some(alt) = non_bt.into_iter().next() {
+                            info!(
+                                "Falling back from Bluetooth '{}' to '{}'",
+                                default_name, alt.name
+                            );
+                            return Some(alt.device);
+                        }
+                    }
+                }
             }
         }
+
+        None
     }
 
     fn schedule_lazy_close(&self) {
@@ -352,7 +420,7 @@ impl AudioRecordingManager {
                 )
                 .map_err(|e| anyhow::anyhow!("Failed to resolve VAD path: {}", e))?;
             *recorder_opt = Some(create_audio_recorder(
-                vad_path.to_str().unwrap(),
+                &vad_path,
                 &self.app_handle,
                 Arc::clone(&self.is_paused),
             )?);
@@ -557,7 +625,11 @@ impl AudioRecordingManager {
                 // Pad if very short
                 let s_len = samples.len();
                 // debug!("Got {} samples", s_len);
-                if s_len < WHISPER_SAMPLE_RATE && s_len > 0 {
+                const MIN_SPEECH_SAMPLES: usize = 1600; // 100ms at 16kHz
+                if s_len < MIN_SPEECH_SAMPLES {
+                    // Too short to be real speech — SmoothedVad minimum real output is ~8000 samples
+                    Some(Vec::new())
+                } else if s_len < WHISPER_SAMPLE_RATE {
                     let mut padded = samples;
                     padded.resize(WHISPER_SAMPLE_RATE * 5 / 4, 0.0);
                     Some(padded)

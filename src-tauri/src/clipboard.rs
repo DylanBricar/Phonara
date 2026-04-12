@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[cfg(target_os = "linux")]
-use crate::utils::{is_kde_wayland, is_wayland};
+use crate::utils::{is_gnome_wayland, is_kde_wayland, is_wayland};
 
 enum SavedClipboardContent {
     Text(String),
@@ -191,7 +191,7 @@ fn paste_via_clipboard(
 #[cfg(target_os = "linux")]
 fn try_send_key_combo_linux(paste_method: &PasteMethod) -> Result<bool, String> {
     if is_wayland() {
-        if !is_kde_wayland() && is_wtype_available() {
+        if !is_kde_wayland() && !is_gnome_wayland() && is_wtype_available() {
             match send_key_combo_via_wtype(paste_method) {
                 Ok(()) => return Ok(true),
                 Err(e) => log::warn!("wtype failed, trying fallback: {}", e),
@@ -275,7 +275,7 @@ fn try_direct_typing_linux(text: &str, preferred_tool: TypingTool) -> Result<boo
                 Err(e) => log::warn!("kwtype failed, trying fallback: {}", e),
             }
         }
-        if !is_kde_wayland() && is_wtype_available() {
+        if !is_kde_wayland() && !is_gnome_wayland() && is_wtype_available() {
             match type_text_via_wtype(text) {
                 Ok(()) => return Ok(true),
                 Err(e) => log::warn!("wtype failed, trying fallback: {}", e),

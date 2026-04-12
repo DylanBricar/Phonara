@@ -1,11 +1,16 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Search, X } from "lucide-react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import type { ModelCardStatus } from "@/components/onboarding";
 import { ModelCard } from "@/components/onboarding";
 import { useModelStore } from "@/stores/modelStore";
 import { useSettings } from "@/hooks/useSettings";
 import type { ModelInfo } from "@/bindings";
+import {
+  getTranslatedModelName,
+  getTranslatedModelDescription,
+} from "@/lib/utils/modelTranslation";
 import { ProcessingModelsSection } from "./ProcessingModelsSection";
 import { GeminiKeyDialog, OpenaiKeyDialog } from "./ApiKeyDialogs";
 import { LanguageFilterDropdown } from "./LanguageFilterDropdown";
@@ -21,6 +26,8 @@ export const ModelsSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ModelsTab>("transcription");
   const [switchingModelId, setSwitchingModelId] = useState<string | null>(null);
   const [languageFilter, setLanguageFilter] = useState("all");
+  const [modelSearchQuery, setModelSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [showGeminiKeyDialog, setShowGeminiKeyDialog] = useState(false);
   const [geminiKeyInput, setGeminiKeyInput] = useState("");
   const [geminiModelInput, setGeminiModelInput] = useState("");
@@ -159,13 +166,26 @@ export const ModelsSettings: React.FC = () => {
   }, [cancelDownload]);
 
   const filteredModels = useMemo(() => {
+    const query = modelSearchQuery.toLowerCase().trim();
     return models.filter((model: ModelInfo) => {
       if (languageFilter !== "all") {
         if (!modelSupportsLanguage(model, languageFilter)) return false;
       }
+      if (query) {
+        const translatedName = getTranslatedModelName(model, t).toLowerCase();
+        const translatedDesc =
+          getTranslatedModelDescription(model, t).toLowerCase();
+        if (
+          !translatedName.includes(query) &&
+          !translatedDesc.includes(query) &&
+          !model.id.toLowerCase().includes(query)
+        ) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [models, languageFilter]);
+  }, [models, languageFilter, modelSearchQuery, t]);
 
   const { downloadedModels, availableModels } = useMemo(() => {
     const downloaded: ModelInfo[] = [];
@@ -243,14 +263,39 @@ export const ModelsSettings: React.FC = () => {
       {activeTab === "transcription" && filteredModels.length > 0 ? (
         <div className="space-y-6">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-text/60">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-medium text-text/60 shrink-0">
                 {t("settings.models.yourModels")}
               </h2>
-              <LanguageFilterDropdown
-                value={languageFilter}
-                onChange={setLanguageFilter}
-              />
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text/40" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={modelSearchQuery}
+                    onChange={(e) => setModelSearchQuery(e.target.value)}
+                    placeholder={t("settings.models.searchPlaceholder")}
+                    className="h-8 w-48 rounded-md border border-border bg-background pl-8 pr-8 text-xs text-text placeholder:text-text/40 focus:outline-none focus:ring-1 focus:ring-logo-primary"
+                  />
+                  {modelSearchQuery && (
+                    <button
+                      onClick={() => {
+                        setModelSearchQuery("");
+                        searchInputRef.current?.focus();
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-text/40 hover:text-text/70"
+                      aria-label={t("common.clear")}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                <LanguageFilterDropdown
+                  value={languageFilter}
+                  onChange={setLanguageFilter}
+                />
+              </div>
             </div>
             {downloadedModels.map((model: ModelInfo) => (
               <ModelCard

@@ -277,6 +277,7 @@
         "translation": "Translation",
         "allLanguages": "All Languages"
       },
+      "searchPlaceholder": "Search models...",
       "noModelsMatch": "No models match this filter.",
       "processingModels": {
         "title": "Processing Models",
@@ -496,6 +497,26 @@
         "title": "Whisper Initial Prompt",
         "description": "Provide an initial prompt to guide Whisper transcription. Use this to hint specific terminology, names, acronyms, or formatting preferences (e.g., \"Meeting with Dr. Smith about the ACME project\"). Only applies to Whisper models.",
         "placeholder": "e.g., technical terms, names, context..."
+      },
+      "transcriptionPrompt": {
+        "title": "Transcription Prompt",
+        "description": "Custom prompt to guide Whisper transcription style and formatting. Combined with Custom Words when both are set.",
+        "placeholder": "e.g., Use proper punctuation. Capitalize sentences...",
+        "tokenBudget": "Token budget: {{used}} / {{total}}",
+        "warningNonWhisper": "This prompt only applies to Whisper models. Your current model uses a different engine.",
+        "warningAutoLanguage": "With auto language detection, the prompt may not match the detected language.",
+        "presets": "Language presets",
+        "presetNone": "None",
+        "presetEnglish": "English",
+        "presetSpanish": "Spanish",
+        "presetFrench": "French",
+        "presetGerman": "German",
+        "presetPortuguese": "Portuguese",
+        "presetItalian": "Italian",
+        "presetRussian": "Russian",
+        "presetJapanese": "Japanese",
+        "presetChineseSimplified": "Chinese (Simplified)",
+        "presetChineseTraditional": "Chinese (Traditional)"
       }
     },
     "postProcessing": {
@@ -824,7 +845,8 @@
     "off": "Off",
     "yes": "Yes",
     "no": "No",
-    "noOptionsFound": "No options found"
+    "noOptionsFound": "No options found",
+    "clear": "Clear"
   },
   "accessibility": {
     "permissionsRequired": "Accessibility Permissions Required",

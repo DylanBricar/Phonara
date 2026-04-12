@@ -729,7 +729,7 @@ pub fn change_app_language_setting(app: AppHandle, language: String) -> Result<(
     settings.app_language = language.clone();
     settings::write_settings(&app, settings);
 
-    tray::update_tray_menu(&app, &tray::TrayIconState::Idle, Some(&language));
+    tray::update_tray_menu(&app, Some(&language));
 
     Ok(())
 }
