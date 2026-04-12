@@ -884,6 +884,13 @@
   "overlay": {
     "transcribing": "Transcribing...",
     "processing": "Processing...",
-    "cancelConfirm": "Esc again to cancel"
+    "cancelConfirm": "Esc again to cancel",
+    "pause": "Pause recording",
+    "resume": "Resume recording",
+    "cancel": "Cancel recording"
+  },
+  "progressBar": {
+    "downloading": "{{count}} downloading...",
+    "downloadingSingle": "Downloading..."
   }
 }

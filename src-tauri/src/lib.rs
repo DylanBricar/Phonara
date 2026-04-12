@@ -416,6 +416,30 @@ pub fn run(cli_args: CliArgs) {
             shortcut::get_system_accent_color,
             shortcut::handy_keys::start_handy_keys_recording,
             shortcut::handy_keys::stop_handy_keys_recording,
+            shortcut::setting_commands::update_text_replacements,
+            shortcut::setting_commands::change_whisper_initial_prompt_setting,
+            shortcut::setting_commands::change_whisper_use_gpu_setting,
+            shortcut::setting_commands::add_post_process_action,
+            shortcut::setting_commands::update_post_process_action,
+            shortcut::setting_commands::delete_post_process_action,
+            shortcut::setting_commands::add_saved_processing_model,
+            shortcut::setting_commands::delete_saved_processing_model,
+            shortcut::setting_commands::change_overlay_high_visibility_setting,
+            shortcut::setting_commands::change_long_audio_model_setting,
+            shortcut::setting_commands::change_long_audio_threshold_setting,
+            shortcut::setting_commands::change_overlay_border_color_setting,
+            shortcut::setting_commands::change_overlay_background_color_setting,
+            shortcut::setting_commands::change_overlay_border_width_setting,
+            shortcut::setting_commands::change_overlay_custom_width_setting,
+            shortcut::setting_commands::change_overlay_custom_height_setting,
+            shortcut::setting_commands::preview_overlay_settings,
+            shortcut::setting_commands::change_theme_mode_setting,
+            shortcut::setting_commands::change_accent_color_setting,
+            commands::openai::change_openai_api_key_setting,
+            commands::openai::change_openai_model_setting,
+            commands::export_settings,
+            commands::import_settings,
+            commands::transcription::transcribe_file,
             trigger_update_check,
             show_main_window_command,
             commands::cancel_operation,
@@ -571,9 +595,8 @@ pub fn run(cli_args: CliArgs) {
 
             let main_window = win_builder.build()?;
 
-            // Auto-open devtools in debug builds to diagnose loading issues
-            #[cfg(debug_assertions)]
-            main_window.open_devtools();
+            // Devtools available via Ctrl+Shift+D when needed
+            let _ = &main_window;
 
             let mut settings = get_settings(&app.handle());
 

@@ -693,9 +693,17 @@ impl ShortcutAction for TranscribeAction {
                         crate::audio_toolkit::save_wav_file(&wav_path, &samples_for_wav)
                     });
 
-                    // Transcribe concurrently with WAV save
+                    // Transcribe concurrently with WAV save.
+                    // spawn_blocking prevents the CPU-bound transcription from
+                    // blocking the async runtime thread.
                     let transcription_time = Instant::now();
-                    let transcription_result = tm.transcribe(samples);
+                    let tm_clone = Arc::clone(&tm);
+                    let transcription_result = tauri::async_runtime::spawn_blocking(
+                        move || tm_clone.transcribe(samples),
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("Transcription task panicked: {}", e))
+                    .and_then(|r| r);
 
                     // Await WAV save and verify
                     let wav_saved = match wav_handle.await {

@@ -39,9 +39,13 @@ impl SmoothedVad {
 
 impl VoiceActivityDetector for SmoothedVad {
     fn push_frame<'a>(&'a mut self, frame: &'a [f32]) -> Result<VadFrame<'a>> {
-        self.frame_buffer.push_back(frame.to_vec());
-        while self.frame_buffer.len() > self.prefill_frames + 1 {
-            self.frame_buffer.pop_front();
+        // Only buffer frames during pre-speech onset detection to avoid
+        // cloning every frame while already in speech.
+        if !self.in_speech {
+            self.frame_buffer.push_back(frame.to_vec());
+            while self.frame_buffer.len() > self.prefill_frames + 1 {
+                self.frame_buffer.pop_front();
+            }
         }
 
         let is_voice = self.inner_vad.is_voice(frame)?;
@@ -58,6 +62,7 @@ impl VoiceActivityDetector for SmoothedVad {
                     for buf in &self.frame_buffer {
                         self.temp_out.extend(buf);
                     }
+                    self.frame_buffer.clear(); // prevent stale prefill on next utterance
                     Ok(VadFrame::Speech(&self.temp_out))
                 } else {
                     Ok(VadFrame::Noise)

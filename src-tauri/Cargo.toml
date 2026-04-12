@@ -55,7 +55,7 @@ hound = "3.5.1"
 base64 = "0.22"
 log = "0.4.25"
 env_filter = "0.1.0"
-tokio = { version = "1.43.0", features = ["time", "rt", "macros"] }
+tokio = { version = "1.43.0", features = ["time", "rt", "rt-multi-thread", "macros"] }
 vad-rs = { git = "https://github.com/cjpais/vad-rs", default-features = false }
 axum = { version = "0.8", features = ["multipart"] }
 tower-http = { version = "0.6", features = ["cors"] }
@@ -123,7 +123,8 @@ tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.1
 tempfile = "3"
 
 [profile.release]
-lto = "thin"
+lto = true
+opt-level = 3
 codegen-units = 1
 strip = true
 panic = "unwind"

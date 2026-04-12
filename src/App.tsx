@@ -61,7 +61,9 @@ function App() {
       Promise.all([
         commands.initializeEnigo(),
         commands.initializeShortcuts(),
-      ]).catch(() => {});
+      ]).catch((error) => {
+        console.error("Failed to initialize input systems:", error);
+      });
       refreshAudioDevices();
       refreshOutputDevices();
     }

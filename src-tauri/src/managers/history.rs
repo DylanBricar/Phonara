@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use tauri_specta::Event;
 
@@ -68,7 +69,7 @@ pub struct HistoryEntry {
 pub struct HistoryManager {
     app_handle: AppHandle,
     recordings_dir: PathBuf,
-    db_path: PathBuf,
+    conn: Mutex<Connection>,
 }
 
 impl HistoryManager {
@@ -84,26 +85,26 @@ impl HistoryManager {
             debug!("Created recordings directory: {:?}", recordings_dir);
         }
 
+        // Open the connection once and run migrations on it
+        let conn = Self::init_database(&db_path)?;
+
         let manager = Self {
             app_handle: app_handle.clone(),
             recordings_dir,
-            db_path,
+            conn: Mutex::new(conn),
         };
-
-        // Initialize database and run migrations synchronously
-        manager.init_database()?;
 
         Ok(manager)
     }
 
-    fn init_database(&self) -> Result<()> {
-        info!("Initializing database at {:?}", self.db_path);
+    fn init_database(db_path: &PathBuf) -> Result<Connection> {
+        info!("Initializing database at {:?}", db_path);
 
-        let mut conn = Connection::open(&self.db_path)?;
+        let mut conn = Connection::open(db_path)?;
 
         // Handle migration from tauri-plugin-sql to rusqlite_migration
         // tauri-plugin-sql used _sqlx_migrations table, rusqlite_migration uses user_version pragma
-        self.migrate_from_tauri_plugin_sql(&conn)?;
+        Self::migrate_from_tauri_plugin_sql_static(&conn)?;
 
         // Create migrations object and run to latest version
         let migrations = Migrations::new(MIGRATIONS.to_vec());
@@ -132,14 +133,14 @@ impl HistoryManager {
             debug!("Database already at latest version {}", version_after);
         }
 
-        Ok(())
+        Ok(conn)
     }
 
     /// Migrate from tauri-plugin-sql's migration tracking to rusqlite_migration's.
     /// tauri-plugin-sql used a _sqlx_migrations table, while rusqlite_migration uses
     /// SQLite's user_version pragma. This function checks if the old system was in use
     /// and sets the user_version accordingly so migrations don't re-run.
-    fn migrate_from_tauri_plugin_sql(&self, conn: &Connection) -> Result<()> {
+    fn migrate_from_tauri_plugin_sql_static(conn: &Connection) -> Result<()> {
         // Check if the old _sqlx_migrations table exists
         let has_sqlx_migrations: bool = conn
             .query_row(
@@ -192,8 +193,10 @@ impl HistoryManager {
         Ok(())
     }
 
-    fn get_connection(&self) -> Result<Connection> {
-        Ok(Connection::open(&self.db_path)?)
+    fn get_connection(&self) -> Result<std::sync::MutexGuard<'_, Connection>> {
+        self.conn
+            .lock()
+            .map_err(|e| anyhow!("Failed to lock database connection: {}", e))
     }
 
     fn map_history_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<HistoryEntry> {
@@ -227,9 +230,11 @@ impl HistoryManager {
         let timestamp = Utc::now().timestamp();
         let title = self.format_timestamp_title(timestamp);
 
-        let conn = self.get_connection()?;
-        conn.execute(
-            "INSERT INTO transcription_history (
+        // Scope the connection guard so it is released before cleanup_old_entries acquires it
+        let entry = {
+            let conn = self.get_connection()?;
+            conn.execute(
+                "INSERT INTO transcription_history (
                 file_name,
                 timestamp,
                 saved,
@@ -239,28 +244,29 @@ impl HistoryManager {
                 post_process_prompt,
                 post_process_requested
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                &file_name,
-                timestamp,
-                false,
-                &title,
-                &transcription_text,
-                &post_processed_text,
-                &post_process_prompt,
-                post_process_requested,
-            ],
-        )?;
+                params![
+                    &file_name,
+                    timestamp,
+                    false,
+                    &title,
+                    &transcription_text,
+                    &post_processed_text,
+                    &post_process_prompt,
+                    post_process_requested,
+                ],
+            )?;
 
-        let entry = HistoryEntry {
-            id: conn.last_insert_rowid(),
-            file_name,
-            timestamp,
-            saved: false,
-            title,
-            transcription_text,
-            post_processed_text,
-            post_process_prompt,
-            post_process_requested,
+            HistoryEntry {
+                id: conn.last_insert_rowid(),
+                file_name,
+                timestamp,
+                saved: false,
+                title,
+                transcription_text,
+                post_processed_text,
+                post_process_prompt,
+                post_process_requested,
+            }
         };
 
         debug!("Saved history entry with id {}", entry.id);
@@ -378,26 +384,25 @@ impl HistoryManager {
     }
 
     fn cleanup_by_count(&self, limit: usize) -> Result<()> {
-        let conn = self.get_connection()?;
+        // Use OFFSET to fetch only the entries that exceed the limit,
+        // avoiding loading all entries into memory.
+        let entries_to_delete: Vec<(i64, String)> = {
+            let conn = self.get_connection()?;
+            let mut stmt = conn.prepare(
+                "SELECT id, file_name FROM transcription_history
+                 WHERE saved = 0
+                 ORDER BY timestamp DESC
+                 LIMIT -1 OFFSET ?1",
+            )?;
 
-        // Get all entries that are not saved, ordered by timestamp desc
-        let mut stmt = conn.prepare(
-            "SELECT id, file_name FROM transcription_history WHERE saved = 0 ORDER BY timestamp DESC"
-        )?;
+            let rows = stmt.query_map(params![limit as i64], |row| {
+                Ok((row.get::<_, i64>("id")?, row.get::<_, String>("file_name")?))
+            })?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()?
+        };
 
-        let rows = stmt.query_map([], |row| {
-            Ok((row.get::<_, i64>("id")?, row.get::<_, String>("file_name")?))
-        })?;
-
-        let mut entries: Vec<(i64, String)> = Vec::new();
-        for row in rows {
-            entries.push(row?);
-        }
-
-        if entries.len() > limit {
-            let entries_to_delete = &entries[limit..];
-            let deleted_count = self.delete_entries_and_files(entries_to_delete)?;
-
+        if !entries_to_delete.is_empty() {
+            let deleted_count = self.delete_entries_and_files(&entries_to_delete)?;
             if deleted_count > 0 {
                 debug!("Cleaned up {} old history entries by count", deleted_count);
             }
@@ -410,8 +415,6 @@ impl HistoryManager {
         &self,
         retention_period: crate::settings::RecordingRetentionPeriod,
     ) -> Result<()> {
-        let conn = self.get_connection()?;
-
         // Calculate cutoff timestamp (current time minus retention period)
         let now = Utc::now().timestamp();
         let cutoff_timestamp = match retention_period {
@@ -421,19 +424,18 @@ impl HistoryManager {
             _ => unreachable!("Should not reach here"),
         };
 
-        // Get all unsaved entries older than the cutoff timestamp
-        let mut stmt = conn.prepare(
-            "SELECT id, file_name FROM transcription_history WHERE saved = 0 AND timestamp < ?1",
-        )?;
+        // Scope the connection guard so it is released before delete_entries_and_files acquires it
+        let entries_to_delete: Vec<(i64, String)> = {
+            let conn = self.get_connection()?;
+            let mut stmt = conn.prepare(
+                "SELECT id, file_name FROM transcription_history WHERE saved = 0 AND timestamp < ?1",
+            )?;
 
-        let rows = stmt.query_map(params![cutoff_timestamp], |row| {
-            Ok((row.get::<_, i64>("id")?, row.get::<_, String>("file_name")?))
-        })?;
-
-        let mut entries_to_delete: Vec<(i64, String)> = Vec::new();
-        for row in rows {
-            entries_to_delete.push(row?);
-        }
+            let rows = stmt.query_map(params![cutoff_timestamp], |row| {
+                Ok((row.get::<_, i64>("id")?, row.get::<_, String>("file_name")?))
+            })?;
+            rows.collect::<std::result::Result<Vec<_>, _>>()?
+        };
 
         let deleted_count = self.delete_entries_and_files(&entries_to_delete)?;
 
@@ -581,8 +583,23 @@ impl HistoryManager {
         Ok(())
     }
 
-    pub fn get_audio_file_path(&self, file_name: &str) -> PathBuf {
-        self.recordings_dir.join(file_name)
+    pub fn get_audio_file_path(&self, file_name: &str) -> Result<PathBuf> {
+        // Reject path traversal components and absolute paths upfront
+        if file_name.contains("..") || std::path::Path::new(file_name).is_absolute() {
+            return Err(anyhow!("Invalid file name"));
+        }
+        let path = self.recordings_dir.join(file_name);
+        // If the file exists, verify the resolved path stays within recordings_dir
+        if path.exists() {
+            let canonical = path.canonicalize()
+                .map_err(|e| anyhow!("Failed to resolve path: {}", e))?;
+            let canonical_dir = self.recordings_dir.canonicalize()
+                .map_err(|e| anyhow!("Failed to resolve recordings dir: {}", e))?;
+            if !canonical.starts_with(&canonical_dir) {
+                return Err(anyhow!("Path traversal detected"));
+            }
+        }
+        Ok(path)
     }
 
     pub fn update_transcription_text(
@@ -629,25 +646,37 @@ impl HistoryManager {
     }
 
     pub async fn delete_entry(&self, id: i64) -> Result<()> {
-        let conn = self.get_connection()?;
+        // Look up the file name and delete the audio file before taking the connection lock
+        // for the DELETE query, to avoid holding the lock during file I/O.
+        let file_name_opt: Option<String> = {
+            let conn = self.get_connection()?;
+            conn.query_row(
+                "SELECT file_name FROM transcription_history WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?
+        };
 
-        // Get the entry to find the file name
-        if let Some(entry) = self.get_entry_by_id(id).await? {
-            // Delete the audio file first
-            let file_path = self.get_audio_file_path(&entry.file_name);
+        if let Some(ref file_name) = file_name_opt {
+            // Use recordings_dir directly to avoid path traversal issues
+            let file_path = self.recordings_dir.join(file_name);
             if file_path.exists() {
                 if let Err(e) = fs::remove_file(&file_path) {
-                    error!("Failed to delete audio file {}: {}", entry.file_name, e);
+                    error!("Failed to delete audio file {}: {}", file_name, e);
                     // Continue with database deletion even if file deletion fails
                 }
             }
         }
 
         // Delete from database
-        conn.execute(
-            "DELETE FROM transcription_history WHERE id = ?1",
-            params![id],
-        )?;
+        {
+            let conn = self.get_connection()?;
+            conn.execute(
+                "DELETE FROM transcription_history WHERE id = ?1",
+                params![id],
+            )?;
+        }
 
         debug!("Deleted history entry with id: {}", id);
 

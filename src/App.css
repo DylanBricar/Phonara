@@ -157,3 +157,8 @@ input[type="range"]::-webkit-slider-thumb {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-logo-primary);
 }
+
+@keyframes transcribe-pulse {
+  0%, 100% { color: color-mix(in srgb, var(--color-text) 40%, transparent); }
+  50% { color: color-mix(in srgb, var(--color-text) 90%, transparent); }
+}

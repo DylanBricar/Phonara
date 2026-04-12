@@ -13,6 +13,7 @@ pub struct AudioVisualiser {
     fft_input: Vec<Complex32>,
     noise_floor: Vec<f32>,
     buffer: Vec<f32>,
+    buckets_scratch: Vec<f32>,
     window_size: usize,
     buckets: usize,
 }
@@ -67,6 +68,7 @@ impl AudioVisualiser {
             fft_input: vec![Complex32::new(0.0, 0.0); window_size],
             noise_floor: vec![-40.0; buckets],
             buffer: Vec::with_capacity(window_size * 2),
+            buckets_scratch: vec![0.0; buckets],
             window_size,
             buckets,
         }
@@ -90,7 +92,8 @@ impl AudioVisualiser {
 
         self.fft.process(&mut self.fft_input);
 
-        let mut buckets = vec![0.0; self.buckets];
+        // Reuse the pre-allocated scratch buffer instead of allocating each call
+        self.buckets_scratch.fill(0.0);
 
         for (bucket_idx, &(start_bin, end_bin)) in self.bucket_ranges.iter().enumerate() {
             if start_bin >= end_bin || end_bin > self.fft_input.len() / 2 {
@@ -118,16 +121,23 @@ impl AudioVisualiser {
             }
 
             let normalized = ((db - DB_MIN) / (DB_MAX - DB_MIN)).clamp(0.0, 1.0);
-            buckets[bucket_idx] = (normalized * GAIN).powf(CURVE_POWER).clamp(0.0, 1.0);
+            self.buckets_scratch[bucket_idx] =
+                (normalized * GAIN).powf(CURVE_POWER).clamp(0.0, 1.0);
         }
 
-        for i in 1..buckets.len() - 1 {
-            buckets[i] = buckets[i] * 0.7 + buckets[i - 1] * 0.15 + buckets[i + 1] * 0.15;
+        // Symmetric smoothing: read from a snapshot to avoid left-bias
+        let len = self.buckets_scratch.len();
+        if len >= 3 {
+            let snapshot = self.buckets_scratch.clone();
+            for i in 1..len - 1 {
+                self.buckets_scratch[i] =
+                    snapshot[i] * 0.7 + snapshot[i - 1] * 0.15 + snapshot[i + 1] * 0.15;
+            }
         }
 
         self.buffer.clear();
 
-        Some(buckets)
+        Some(self.buckets_scratch.clone())
     }
 
     pub fn reset(&mut self) {

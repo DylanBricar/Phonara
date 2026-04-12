@@ -27,6 +27,8 @@ export const useSettingsStore = create<SettingsStore>()(
     outputDevices: [],
     customSounds: { start: false, stop: false },
     postProcessModelOptions: {},
+    initialized: false,
+    _unlisten: null,
 
     setSettings: (settings) => set({ settings }),
     setDefaultSettings: (defaultSettings) => set({ defaultSettings }),
@@ -376,6 +378,8 @@ export const useSettingsStore = create<SettingsStore>()(
     },
 
     initialize: async () => {
+      if (get().initialized) return;
+
       const { refreshSettings, checkCustomSounds, loadDefaultSettings } = get();
       await Promise.all([
         loadDefaultSettings(),
@@ -385,9 +389,10 @@ export const useSettingsStore = create<SettingsStore>()(
 
       // Re-fetch settings when the backend changes them (e.g. language
       // reset during model switch). The backend is the source of truth.
-      listen("model-state-changed", () => {
+      const unlisten = await listen("model-state-changed", () => {
         get().refreshSettings();
       });
+      set({ initialized: true, _unlisten: unlisten });
     },
   })),
 );

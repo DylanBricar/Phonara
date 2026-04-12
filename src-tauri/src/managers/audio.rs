@@ -219,6 +219,17 @@ fn create_audio_recorder(
 
 /* ──────────────────────────────────────────────────────────────── */
 
+/// Lock acquisition order (to prevent deadlocks):
+/// 1. state
+/// 2. mode
+/// 3. open_flag (is_open)
+/// 4. recorder
+/// 5. is_recording
+/// 6. did_mute
+///
+/// Note: `schedule_lazy_close` holds `state` while calling `stop_microphone_stream`.
+/// `stop_microphone_stream` does NOT acquire `state`, so this call chain is safe.
+/// Within `stop_microphone_stream` the actual order is: is_open → did_mute → recorder → is_recording.
 #[derive(Clone)]
 pub struct AudioRecordingManager {
     state: Arc<Mutex<RecordingState>>,

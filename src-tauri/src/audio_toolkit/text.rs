@@ -1,6 +1,8 @@
 use natural::phonetics::soundex;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use strsim::levenshtein;
 
 /// Builds an n-gram string by cleaning and concatenating words
@@ -172,21 +174,22 @@ fn preserve_case_pattern(original: &str, replacement: &str) -> String {
 
 /// Extracts punctuation prefix and suffix from a word
 fn extract_punctuation(word: &str) -> (&str, &str) {
-    let prefix_end = word.chars().take_while(|c| !c.is_alphanumeric()).count();
+    let prefix_end = word
+        .char_indices()
+        .find(|(_, c)| c.is_alphanumeric())
+        .map(|(i, _)| i)
+        .unwrap_or(word.len());
+
     let suffix_start = word
         .char_indices()
         .rev()
-        .take_while(|(_, c)| !c.is_alphanumeric())
-        .count();
+        .find(|(_, c)| c.is_alphanumeric())
+        .map(|(i, c)| i + c.len_utf8())
+        .unwrap_or(0);
 
-    let prefix = if prefix_end > 0 {
-        &word[..prefix_end]
-    } else {
-        ""
-    };
-
-    let suffix = if suffix_start > 0 {
-        &word[word.len() - suffix_start..]
+    let prefix = &word[..prefix_end];
+    let suffix = if suffix_start > 0 && suffix_start < word.len() {
+        &word[suffix_start..]
     } else {
         ""
     };
@@ -227,6 +230,40 @@ fn get_filler_words_for_language(lang: &str) -> &'static [&'static str] {
             "uh", "uhm", "umm", "uhh", "uhhh", "ah", "hmm", "hm", "mmm", "mm", "mh", "ehh",
         ],
     }
+}
+
+static FILLER_REGEX_CACHE: OnceLock<Mutex<HashMap<String, Vec<Regex>>>> = OnceLock::new();
+
+fn build_filler_patterns(words: &[&str]) -> Vec<Regex> {
+    words
+        .iter()
+        .filter_map(|word| {
+            Regex::new(&format!(r"(?i)\b{}\b[,.]?", regex::escape(word))).ok()
+        })
+        .collect()
+}
+
+fn get_filler_regexes(lang: &str, custom_words: Option<&[String]>) -> Vec<Regex> {
+    // Custom words are user-configurable with unbounded cardinality — compile on each call
+    // to avoid unbounded cache growth. They change rarely so this is acceptable.
+    if let Some(words) = custom_words {
+        let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
+        return build_filler_patterns(&refs);
+    }
+
+    // Language-keyed entries are a bounded set — cache them
+    let cache = FILLER_REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let key = format!("lang:{}", lang);
+
+    let mut cache_map = cache.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(cached) = cache_map.get(&key) {
+        return cached.clone();
+    }
+
+    let words = get_filler_words_for_language(lang);
+    let patterns = build_filler_patterns(&words);
+    cache_map.insert(key, patterns.clone());
+    patterns
 }
 
 static MULTI_SPACE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s{2,}").unwrap());
@@ -292,17 +329,8 @@ pub fn filter_transcription_output(
 ) -> String {
     let mut filtered = text.to_string();
 
-    // Build filler patterns from custom list or language defaults
-    let patterns: Vec<Regex> = match custom_filler_words {
-        Some(words) => words
-            .iter()
-            .filter_map(|word| Regex::new(&format!(r"(?i)\b{}\b[,.]?", regex::escape(word))).ok())
-            .collect(),
-        None => get_filler_words_for_language(lang)
-            .iter()
-            .map(|word| Regex::new(&format!(r"(?i)\b{}\b[,.]?", regex::escape(word))).unwrap())
-            .collect(),
-    };
+    // Build filler patterns from custom list or language defaults (cached)
+    let patterns = get_filler_regexes(lang, custom_filler_words.as_deref());
 
     // Remove filler words
     for pattern in &patterns {
@@ -394,17 +422,26 @@ fn collapse_repeated_chars(text: &str) -> String {
     result
 }
 
+static PUNCT_COLLAPSE_REGEXES: OnceLock<Vec<(Regex, &'static str)>> = OnceLock::new();
+
 fn collapse_spaced_repeated_punctuation(text: &str) -> String {
+    let regexes = PUNCT_COLLAPSE_REGEXES.get_or_init(|| {
+        // Rust's regex crate doesn't support backreferences, so we match
+        // each punctuation character repeated with optional spaces between.
+        [".", ",", "!", "?", ";", ":"]
+            .iter()
+            .map(|&punct| {
+                let escaped = regex::escape(punct);
+                let pattern =
+                    Regex::new(&format!(r"{e}(?:\s*{e})+", e = escaped)).unwrap();
+                (pattern, punct)
+            })
+            .collect()
+    });
+
     let mut result = text.to_string();
-    for ch in ['!', '?', '.', ',', ';', '-', '*', '#'] {
-        let spaced = format!("{ch} {ch} {ch} {ch}");
-        if result.contains(&spaced) {
-            let double = format!("{ch} {ch}");
-            let single = format!("{ch}");
-            while result.contains(&double) {
-                result = result.replace(&double, &single);
-            }
-        }
+    for (pattern, replacement) in regexes {
+        result = pattern.replace_all(&result, *replacement).to_string();
     }
     result
 }

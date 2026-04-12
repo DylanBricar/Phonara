@@ -427,14 +427,6 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(({
             : undefined
         }
       >
-        {retrying && (
-          <style>{`
-            @keyframes transcribe-pulse {
-              0%, 100% { color: color-mix(in srgb, var(--color-text) 40%, transparent); }
-              50% { color: color-mix(in srgb, var(--color-text) 90%, transparent); }
-            }
-          `}</style>
-        )}
         {retrying
           ? t("settings.history.transcribing")
           : hasTranscription

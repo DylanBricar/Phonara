@@ -140,9 +140,11 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                         }%)`,
                       }}
                     />
+                    {/* eslint-disable i18next/no-literal-string */}
                     <span className="text-sm font-medium text-text/90 min-w-10 text-end">
                       {borderWidth}px
                     </span>
+                    {/* eslint-enable i18next/no-literal-string */}
                   </div>
                 </div>
                 {borderWidth !== 1 && (
@@ -186,9 +188,11 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                         }%)`,
                       }}
                     />
+                    {/* eslint-disable i18next/no-literal-string */}
                     <span className="text-sm font-medium text-text/90 min-w-10 text-end">
                       {customWidth}px
                     </span>
+                    {/* eslint-enable i18next/no-literal-string */}
                   </div>
                 </div>
                 {customWidth !== 200 && (
@@ -232,9 +236,11 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                         }%)`,
                       }}
                     />
+                    {/* eslint-disable i18next/no-literal-string */}
                     <span className="text-sm font-medium text-text/90 min-w-10 text-end">
                       {customHeight}px
                     </span>
+                    {/* eslint-enable i18next/no-literal-string */}
                   </div>
                 </div>
                 {customHeight !== 40 && (

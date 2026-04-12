@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
@@ -19,6 +19,13 @@ export const TranscribeFile: React.FC = () => {
   const { t } = useTranslation();
   const [state, setState] = useState<TranscriptionState>({ kind: "idle" });
   const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   const handleTranscribeFile = useCallback(async () => {
     try {
@@ -90,7 +97,7 @@ export const TranscribeFile: React.FC = () => {
       try {
         await navigator.clipboard.writeText(state.text);
         setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+        copyTimerRef.current = setTimeout(() => setCopied(false), 2000);
       } catch {
       }
     }

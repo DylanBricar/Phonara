@@ -209,69 +209,67 @@ const RecordingOverlay: React.FC = () => {
     let cleanupListeners: (() => void) | undefined;
 
     const setupEventListeners = async () => {
-      const unlistenShow = await listen<ShowOverlayPayload>("show-overlay", async (event) => {
-        await syncLanguageFromSettings();
-        const payload = event.payload;
-        const overlayState = typeof payload === "string" ? payload as OverlayState : payload.state;
-        setState(overlayState);
-        const styles: Record<string, string> = {};
-        if (typeof payload === "object") {
-          if (payload.borderColor && isValidHexColor(payload.borderColor))
-            styles["--overlay-border-color"] = payload.borderColor;
-          if (payload.backgroundColor && isValidHexColor(payload.backgroundColor))
-            styles["--overlay-bg"] = payload.backgroundColor;
-          if (typeof payload.borderWidth === "number" && payload.borderWidth >= 0 && payload.borderWidth <= 10)
-            styles["--overlay-border-width"] = `${payload.borderWidth}px`;
-          if (payload.customWidth && payload.customWidth >= 120 && payload.customWidth <= 500)
-            styles["--overlay-width"] = `${payload.customWidth}px`;
-          if (payload.customHeight && payload.customHeight >= 30 && payload.customHeight <= 80)
-            styles["--overlay-height"] = `${payload.customHeight}px`;
-        }
-        setCustomStyle(styles);
-        setIsVisible(true);
-        setIsPaused(false);
-        if (overlayState === "recording") {
-          setTimerStart(Date.now());
+      const [
+        unlistenShow,
+        unlistenHide,
+        unlistenCancelPending,
+        unlistenAction,
+        unlistenDeselect,
+        unlistenPause,
+      ] = await Promise.all([
+        listen<ShowOverlayPayload>("show-overlay", async (event) => {
+          await syncLanguageFromSettings();
+          const payload = event.payload;
+          const overlayState = typeof payload === "string" ? payload as OverlayState : payload.state;
+          setState(overlayState);
+          const styles: Record<string, string> = {};
+          if (typeof payload === "object") {
+            if (payload.borderColor && isValidHexColor(payload.borderColor))
+              styles["--overlay-border-color"] = payload.borderColor;
+            if (payload.backgroundColor && isValidHexColor(payload.backgroundColor))
+              styles["--overlay-bg"] = payload.backgroundColor;
+            if (typeof payload.borderWidth === "number" && payload.borderWidth >= 0 && payload.borderWidth <= 10)
+              styles["--overlay-border-width"] = `${payload.borderWidth}px`;
+            if (payload.customWidth && payload.customWidth >= 120 && payload.customWidth <= 500)
+              styles["--overlay-width"] = `${payload.customWidth}px`;
+            if (payload.customHeight && payload.customHeight >= 30 && payload.customHeight <= 80)
+              styles["--overlay-height"] = `${payload.customHeight}px`;
+          }
+          setCustomStyle(styles);
+          setIsVisible(true);
+          setIsPaused(false);
+          if (overlayState === "recording") {
+            setTimerStart(Date.now());
+            setSelectedAction(null);
+          }
+        }),
+        listen("hide-overlay", () => {
+          setIsVisible(false);
           setSelectedAction(null);
-        }
-      });
-
-      const unlistenHide = await listen("hide-overlay", () => {
-        setIsVisible(false);
-        setSelectedAction(null);
-        setCancelPending(false);
-        setIsPaused(false);
-        if (cancelTimerRef.current) {
-          clearTimeout(cancelTimerRef.current);
-          cancelTimerRef.current = null;
-        }
-      });
-
-      const unlistenCancelPending = await listen("cancel-pending", () => {
-        setCancelPending(true);
-        if (cancelTimerRef.current) {
-          clearTimeout(cancelTimerRef.current);
-        }
-        cancelTimerRef.current = setTimeout(() => {
           setCancelPending(false);
-          cancelTimerRef.current = null;
-        }, 1700);
-      });
-
-      const unlistenAction = await listen<ActionInfo>(
-        "action-selected",
-        (event) => {
+          setIsPaused(false);
+          if (cancelTimerRef.current) {
+            clearTimeout(cancelTimerRef.current);
+            cancelTimerRef.current = null;
+          }
+        }),
+        listen("cancel-pending", () => {
+          setCancelPending(true);
+          if (cancelTimerRef.current) {
+            clearTimeout(cancelTimerRef.current);
+          }
+          cancelTimerRef.current = setTimeout(() => {
+            setCancelPending(false);
+            cancelTimerRef.current = null;
+          }, 1700);
+        }),
+        listen<ActionInfo>("action-selected", (event) => {
           setSelectedAction(event.payload);
-        },
-      );
-
-      const unlistenDeselect = await listen("action-deselected", () => {
-        setSelectedAction(null);
-      });
-
-      const unlistenPause = await listen<boolean>(
-        "recording-paused",
-        (event) => {
+        }),
+        listen("action-deselected", () => {
+          setSelectedAction(null);
+        }),
+        listen<boolean>("recording-paused", (event) => {
           const paused = event.payload;
           setIsPaused(paused);
           if (paused) {
@@ -280,8 +278,8 @@ const RecordingOverlay: React.FC = () => {
             const pauseDuration = Date.now() - pauseStartRef.current;
             setTimerStart((prev) => prev + pauseDuration);
           }
-        },
-      );
+        }),
+      ]);
 
       if (!isMounted) {
         unlistenShow();
@@ -350,12 +348,20 @@ const RecordingOverlay: React.FC = () => {
       <div className="overlay-right">
         {state === "recording" && (
           <>
-            <div className="pause-button" onClick={handleTogglePause}>
+            <button
+              className="pause-button"
+              onClick={handleTogglePause}
+              aria-label={isPaused ? t("overlay.resume") : t("overlay.pause")}
+            >
               {isPaused ? <PlayIcon /> : <PauseIcon />}
-            </div>
-            <div className="cancel-button" onClick={handleCancel}>
+            </button>
+            <button
+              className="cancel-button"
+              onClick={handleCancel}
+              aria-label={t("overlay.cancel")}
+            >
               <XIcon />
-            </div>
+            </button>
           </>
         )}
       </div>

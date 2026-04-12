@@ -1,6 +1,7 @@
 pub mod audio;
 pub mod history;
 pub mod models;
+pub mod openai;
 pub mod transcription;
 
 use crate::managers::audio::AudioRecordingManager;
@@ -126,12 +127,16 @@ pub fn open_app_data_dir(app: AppHandle) -> Result<(), String> {
 #[specta::specta]
 #[tauri::command]
 pub fn export_settings(app: AppHandle, path: String) -> Result<(), String> {
-    let settings = get_settings(&app);
+    let mut settings = get_settings(&app);
+    // Strip sensitive data before export
+    for value in settings.post_process_api_keys.values_mut() {
+        *value = String::new();
+    }
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     std::fs::write(&path, json)
         .map_err(|e| format!("Failed to write file: {}", e))?;
-    log::info!("Settings exported to {}", path);
+    log::info!("Settings exported to {} (API keys stripped)", path);
     Ok(())
 }
 

@@ -21,16 +21,20 @@ export const ChannelSelector: React.FC<ChannelSelectorProps> = React.memo(
     const selectedMicrophone = getSetting("selected_microphone") || "default";
 
     const fetchChannelInfo = useCallback(async () => {
-      const channelsResult = await commands.getMicrophoneChannels(
-        selectedMicrophone === "Default" ? "default" : selectedMicrophone,
-      );
-      if (channelsResult.status === "ok") {
-        setChannelCount(channelsResult.data);
-      }
+      try {
+        const channelsResult = await commands.getMicrophoneChannels(
+          selectedMicrophone === "Default" ? "default" : selectedMicrophone,
+        );
+        if (channelsResult.status === "ok") {
+          setChannelCount(channelsResult.data);
+        }
 
-      const selectedResult = await commands.getSelectedChannel();
-      if (selectedResult.status === "ok") {
-        setSelectedChannel(selectedResult.data);
+        const selectedResult = await commands.getSelectedChannel();
+        if (selectedResult.status === "ok") {
+          setSelectedChannel(selectedResult.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch channel info:", error);
       }
     }, [selectedMicrophone]);
 

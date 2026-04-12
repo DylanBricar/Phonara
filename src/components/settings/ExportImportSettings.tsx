@@ -37,7 +37,7 @@ export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
         err instanceof Error ? err.message : "Export failed",
       );
     }
-    setTimeout(() => setStatus(null), 3000);
+    statusTimerRef.current = setTimeout(() => setStatus(null), 3000);
   };
 
   const handleImport = async () => {
@@ -59,7 +59,7 @@ export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
         err instanceof Error ? err.message : "Import failed",
       );
     }
-    setTimeout(() => setStatus(null), 3000);
+    statusTimerRef.current = setTimeout(() => setStatus(null), 3000);
   };
 
   return (

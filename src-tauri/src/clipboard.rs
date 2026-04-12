@@ -422,7 +422,11 @@ fn type_text_via_dotool(text: &str) -> Result<(), String> {
         .map_err(|e| format!("Failed to spawn dotool: {}", e))?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        let sanitized = text.replace('\n', " ").replace('\r', " ");
+        // Strip all control characters (including \n, \r, \0, \t, etc.) except space
+        let sanitized: String = text
+            .chars()
+            .filter(|c| !c.is_control() || *c == ' ')
+            .collect();
         writeln!(stdin, "type {}", sanitized)
             .map_err(|e| format!("Failed to write to dotool stdin: {}", e))?;
     }
@@ -587,11 +591,14 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
     use std::process::Stdio;
 
     let script = std::path::Path::new(script_path);
-    if !script.is_file() {
-        return Err(format!("External script not found or not a file: '{}'", script_path));
+    let canonical = script
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve script path: {}", e))?;
+    if !canonical.is_file() {
+        return Err(format!("External script not found: {}", script_path));
     }
 
-    let mut child = Command::new(script_path)
+    let mut child = Command::new(&canonical)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

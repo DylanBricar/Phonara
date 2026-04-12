@@ -405,8 +405,9 @@ export const useModelStore = create<ModelsStore>()(
       });
 
       listen("model-state-changed", () => {
-        get().loadModels();
-        get().loadCurrentModel();
+        Promise.all([get().loadModels(), get().loadCurrentModel()]).catch(
+          (error) => console.error("Failed to reload models:", error),
+        );
       });
 
       set({ initialized: true });

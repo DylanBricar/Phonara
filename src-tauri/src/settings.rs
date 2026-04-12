@@ -95,6 +95,66 @@ pub struct LLMPrompt {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct TextReplacement {
+    pub find: String,
+    pub replace: String,
+    pub case_sensitive: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct PostProcessAction {
+    pub key: u8,
+    pub name: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct SavedProcessingModel {
+    pub id: String,
+    pub provider_id: String,
+    pub model_id: String,
+    pub label: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeMode {
+    Light,
+    Dark,
+    System,
+}
+
+impl Default for ThemeMode {
+    fn default() -> Self {
+        ThemeMode::System
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum AccentColor {
+    Blue,
+    Green,
+    Red,
+    Purple,
+    Orange,
+    Pink,
+    Teal,
+    Yellow,
+    System,
+}
+
+impl Default for AccentColor {
+    fn default() -> Self {
+        AccentColor::System
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct PostProcessProvider {
     pub id: String,
     pub label: String,
@@ -366,12 +426,16 @@ pub struct AppSettings {
     pub selected_language: String,
     #[serde(default = "default_overlay_position")]
     pub overlay_position: OverlayPosition,
+    #[serde(default)]
+    pub overlay_high_visibility: bool,
     #[serde(default = "default_debug_mode")]
     pub debug_mode: bool,
     #[serde(default = "default_log_level")]
     pub log_level: LogLevel,
     #[serde(default)]
     pub custom_words: Vec<String>,
+    #[serde(default)]
+    pub text_replacements: Vec<TextReplacement>,
     #[serde(default)]
     pub transcription_prompt: Option<String>,
     #[serde(default)]
@@ -423,6 +487,46 @@ pub struct AppSettings {
     #[serde(default = "default_typing_tool")]
     pub typing_tool: TypingTool,
     pub external_script_path: Option<String>,
+    #[serde(default)]
+    pub long_audio_model: Option<String>,
+    #[serde(default = "default_long_audio_threshold_seconds")]
+    pub long_audio_threshold_seconds: f32,
+    #[serde(default)]
+    pub gemini_api_key: Option<String>,
+    #[serde(default = "default_gemini_model")]
+    pub gemini_model: String,
+    #[serde(default)]
+    pub openai_api_key: Option<String>,
+    #[serde(default = "default_openai_model")]
+    pub openai_model: String,
+    #[serde(default)]
+    pub post_process_actions: Vec<PostProcessAction>,
+    #[serde(default)]
+    pub saved_processing_models: Vec<SavedProcessingModel>,
+    #[serde(default)]
+    pub whisper_initial_prompt: Option<String>,
+    #[serde(default = "default_whisper_use_gpu")]
+    pub whisper_use_gpu: bool,
+    #[serde(default)]
+    pub custom_start_sound: Option<String>,
+    #[serde(default)]
+    pub custom_stop_sound: Option<String>,
+    #[serde(default)]
+    pub custom_recordings_directory: Option<String>,
+    #[serde(default)]
+    pub overlay_border_color: Option<String>,
+    #[serde(default)]
+    pub overlay_background_color: Option<String>,
+    #[serde(default = "default_overlay_border_width")]
+    pub overlay_border_width: u8,
+    #[serde(default = "default_overlay_custom_width")]
+    pub overlay_custom_width: u16,
+    #[serde(default = "default_overlay_custom_height")]
+    pub overlay_custom_height: u16,
+    #[serde(default)]
+    pub theme_mode: ThemeMode,
+    #[serde(default)]
+    pub accent_color: AccentColor,
     #[serde(default)]
     pub custom_filler_words: Option<Vec<String>>,
     #[serde(default)]
@@ -649,6 +753,34 @@ fn default_whisper_gpu_device() -> i32 {
     -1 // auto
 }
 
+fn default_long_audio_threshold_seconds() -> f32 {
+    10.0
+}
+
+fn default_gemini_model() -> String {
+    "gemini-2.0-flash".to_string()
+}
+
+fn default_openai_model() -> String {
+    "gpt-4o-mini-transcribe".to_string()
+}
+
+fn default_whisper_use_gpu() -> bool {
+    true
+}
+
+fn default_overlay_border_width() -> u8 {
+    1
+}
+
+fn default_overlay_custom_width() -> u16 {
+    200
+}
+
+fn default_overlay_custom_height() -> u16 {
+    40
+}
+
 fn default_typing_tool() -> TypingTool {
     TypingTool::Auto
 }
@@ -780,9 +912,11 @@ pub fn get_default_settings() -> AppSettings {
         translate_to_english: false,
         selected_language: "auto".to_string(),
         overlay_position: default_overlay_position(),
+        overlay_high_visibility: false,
         debug_mode: false,
         log_level: default_log_level(),
         custom_words: Vec::new(),
+        text_replacements: Vec::new(),
         transcription_prompt: None,
         model_unload_timeout: ModelUnloadTimeout::default(),
         word_correction_threshold: default_word_correction_threshold(),
@@ -809,6 +943,26 @@ pub fn get_default_settings() -> AppSettings {
         paste_delay_ms: default_paste_delay_ms(),
         typing_tool: default_typing_tool(),
         external_script_path: None,
+        long_audio_model: None,
+        long_audio_threshold_seconds: default_long_audio_threshold_seconds(),
+        gemini_api_key: None,
+        gemini_model: default_gemini_model(),
+        openai_api_key: None,
+        openai_model: default_openai_model(),
+        post_process_actions: Vec::new(),
+        saved_processing_models: Vec::new(),
+        whisper_initial_prompt: None,
+        whisper_use_gpu: default_whisper_use_gpu(),
+        custom_start_sound: None,
+        custom_stop_sound: None,
+        custom_recordings_directory: None,
+        overlay_border_color: None,
+        overlay_background_color: None,
+        overlay_border_width: default_overlay_border_width(),
+        overlay_custom_width: default_overlay_custom_width(),
+        overlay_custom_height: default_overlay_custom_height(),
+        theme_mode: ThemeMode::default(),
+        accent_color: AccentColor::default(),
         custom_filler_words: None,
         whisper_accelerator: WhisperAcceleratorSetting::default(),
         ort_accelerator: OrtAcceleratorSetting::default(),
@@ -866,7 +1020,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 
                 if updated {
                     debug!("Settings updated with new bindings");
-                    store.set("settings", serde_json::to_value(&settings).unwrap());
+                    store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
                 }
 
                 settings
@@ -875,18 +1029,18 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
                 warn!("Failed to parse settings: {}", e);
                 // Fall back to default settings if parsing fails
                 let default_settings = get_default_settings();
-                store.set("settings", serde_json::to_value(&default_settings).unwrap());
+                store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
                 default_settings
             }
         }
     } else {
         let default_settings = get_default_settings();
-        store.set("settings", serde_json::to_value(&default_settings).unwrap());
+        store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
         default_settings
     };
 
     if ensure_post_process_defaults(&mut settings) {
-        store.set("settings", serde_json::to_value(&settings).unwrap());
+        store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
     }
 
     settings
@@ -900,17 +1054,17 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     let mut settings = if let Some(settings_value) = store.get("settings") {
         serde_json::from_value::<AppSettings>(settings_value).unwrap_or_else(|_| {
             let default_settings = get_default_settings();
-            store.set("settings", serde_json::to_value(&default_settings).unwrap());
+            store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
             default_settings
         })
     } else {
         let default_settings = get_default_settings();
-        store.set("settings", serde_json::to_value(&default_settings).unwrap());
+        store.set("settings", serde_json::to_value(&default_settings).expect("AppSettings must be serializable"));
         default_settings
     };
 
     if ensure_post_process_defaults(&mut settings) {
-        store.set("settings", serde_json::to_value(&settings).unwrap());
+        store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
     }
 
     settings
@@ -921,7 +1075,7 @@ pub fn write_settings(app: &AppHandle, settings: AppSettings) {
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
 
-    store.set("settings", serde_json::to_value(&settings).unwrap());
+    store.set("settings", serde_json::to_value(&settings).expect("AppSettings must be serializable"));
 }
 
 pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
@@ -930,12 +1084,9 @@ pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
     settings.bindings
 }
 
-pub fn get_stored_binding(app: &AppHandle, id: &str) -> ShortcutBinding {
+pub fn get_stored_binding(app: &AppHandle, id: &str) -> Option<ShortcutBinding> {
     let bindings = get_bindings(app);
-
-    let binding = bindings.get(id).unwrap().clone();
-
-    binding
+    bindings.get(id).cloned()
 }
 
 pub fn get_history_limit(app: &AppHandle) -> usize {

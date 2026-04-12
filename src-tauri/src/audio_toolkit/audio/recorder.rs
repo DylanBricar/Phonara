@@ -313,8 +313,6 @@ impl AudioRecorder {
                 return;
             }
 
-            output_buffer.clear();
-
             if channels == 1 {
                 output_buffer.extend(data.iter().map(|&sample| sample.to_sample::<f32>()));
             } else if let Some(ch) = effective_channel {
@@ -340,7 +338,7 @@ impl AudioRecorder {
             }
 
             if sample_tx
-                .send(AudioChunk::Samples(output_buffer.clone()))
+                .send(AudioChunk::Samples(std::mem::take(&mut output_buffer)))
                 .is_err()
             {
                 log::error!("Failed to send samples");
@@ -467,44 +465,6 @@ fn run_consumer(
             }
         } else {
             out_buf.extend_from_slice(samples);
-        }
-    }
-
-    fn handle_command(
-        cmd: Cmd,
-        sample_rx: &mpsc::Receiver<Vec<f32>>,
-        frame_resampler: &mut FrameResampler,
-        processed_samples: &mut Vec<f32>,
-        recording: &mut bool,
-        vad: &Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
-        visualizer: &mut AudioVisualiser,
-    ) -> bool {
-        match cmd {
-            Cmd::Start => {
-                processed_samples.clear();
-                *recording = true;
-                visualizer.reset();
-                if let Some(v) = vad {
-                    v.lock().unwrap().reset();
-                }
-                false
-            }
-            Cmd::Stop(reply_tx) => {
-                *recording = false;
-
-                while let Ok(remaining) = sample_rx.try_recv() {
-                    frame_resampler.push(&remaining, &mut |frame: &[f32]| {
-                        handle_frame(frame, true, vad, processed_samples)
-                    });
-                }
-
-                frame_resampler
-                    .finish(&mut |frame: &[f32]| handle_frame(frame, true, vad, processed_samples));
-
-                let _ = reply_tx.send(std::mem::take(processed_samples));
-                false
-            }
-            Cmd::Shutdown => true,
         }
     }
 

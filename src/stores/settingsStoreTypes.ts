@@ -9,6 +9,8 @@ export interface SettingsStore {
   outputDevices: AudioDevice[];
   customSounds: { start: boolean; stop: boolean };
   postProcessModelOptions: Record<string, string[]>;
+  initialized: boolean;
+  _unlisten: (() => void) | null;
 
   initialize: () => Promise<void>;
   loadDefaultSettings: () => Promise<void>;

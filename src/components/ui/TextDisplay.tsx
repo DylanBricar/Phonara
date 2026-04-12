@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { SettingContainer } from "./SettingContainer";
 
 interface TextDisplayProps {
@@ -25,6 +25,13 @@ export const TextDisplay: React.FC<TextDisplayProps> = ({
   onCopy,
 }) => {
   const [showCopied, setShowCopied] = useState(false);
+  const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+    };
+  }, []);
 
   const handleCopy = async () => {
     if (!value || !copyable) return;
@@ -32,7 +39,7 @@ export const TextDisplay: React.FC<TextDisplayProps> = ({
     try {
       await navigator.clipboard.writeText(value);
       setShowCopied(true);
-      setTimeout(() => setShowCopied(false), 1500);
+      copyTimerRef.current = setTimeout(() => setShowCopied(false), 1500);
       if (onCopy) {
         onCopy(value);
       }

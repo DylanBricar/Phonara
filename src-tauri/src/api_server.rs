@@ -1,13 +1,14 @@
 use axum::{
     extract::{DefaultBodyLimit, Multipart, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, Method, StatusCode},
     response::Json,
     routing::post,
     Router,
 };
-use log::{error, info};
+use log::{error, info, warn};
 use serde::Serialize;
 use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 
 use crate::managers::transcription::TranscriptionManager;
 
@@ -123,7 +124,7 @@ fn load_audio_from_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
         }
     };
 
-    let mono = if spec.channels > 1 {
+    let mono: Vec<f32> = if spec.channels > 1 {
         samples
             .chunks(spec.channels as usize)
             .map(|frame| frame.iter().sum::<f32>() / spec.channels as f32)
@@ -131,6 +132,15 @@ fn load_audio_from_bytes(bytes: &[u8]) -> Result<Vec<f32>, String> {
     } else {
         samples
     };
+
+    const MAX_SAMPLES: usize = 30 * 60 * 16_000; // 30 min at 16kHz
+    if mono.len() > MAX_SAMPLES {
+        return Err(format!(
+            "Audio too long: {} samples exceeds maximum of {}",
+            mono.len(),
+            MAX_SAMPLES
+        ));
+    }
 
     Ok(mono)
 }
@@ -145,16 +155,38 @@ pub fn start_api_server(
         api_token: api_token.clone(),
     });
 
+    if api_token.is_empty() {
+        warn!("API server starting without authentication token — any local process can access it");
+    }
+
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread()
+        let rt = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
-            .expect("Failed to create API server runtime");
+        {
+            Ok(rt) => rt,
+            Err(e) => {
+                error!("Failed to create API server runtime: {}", e);
+                return;
+            }
+        };
 
         rt.block_on(async {
+            let cors = CorsLayer::new()
+                .allow_origin([
+                    "tauri://localhost".parse().expect("valid tauri origin"),
+                    "http://localhost".parse().expect("valid http origin"),
+                ])
+                .allow_methods([Method::POST])
+                .allow_headers([
+                    axum::http::header::AUTHORIZATION,
+                    axum::http::header::CONTENT_TYPE,
+                ]);
+
             let app = Router::new()
                 .route("/v1/audio/transcriptions", post(transcribe_audio))
                 .layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE))
+                .layer(cors)
                 .with_state(state);
 
             let addr = format!("127.0.0.1:{}", port);

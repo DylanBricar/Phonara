@@ -146,9 +146,11 @@ export const TextReplacements: React.FC<TextReplacementsProps> = React.memo(
                     )}
                   </span>
                   {rule.case_sensitive && (
+                    /* eslint-disable i18next/no-literal-string */
                     <span className="text-[10px] text-mid-gray/80 ml-1">
                       Aa
                     </span>
+                    /* eslint-enable i18next/no-literal-string */
                   )}
                   <svg
                     className="w-3 h-3 ml-1"

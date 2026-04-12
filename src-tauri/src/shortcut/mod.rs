@@ -11,6 +11,7 @@
 
 mod handler;
 pub mod handy_keys;
+pub mod setting_commands;
 mod tauri_impl;
 
 use log::{error, info, warn};
@@ -204,7 +205,8 @@ pub fn change_binding(
 #[tauri::command]
 #[specta::specta]
 pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, String> {
-    let binding = settings::get_stored_binding(&app, &id);
+    let binding = settings::get_stored_binding(&app, &id)
+        .ok_or_else(|| format!("Binding '{}' not found", id))?;
     change_binding(app, id, binding.default_binding)
 }
 

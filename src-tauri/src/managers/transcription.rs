@@ -56,9 +56,15 @@ pub struct LoadingGuard {
 
 impl Drop for LoadingGuard {
     fn drop(&mut self) {
-        let mut is_loading = self.is_loading.lock().unwrap();
-        *is_loading = false;
-        self.loading_condvar.notify_all();
+        if let Ok(mut is_loading) = self.is_loading.lock() {
+            *is_loading = false;
+            self.loading_condvar.notify_all();
+        } else {
+            // Mutex poisoned - still try to notify waiters via poison recovery
+            let mut is_loading = self.is_loading.lock().unwrap_or_else(|e| e.into_inner());
+            *is_loading = false;
+            self.loading_condvar.notify_all();
+        }
     }
 }
 
@@ -228,7 +234,7 @@ impl TranscriptionManager {
     fn now_ms() -> u64 {
         SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
+            .unwrap_or(Duration::ZERO)
             .as_millis() as u64
     }
 
@@ -414,21 +420,23 @@ impl TranscriptionManager {
 
     /// Kicks off the model loading in a background thread if it's not already loaded
     pub fn initiate_model_load(&self) {
-        let mut is_loading = self.is_loading.lock().unwrap();
-        if *is_loading || self.is_model_loaded() {
+        if self.is_model_loaded() {
             return;
         }
 
-        *is_loading = true;
+        let guard = match self.try_start_loading() {
+            Some(g) => g,
+            None => return, // already loading
+        };
+
         let self_clone = self.clone();
         thread::spawn(move || {
+            // Guard is moved into the thread — dropped when the thread exits (even on panic)
+            let _guard = guard;
             let settings = get_settings(&self_clone.app_handle);
             if let Err(e) = self_clone.load_model(&settings.selected_model) {
                 error!("Failed to load model: {}", e);
             }
-            let mut is_loading = self_clone.is_loading.lock().unwrap();
-            *is_loading = false;
-            self_clone.loading_condvar.notify_all();
         });
     }
 

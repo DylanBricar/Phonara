@@ -81,7 +81,8 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
           }, 3000);
         }
       }
-    } catch {
+    } catch (error) {
+      console.error("Update check failed:", error);
     } finally {
       setIsChecking(false);
       isManualCheckRef.current = false;
@@ -134,7 +135,8 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
         }
       });
       await relaunch();
-    } catch {
+    } catch (error) {
+      console.error("Update installation failed:", error);
     } finally {
       setIsInstalling(false);
       setDownloadProgress(0);
