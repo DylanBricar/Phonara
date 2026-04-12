@@ -48,5 +48,6 @@ jobs:
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
       upload-artifacts: true
-      sign-binaries: true
+      sign-binaries: false
+      apple_signing: false
     secrets: inherit
