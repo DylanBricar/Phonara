@@ -342,6 +342,37 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
     update_overlay_position(app_handle);
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
+        // Resize the native window to match custom dimensions
+        let width = if settings.overlay_custom_width > 0 {
+            settings.overlay_custom_width as f64
+        } else {
+            OVERLAY_WIDTH
+        };
+        let height = if settings.overlay_custom_height > 0 {
+            settings.overlay_custom_height as f64
+        } else {
+            OVERLAY_HEIGHT
+        };
+        let _ = overlay_window.set_size(tauri::Size::Logical(tauri::LogicalSize { width, height }));
+
+        // Recalculate position with the actual dimensions for proper centering
+        if let Some(monitor) = get_monitor_with_cursor(app_handle) {
+            let scale = monitor.scale_factor();
+            let monitor_x = monitor.position().x as f64 / scale;
+            let monitor_y = monitor.position().y as f64 / scale;
+            let monitor_width = monitor.size().width as f64 / scale;
+            let monitor_height = monitor.size().height as f64 / scale;
+
+            let x = monitor_x + (monitor_width - width) / 2.0;
+            let y = match settings.overlay_position {
+                OverlayPosition::Top => monitor_y + OVERLAY_TOP_OFFSET,
+                OverlayPosition::Bottom | OverlayPosition::None => {
+                    monitor_y + monitor_height - height - OVERLAY_BOTTOM_OFFSET
+                }
+            };
+            let _ = overlay_window.set_position(tauri::Position::Logical(tauri::LogicalPosition { x, y }));
+        }
+
         let _ = overlay_window.show();
 
         // On Windows, aggressively re-assert "topmost" in the native Z-order after showing
