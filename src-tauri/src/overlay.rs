@@ -1,7 +1,20 @@
 use crate::input;
 use crate::settings;
 use crate::settings::OverlayPosition;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ShowOverlayPayload {
+    state: String,
+    high_visibility: bool,
+    border_color: Option<String>,
+    background_color: Option<String>,
+    border_width: u8,
+    custom_width: u16,
+    custom_height: u16,
+}
 
 #[cfg(not(target_os = "macos"))]
 use log::debug;
@@ -335,7 +348,16 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
         #[cfg(target_os = "windows")]
         force_overlay_topmost(&overlay_window);
 
-        let _ = overlay_window.emit("show-overlay", state);
+        let payload = ShowOverlayPayload {
+            state: state.to_string(),
+            high_visibility: settings.overlay_high_visibility,
+            border_color: settings.overlay_border_color.clone(),
+            background_color: settings.overlay_background_color.clone(),
+            border_width: settings.overlay_border_width,
+            custom_width: settings.overlay_custom_width,
+            custom_height: settings.overlay_custom_height,
+        };
+        let _ = overlay_window.emit("show-overlay", payload);
     }
 }
 
