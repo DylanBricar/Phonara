@@ -11,19 +11,7 @@
   },
   "app": {
     "macOSPrivateApi": true,
-    "windows": [
-      {
-        "label": "main",
-        "title": "Phonara",
-        "width": 680,
-        "height": 570,
-        "minWidth": 680,
-        "minHeight": 570,
-        "resizable": true,
-        "maximizable": false,
-        "visible": false
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost; media-src 'self' blob: asset: https://asset.localhost; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420",
       "assetProtocol": {
