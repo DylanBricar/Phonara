@@ -15,7 +15,8 @@
     "postProcessing": "Post-Elaborazione",
     "history": "Cronologia",
     "debug": "Debug",
-    "about": "Informazioni"
+    "about": "Informazioni",
+    "appearance": "Appearance"
   },
   "onboarding": {
     "subtitle": "Per cominciare, scegli un modello di riconoscimento vocale",
@@ -92,6 +93,26 @@
       "cohere-int8": {
         "name": "Cohere",
         "description": "Un modello grande, più lento, ma molto accurato e multilingue."
+      },
+      "gemini-api": {
+        "name": "Gemini API",
+        "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
+      },
+      "openai-api": {
+        "name": "OpenAI API",
+        "description": "Cloud-based transcription via OpenAI. Requires API key and internet."
+      },
+      "whisper-large-v3-fr": {
+        "name": "Whisper Large V3 French",
+        "description": "Best accuracy for French. Fine-tuned on 2500h+ French audio."
+      },
+      "whisper-large-v3-fr-distil": {
+        "name": "Whisper French Distil",
+        "description": "Fast French model. 16 decoder layers, 1.9x faster than full."
+      },
+      "whisper-distil-fr": {
+        "name": "Whisper French Lite",
+        "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
       }
     },
     "errors": {
@@ -177,7 +198,26 @@
       "noModelsMatch": "Nessun modello corrisponde a questo filtro.",
       "yourModels": "Modelli scaricati",
       "availableModels": "Disponibili per il Download",
-      "searchPlaceholder": "Cerca modelli..."
+      "searchPlaceholder": "Cerca modelli...",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
+      "processingModels": {
+        "title": "Processing Models",
+        "description": "Save LLM models for use in post-processing actions.",
+        "noModels": "No processing models saved yet. Add one to use in your actions.",
+        "addModel": "Add Processing Model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Select or type a model",
+        "save": "Save",
+        "cancel": "Cancel",
+        "fetchModels": "Fetch models",
+        "alreadySaved": "This model is already saved."
+      }
     },
     "general": {
       "title": "Generale",
@@ -200,13 +240,22 @@
           "transcribe_with_post_process": {
             "name": "Tasto di post-elaborazione",
             "description": "Facoltativo: Un tasto di scelta rapida dedicato che applica sempre la post-elaborazione IA alla trascrizione."
+          },
+          "show_history": {
+            "name": "Show History",
+            "description": "Opens the app window and navigates to the History tab."
+          },
+          "copy_latest_history": {
+            "name": "Copy Latest History",
+            "description": "Copies the latest transcription entry to your clipboard."
           }
         },
         "errors": {
           "restore": "Errore nel ripristino della scorciatoia originale",
           "set": "Errore nella configurazione della scorciatoia: {{error}}",
           "reset": "Errore nella reinizializzazione della scorciatoia al valore originale"
-        }
+        },
+        "clickToSet": "Click to set"
       },
       "language": {
         "title": "Lingua",
@@ -219,6 +268,21 @@
       "pushToTalk": {
         "label": "Premi per Parlare",
         "description": "Tieni premuto per parlare, rilascia per interrompere"
+      },
+      "transcribeFile": {
+        "title": "Transcribe File",
+        "description": "Transcribe an audio file from your computer",
+        "button": "Choose Audio File",
+        "supportedFormats": "Supported: WAV",
+        "transcribing": "Transcribing...",
+        "loadingFile": "Loading file...",
+        "loadingModel": "Loading model...",
+        "result": "Transcription Result",
+        "copy": "Copy to Clipboard",
+        "copied": "Copied!",
+        "noResult": "No transcription result",
+        "error": "Transcription failed: {{error}}",
+        "audioFiles": "Audio Files"
       }
     },
     "sound": {
@@ -242,6 +306,26 @@
       "volume": {
         "title": "Volume",
         "description": "Regola il volume del feedback audio"
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "Choose a sound theme for recording start and stop feedback",
+        "preview": "Preview sound theme (plays start then stop)",
+        "custom": "Custom"
+      },
+      "customSounds": {
+        "start": "Start",
+        "stop": "Stop",
+        "browse": "Browse for audio file",
+        "clear": "Clear custom sound",
+        "default": "Default",
+        "audioFiles": "Audio Files"
       }
     },
     "advanced": {
@@ -251,7 +335,8 @@
         "output": "Output",
         "transcription": "Trascrizione",
         "history": "Cronologia",
-        "experimental": "Sperimentale"
+        "experimental": "Sperimentale",
+        "cloudModels": "Cloud Models"
       },
       "experimentalToggle": {
         "label": "Funzionalità Sperimentali",
@@ -295,6 +380,35 @@
           "none": "Nessuna",
           "bottom": "In basso",
           "top": "In alto"
+        },
+        "highVisibility": {
+          "label": "High Visibility Overlay",
+          "description": "Add a red border to the recording overlay for better visibility."
+        },
+        "borderColor": {
+          "label": "Border Color",
+          "description": "Custom border color for the recording overlay."
+        },
+        "backgroundColor": {
+          "label": "Background Color",
+          "description": "Custom background color for the recording overlay."
+        },
+        "borderWidth": {
+          "label": "Border Width",
+          "description": "Border thickness of the recording overlay."
+        },
+        "width": {
+          "label": "Overlay Width",
+          "description": "Width of the recording overlay in pixels."
+        },
+        "height": {
+          "label": "Overlay Height",
+          "description": "Height of the recording overlay in pixels."
+        },
+        "preview": {
+          "label": "Preview Overlay",
+          "description": "Show a 3-second preview of the overlay with current settings.",
+          "button": "Preview"
         }
       },
       "pasteMethod": {
@@ -362,6 +476,43 @@
         "add": "Aggiungi",
         "remove": "Rimuovi {{word}}",
         "duplicate": "\"{{word}}\" esiste già"
+      },
+      "textReplacements": {
+        "title": "Text Replacements",
+        "description": "Define exact find-and-replace rules applied after transcription. Unlike Custom Words, these perform exact string matching.",
+        "findPlaceholder": "Find...",
+        "replacePlaceholder": "Replace with...",
+        "caseSensitive": "Case sensitive",
+        "add": "Add Rule",
+        "remove": "Remove replacement rule",
+        "duplicate": "A rule with this find text already exists",
+        "emptyFind": "Find text cannot be empty",
+        "emptyReplace": "(delete)"
+      },
+      "whisperInitialPrompt": {
+        "title": "Whisper Initial Prompt",
+        "description": "Provide an initial prompt to guide Whisper transcription. Use this to hint specific terminology, names, acronyms, or formatting preferences (e.g., \"Meeting with Dr. Smith about the ACME project\"). Only applies to Whisper models.",
+        "placeholder": "e.g., technical terms, names, context..."
+      },
+      "transcriptionPrompt": {
+        "title": "Transcription Prompt",
+        "description": "Custom prompt to guide Whisper transcription style and formatting. Combined with Custom Words when both are set.",
+        "placeholder": "e.g., Use proper punctuation. Capitalize sentences...",
+        "tokenBudget": "Token budget: {{used}} / {{total}}",
+        "warningNonWhisper": "This prompt only applies to Whisper models. Your current model uses a different engine.",
+        "warningAutoLanguage": "With auto language detection, the prompt may not match the detected language.",
+        "presets": "Language presets",
+        "presetNone": "None",
+        "presetEnglish": "English",
+        "presetSpanish": "Spanish",
+        "presetFrench": "French",
+        "presetGerman": "German",
+        "presetPortuguese": "Portuguese",
+        "presetItalian": "Italian",
+        "presetRussian": "Russian",
+        "presetJapanese": "Japanese",
+        "presetChineseSimplified": "Chinese (Simplified)",
+        "presetChineseTraditional": "Chinese (Traditional)"
       }
     },
     "postProcessing": {
@@ -422,6 +573,29 @@
         "cancel": "Annulla",
         "selectToEdit": "Scegli un prompt qui sopra per visualizzare o modificare i dettagli.",
         "createFirst": "Clicca 'Crea un nuovo prompt' qui sopra per creare il tuo primo prompt di post-elaborazione."
+      },
+      "actions": {
+        "title": "Actions",
+        "description": "Bind Ctrl+number keys (1-9) to custom prompts. Press a shortcut during recording to apply the action after transcription.",
+        "noActions": "No actions configured yet.",
+        "createFirst": "Create your first action to process transcriptions with your configured provider.",
+        "addAction": "Add Action",
+        "editAction": "Edit Action",
+        "key": "Key",
+        "keyLabel": "Key (1-9)",
+        "name": "Name",
+        "namePlaceholder": "e.g. Email mode",
+        "prompt": "Prompt",
+        "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
+        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
+        "model": "Model (optional)",
+        "modelPlaceholder": "Select a model",
+        "modelTip": "Select a specific model for this action, or use the default from the API section.",
+        "defaultModel": "Default",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "maxActionsReached": "Maximum of 9 actions reached."
       }
     },
     "history": {
@@ -437,7 +611,13 @@
       "retranscribe": "Ri-trascrivere",
       "retranscribeError": "Impossibile ri-trascrivere. Riprova.",
       "transcribing": "Trascrizione in corso...",
-      "transcriptionFailed": "Trascrizione fallita. Puoi ri-trascrivere usando l'icona di ripetizione."
+      "transcriptionFailed": "Trascrizione fallita. Puoi ri-trascrivere usando l'icona di ripetizione.",
+      "reprocess": "Reprocess with different model",
+      "reprocessing": "Reprocessing...",
+      "selectModel": "Select model",
+      "originalTranscript": "Original",
+      "postProcessed": "Post-processed",
+      "action": "Action {{key}}"
     },
     "debug": {
       "title": "Debug",
@@ -513,6 +693,15 @@
       "recordingBuffer": {
         "title": "Buffer di registrazione extra",
         "description": "Tempo extra (in millisecondi) per continuare a registrare dopo aver rilasciato il tasto, per catturare l'audio finale. 0 = nessun buffer extra."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       }
     },
     "about": {
@@ -542,7 +731,87 @@
           "description": "Inferenza ad alte prestazioni del modello di riconoscimento vocale automatico Whisper di OpenAI",
           "details": "Phonara usa Whisper.cpp per il riconoscimento vocale veloce in locale. Grazie a Georgi Gerganov e collaboratori per il fantastico lavoro."
         }
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
       }
+    },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "appearance": {
+      "title": "Appearance",
+      "themeMode": {
+        "title": "Theme",
+        "description": "Choose between light, dark, or system theme",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "accentColor": {
+        "title": "Accent Color",
+        "description": "Choose the main color of the interface",
+        "blue": "Blue",
+        "green": "Green",
+        "red": "Red",
+        "purple": "Purple",
+        "orange": "Orange",
+        "pink": "Pink",
+        "teal": "Teal",
+        "yellow": "Yellow",
+        "system": "System"
+      },
+      "overlay": "Overlay"
     }
   },
   "footer": {
@@ -614,6 +883,14 @@
   },
   "overlay": {
     "transcribing": "Trascrizione...",
-    "processing": "Elaborazione..."
+    "processing": "Elaborazione...",
+    "cancelConfirm": "Esc again to cancel",
+    "pause": "Pause recording",
+    "resume": "Resume recording",
+    "cancel": "Cancel recording"
+  },
+  "progressBar": {
+    "downloading": "{{count}} downloading...",
+    "downloadingSingle": "Downloading..."
   }
 }

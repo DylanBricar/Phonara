@@ -118,14 +118,19 @@ jobs:
       - name: Create Draft Release
         id: create-release
         uses: actions/github-script@v7
+        env:
+          RELEASE_VERSION: ${{ steps.get-version.outputs.version }}
+          RELEASE_BODY: ${{ steps.changelog.outputs.result }}
         with:
           script: |
+            const version = process.env.RELEASE_VERSION;
+            const body = process.env.RELEASE_BODY;
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: `v${{ steps.get-version.outputs.version }}`,
-              name: `v${{ steps.get-version.outputs.version }}`,
-              body: `${{ steps.changelog.outputs.result }}`,
+              tag_name: `v${version}`,
+              name: `v${version}`,
+              body: body,
               draft: true,
               prerelease: false
             })

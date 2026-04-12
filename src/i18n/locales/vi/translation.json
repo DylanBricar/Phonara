@@ -15,7 +15,8 @@
     "postProcessing": "Xử lý sau",
     "history": "Lịch sử",
     "debug": "Gỡ lỗi",
-    "about": "Giới thiệu"
+    "about": "Giới thiệu",
+    "appearance": "Appearance"
   },
   "onboarding": {
     "subtitle": "Để bắt đầu, hãy chọn một mô hình chuyển đổi giọng nói",
@@ -92,6 +93,26 @@
       "cohere-int8": {
         "name": "Cohere",
         "description": "Mô hình lớn, chậm hơn, nhưng rất chính xác và đa ngôn ngữ."
+      },
+      "gemini-api": {
+        "name": "Gemini API",
+        "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
+      },
+      "openai-api": {
+        "name": "OpenAI API",
+        "description": "Cloud-based transcription via OpenAI. Requires API key and internet."
+      },
+      "whisper-large-v3-fr": {
+        "name": "Whisper Large V3 French",
+        "description": "Best accuracy for French. Fine-tuned on 2500h+ French audio."
+      },
+      "whisper-large-v3-fr-distil": {
+        "name": "Whisper French Distil",
+        "description": "Fast French model. 16 decoder layers, 1.9x faster than full."
+      },
+      "whisper-distil-fr": {
+        "name": "Whisper French Lite",
+        "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
       }
     },
     "errors": {
@@ -177,7 +198,26 @@
       "noModelsMatch": "Không có mô hình nào khớp với bộ lọc này.",
       "yourModels": "Mô hình đã tải",
       "availableModels": "Có sẵn để tải xuống",
-      "searchPlaceholder": "Search models..."
+      "searchPlaceholder": "Search models...",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
+      "processingModels": {
+        "title": "Processing Models",
+        "description": "Save LLM models for use in post-processing actions.",
+        "noModels": "No processing models saved yet. Add one to use in your actions.",
+        "addModel": "Add Processing Model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Select or type a model",
+        "save": "Save",
+        "cancel": "Cancel",
+        "fetchModels": "Fetch models",
+        "alreadySaved": "This model is already saved."
+      }
     },
     "general": {
       "title": "Chung",
@@ -228,6 +268,21 @@
       "pushToTalk": {
         "label": "Nhấn để nói",
         "description": "Giữ để ghi âm, thả để dừng"
+      },
+      "transcribeFile": {
+        "title": "Transcribe File",
+        "description": "Transcribe an audio file from your computer",
+        "button": "Choose Audio File",
+        "supportedFormats": "Supported: WAV",
+        "transcribing": "Transcribing...",
+        "loadingFile": "Loading file...",
+        "loadingModel": "Loading model...",
+        "result": "Transcription Result",
+        "copy": "Copy to Clipboard",
+        "copied": "Copied!",
+        "noResult": "No transcription result",
+        "error": "Transcription failed: {{error}}",
+        "audioFiles": "Audio Files"
       }
     },
     "sound": {
@@ -251,6 +306,26 @@
       "volume": {
         "title": "Âm lượng",
         "description": "Điều chỉnh âm lượng của âm thanh phản hồi"
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "Choose a sound theme for recording start and stop feedback",
+        "preview": "Preview sound theme (plays start then stop)",
+        "custom": "Custom"
+      },
+      "customSounds": {
+        "start": "Start",
+        "stop": "Stop",
+        "browse": "Browse for audio file",
+        "clear": "Clear custom sound",
+        "default": "Default",
+        "audioFiles": "Audio Files"
       }
     },
     "advanced": {
@@ -260,7 +335,8 @@
         "output": "Đầu ra",
         "transcription": "Chuyển đổi",
         "history": "Lịch sử",
-        "experimental": "Thử nghiệm"
+        "experimental": "Thử nghiệm",
+        "cloudModels": "Cloud Models"
       },
       "experimentalToggle": {
         "label": "Tính năng thử nghiệm",
@@ -304,6 +380,35 @@
           "none": "Không có",
           "bottom": "Dưới",
           "top": "Trên"
+        },
+        "highVisibility": {
+          "label": "High Visibility Overlay",
+          "description": "Add a red border to the recording overlay for better visibility."
+        },
+        "borderColor": {
+          "label": "Border Color",
+          "description": "Custom border color for the recording overlay."
+        },
+        "backgroundColor": {
+          "label": "Background Color",
+          "description": "Custom background color for the recording overlay."
+        },
+        "borderWidth": {
+          "label": "Border Width",
+          "description": "Border thickness of the recording overlay."
+        },
+        "width": {
+          "label": "Overlay Width",
+          "description": "Width of the recording overlay in pixels."
+        },
+        "height": {
+          "label": "Overlay Height",
+          "description": "Height of the recording overlay in pixels."
+        },
+        "preview": {
+          "label": "Preview Overlay",
+          "description": "Show a 3-second preview of the overlay with current settings.",
+          "button": "Preview"
         }
       },
       "pasteMethod": {
@@ -371,6 +476,43 @@
         "add": "Thêm",
         "remove": "Xóa {{word}}",
         "duplicate": "\"{{word}}\" đã tồn tại"
+      },
+      "textReplacements": {
+        "title": "Text Replacements",
+        "description": "Define exact find-and-replace rules applied after transcription. Unlike Custom Words, these perform exact string matching.",
+        "findPlaceholder": "Find...",
+        "replacePlaceholder": "Replace with...",
+        "caseSensitive": "Case sensitive",
+        "add": "Add Rule",
+        "remove": "Remove replacement rule",
+        "duplicate": "A rule with this find text already exists",
+        "emptyFind": "Find text cannot be empty",
+        "emptyReplace": "(delete)"
+      },
+      "whisperInitialPrompt": {
+        "title": "Whisper Initial Prompt",
+        "description": "Provide an initial prompt to guide Whisper transcription. Use this to hint specific terminology, names, acronyms, or formatting preferences (e.g., \"Meeting with Dr. Smith about the ACME project\"). Only applies to Whisper models.",
+        "placeholder": "e.g., technical terms, names, context..."
+      },
+      "transcriptionPrompt": {
+        "title": "Transcription Prompt",
+        "description": "Custom prompt to guide Whisper transcription style and formatting. Combined with Custom Words when both are set.",
+        "placeholder": "e.g., Use proper punctuation. Capitalize sentences...",
+        "tokenBudget": "Token budget: {{used}} / {{total}}",
+        "warningNonWhisper": "This prompt only applies to Whisper models. Your current model uses a different engine.",
+        "warningAutoLanguage": "With auto language detection, the prompt may not match the detected language.",
+        "presets": "Language presets",
+        "presetNone": "None",
+        "presetEnglish": "English",
+        "presetSpanish": "Spanish",
+        "presetFrench": "French",
+        "presetGerman": "German",
+        "presetPortuguese": "Portuguese",
+        "presetItalian": "Italian",
+        "presetRussian": "Russian",
+        "presetJapanese": "Japanese",
+        "presetChineseSimplified": "Chinese (Simplified)",
+        "presetChineseTraditional": "Chinese (Traditional)"
       }
     },
     "postProcessing": {
@@ -431,6 +573,29 @@
         "cancel": "Hủy",
         "selectToEdit": "Chọn một prompt ở trên để xem và chỉnh sửa chi tiết.",
         "createFirst": "Nhấn 'Tạo Prompt mới' ở trên để tạo prompt xử lý sau đầu tiên của bạn."
+      },
+      "actions": {
+        "title": "Actions",
+        "description": "Bind Ctrl+number keys (1-9) to custom prompts. Press a shortcut during recording to apply the action after transcription.",
+        "noActions": "No actions configured yet.",
+        "createFirst": "Create your first action to process transcriptions with your configured provider.",
+        "addAction": "Add Action",
+        "editAction": "Edit Action",
+        "key": "Key",
+        "keyLabel": "Key (1-9)",
+        "name": "Name",
+        "namePlaceholder": "e.g. Email mode",
+        "prompt": "Prompt",
+        "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
+        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
+        "model": "Model (optional)",
+        "modelPlaceholder": "Select a model",
+        "modelTip": "Select a specific model for this action, or use the default from the API section.",
+        "defaultModel": "Default",
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "maxActionsReached": "Maximum of 9 actions reached."
       }
     },
     "history": {
@@ -446,7 +611,13 @@
       "retranscribe": "Phiên âm lại",
       "retranscribeError": "Không thể phiên âm lại. Vui lòng thử lại.",
       "transcribing": "Đang phiên âm...",
-      "transcriptionFailed": "Phiên âm thất bại. Bạn có thể phiên âm lại bằng biểu tượng thử lại."
+      "transcriptionFailed": "Phiên âm thất bại. Bạn có thể phiên âm lại bằng biểu tượng thử lại.",
+      "reprocess": "Reprocess with different model",
+      "reprocessing": "Reprocessing...",
+      "selectModel": "Select model",
+      "originalTranscript": "Original",
+      "postProcessed": "Post-processed",
+      "action": "Action {{key}}"
     },
     "debug": {
       "title": "Gỡ lỗi",
@@ -522,6 +693,15 @@
       "recordingBuffer": {
         "title": "Bộ đệm ghi âm thêm",
         "description": "Thời gian thêm (tính bằng mili giây) để tiếp tục ghi âm sau khi nhả phím, để thu âm thanh cuối. 0 = không có bộ đệm thêm."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       }
     },
     "about": {
@@ -551,7 +731,87 @@
           "description": "Suy luận hiệu suất cao của mô hình nhận dạng giọng nói tự động Whisper của OpenAI",
           "details": "Phonara sử dụng Whisper.cpp để xử lý chuyển đổi giọng nói thành văn bản nhanh, cục bộ. Cảm ơn công việc tuyệt vời của Georgi Gerganov và các cộng tác viên."
         }
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
       }
+    },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "appearance": {
+      "title": "Appearance",
+      "themeMode": {
+        "title": "Theme",
+        "description": "Choose between light, dark, or system theme",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "accentColor": {
+        "title": "Accent Color",
+        "description": "Choose the main color of the interface",
+        "blue": "Blue",
+        "green": "Green",
+        "red": "Red",
+        "purple": "Purple",
+        "orange": "Orange",
+        "pink": "Pink",
+        "teal": "Teal",
+        "yellow": "Yellow",
+        "system": "System"
+      },
+      "overlay": "Overlay"
     }
   },
   "footer": {
@@ -624,6 +884,13 @@
   "overlay": {
     "transcribing": "Đang chuyển đổi...",
     "processing": "Đang xử lý...",
-    "cancelConfirm": "Esc de huy"
+    "cancelConfirm": "Esc de huy",
+    "pause": "Pause recording",
+    "resume": "Resume recording",
+    "cancel": "Cancel recording"
+  },
+  "progressBar": {
+    "downloading": "{{count}} downloading...",
+    "downloadingSingle": "Downloading..."
   }
 }

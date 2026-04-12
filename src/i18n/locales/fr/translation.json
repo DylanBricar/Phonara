@@ -330,6 +330,12 @@
         "clear": "Supprimer le son personnalisé",
         "default": "Par défaut",
         "audioFiles": "Fichiers audio"
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
       }
     },
     "advanced": {
@@ -497,6 +503,26 @@
         "title": "Prompt initial Whisper",
         "description": "Fournir un prompt initial pour guider la transcription Whisper. Utilisez-le pour indiquer une terminologie spécifique, des noms, des acronymes ou des préférences de formatage. S'applique uniquement aux modèles Whisper.",
         "placeholder": "ex. termes techniques, noms, contexte..."
+      },
+      "transcriptionPrompt": {
+        "title": "Transcription Prompt",
+        "description": "Custom prompt to guide Whisper transcription style and formatting. Combined with Custom Words when both are set.",
+        "placeholder": "e.g., Use proper punctuation. Capitalize sentences...",
+        "tokenBudget": "Token budget: {{used}} / {{total}}",
+        "warningNonWhisper": "This prompt only applies to Whisper models. Your current model uses a different engine.",
+        "warningAutoLanguage": "With auto language detection, the prompt may not match the detected language.",
+        "presets": "Language presets",
+        "presetNone": "None",
+        "presetEnglish": "English",
+        "presetSpanish": "Spanish",
+        "presetFrench": "French",
+        "presetGerman": "German",
+        "presetPortuguese": "Portuguese",
+        "presetItalian": "Italian",
+        "presetRussian": "Russian",
+        "presetJapanese": "Japanese",
+        "presetChineseSimplified": "Chinese (Simplified)",
+        "presetChineseTraditional": "Chinese (Traditional)"
       }
     },
     "postProcessing": {
@@ -858,6 +884,13 @@
   "overlay": {
     "transcribing": "Transcription...",
     "processing": "Traitement...",
-    "cancelConfirm": "Esc pour annuler"
+    "cancelConfirm": "Esc pour annuler",
+    "pause": "Pause recording",
+    "resume": "Resume recording",
+    "cancel": "Cancel recording"
+  },
+  "progressBar": {
+    "downloading": "{{count}} downloading...",
+    "downloadingSingle": "Downloading..."
   }
 }
