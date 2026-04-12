@@ -413,6 +413,7 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_whisper_gpu_device,
             shortcut::get_available_accelerators,
             shortcut::update_transcription_prompt,
+            shortcut::get_system_accent_color,
             shortcut::handy_keys::start_handy_keys_recording,
             shortcut::handy_keys::stop_handy_keys_recording,
             trigger_update_check,
@@ -567,7 +568,11 @@ pub fn run(cli_args: CliArgs) {
                 win_builder = win_builder.data_directory(data_dir.join("webview"));
             }
 
-            win_builder.build()?;
+            let main_window = win_builder.build()?;
+
+            // Auto-open devtools in debug builds to diagnose loading issues
+            #[cfg(debug_assertions)]
+            main_window.open_devtools();
 
             let mut settings = get_settings(&app.handle());
 

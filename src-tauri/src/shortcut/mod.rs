@@ -662,6 +662,36 @@ pub fn update_transcription_prompt(
 
 #[tauri::command]
 #[specta::specta]
+pub fn get_system_accent_color() -> Option<String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let output = Command::new("reg")
+            .args(["query", "HKCU\\SOFTWARE\\Microsoft\\Windows\\DWM", "/v", "AccentColor"])
+            .output()
+            .ok()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        for line in stdout.lines() {
+            if line.contains("AccentColor") {
+                let hex = line.split_whitespace().last()?;
+                let val = u32::from_str_radix(hex.trim_start_matches("0x"), 16).ok()?;
+                let a = (val >> 24) & 0xFF;
+                let b = (val >> 16) & 0xFF;
+                let g = (val >> 8) & 0xFF;
+                let r = val & 0xFF;
+                return Some(format!("#{:02x}{:02x}{:02x}{:02x}", r, g, b, a));
+            }
+        }
+        None
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
 pub fn change_word_correction_threshold_setting(
     app: AppHandle,
     threshold: f64,
