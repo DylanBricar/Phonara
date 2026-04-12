@@ -3,15 +3,26 @@ pub mod history;
 pub mod models;
 pub mod transcription;
 
+use crate::managers::audio::AudioRecordingManager;
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
 use crate::utils::cancel_current_operation;
-use tauri::{AppHandle, Manager};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
 #[specta::specta]
 pub fn cancel_operation(app: AppHandle) {
     cancel_current_operation(&app);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn toggle_pause(app: AppHandle) -> bool {
+    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+    let paused = audio_manager.toggle_pause();
+    let _ = app.emit("recording-paused", paused);
+    paused
 }
 
 #[tauri::command]

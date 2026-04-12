@@ -419,6 +419,7 @@ pub fn run(cli_args: CliArgs) {
             trigger_update_check,
             show_main_window_command,
             commands::cancel_operation,
+            commands::toggle_pause,
             commands::is_portable,
             commands::get_app_dir_path,
             commands::get_app_settings,
