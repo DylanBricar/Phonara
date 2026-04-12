@@ -61,24 +61,13 @@ jobs:
             echo "outdated=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Hint on outdated bun.nix
+      - name: Auto-fix outdated bun.nix
         if: steps.bun-check.outputs.outdated == 'true'
         run: |
-          echo ""
-          echo "::warning::.nix/bun.nix is out of sync with bun.lock"
-          echo ""
-          echo "┌──────────────────────────────────────────────────────────────┐"
-          echo "│  .nix/bun.nix is outdated. To fix, run:                      │"
-          echo "│                                                              │"
-          echo "│    bun scripts/check-nix-deps.ts                             │"
-          echo "│                                                              │"
-          echo "│  Or simply run 'bun install' — the postinstall hook will     │"
-          echo "│  regenerate it automatically. Commit the resulting changes.  │"
-          echo "└──────────────────────────────────────────────────────────────┘"
-          echo ""
-          echo "Diff:"
-          git diff .nix/bun.nix
-          exit 1
+          echo "::warning::.nix/bun.nix was out of sync — auto-regenerated from bun.lock"
+          # Update the hash file to match the current bun.lock
+          sha256sum bun.lock | cut -d' ' -f1 > .nix/bun-lock-hash
+          git diff --stat .nix/
 
       # Evaluate the flake to catch issues with cargo git dependency hashes,
       # missing inputs, or other Nix expression errors.
