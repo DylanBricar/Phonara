@@ -3,7 +3,8 @@
     "settings": "Impostazioni...",
     "checkUpdates": "Verifica aggiornamenti...",
     "copyLastTranscript": "Copia l'ultima trascrizione",
-    "unloadModel": "Scarica modello",
+    "unloadModel": "Rilascia modello",
+    "model": "Modello",
     "quit": "Esci",
     "cancel": "Annulla"
   },
@@ -19,7 +20,7 @@
   "onboarding": {
     "subtitle": "Per cominciare, scegli un modello di riconoscimento vocale",
     "recommended": "Raccomandato",
-    "download": "Scaricare",
+    "download": "Scarica",
     "downloading": "Download in corso...",
     "customModelDescription": "Non ufficialmente supportato",
     "downloadFailed": "Download fallito. Riprova.",
@@ -75,6 +76,18 @@
       "sense-voice-int8": {
         "name": "SenseVoice",
         "description": "Molto veloce. Cinese, inglese, giapponese, coreano, cantonese."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "Riconoscimento vocale in russo. Veloce e preciso."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "Molto veloce. Inglese, tedesco, spagnolo, francese. Supporta la traduzione."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "Multilingue accurato. 25 lingue europee. Supporta la traduzione."
       }
     },
     "errors": {
@@ -108,6 +121,8 @@
     "active": "Attivo",
     "switching": "Cambio...",
     "noModelsAvailable": "Nessun modello disponibile",
+    "verifying": "Verifica di {{modelName}}...",
+    "verifyingGeneric": "Verifica...",
     "extracting": "Estrazione di {{modelName}}...",
     "extractingMultiple": "Estrazione di {{count}} modelli...",
     "extractingGeneric": "Estrazione...",
@@ -157,7 +172,7 @@
       },
       "noModelsMatch": "Nessun modello corrisponde a questo filtro.",
       "yourModels": "Modelli scaricati",
-      "availableModels": "Disponibili per il download"
+      "availableModels": "Disponibili per il Download"
     },
     "general": {
       "title": "Generale",
@@ -237,6 +252,25 @@
         "label": "Funzionalità Sperimentali",
         "description": "Abilita le funzionalità sperimentali ancora in fase di sviluppo."
       },
+      "lazyStreamClose": {
+        "label": "Mantieni il microfono aperto tra le trascrizioni",
+        "description": "Mantiene lo stream del microfono aperto per 30 secondi dopo l'arresto della registrazione, riducendo la latenza per trascrizioni consecutive. Potrebbe degradare la qualità audio Bluetooth."
+      },
+      "acceleration": {
+        "whisper": {
+          "title": "Accelerazione Whisper",
+          "description": "Accelerazione hardware per i modelli Whisper. Auto utilizza la GPU se disponibile (Metal su macOS, Vulkan su Windows/Linux)."
+        },
+        "ort": {
+          "title": "Accelerazione ONNX",
+          "description": "Accelerazione hardware per i modelli ONNX (Parakeet, Canary, Moonshine, ecc.). DirectML su Windows è sperimentale. I modelli potrebbero non riuscire a trascrivere."
+        },
+        "gpuDevice": {
+          "title": "Dispositivo GPU",
+          "description": "Seleziona quale GPU utilizzare per l'inferenza Whisper. Auto sceglie la GPU dedicata.",
+          "auto": "Auto"
+        }
+      },
       "startHidden": {
         "label": "Avvia in Background",
         "description": "Avvia l'applicazione in background senza aprire la finestra."
@@ -304,7 +338,7 @@
       },
       "modelUnload": {
         "title": "Disattiva Model",
-        "description": "Libera automaticamente la memoria della GPU/CPU quando il modello non viene utilizzato per un certo periodo.",
+        "description": "Libera automaticamente la memoria della GPU/CPU quando il modello non viene utilizzato per un certo periodo",
         "options": {
           "never": "Mai",
           "immediately": "Immediatamente",
@@ -313,7 +347,7 @@
           "min10": "Dopo 10 minuti",
           "min15": "Dopo 15 minuti",
           "hour1": "Dopo 1 ora",
-          "sec5": "Dopo 5 secondi (Debug)"
+          "sec15": "Dopo 15 secondi (Debug)"
         }
       },
       "customWords": {
@@ -354,9 +388,9 @@
         },
         "model": {
           "title": "Modello",
-          "descriptionApple": "Fornisci un limite numerico facoltativo per i token o mantenere l'impostazione predefinita sul dispositivo.",
+          "descriptionApple": "Fornisci un limite numerico facoltativo per i token o mantieni l'impostazione predefinita sul dispositivo.",
           "descriptionCustom": "Fornisci l'identificatore del modello previsto dal tuo endpoint personalizzato.",
-          "descriptionDefault": "Scegli un modello reso disponibile dal provider personalizzato.",
+          "descriptionDefault": "Scegli un modello reso disponibile dal provider selezionato.",
           "placeholderApple": "Apple Intelligence",
           "placeholderWithOptions": "Cerca o scegli un modello",
           "placeholderNoOptions": "Digita il nome di un modello",
@@ -369,7 +403,7 @@
           "title": "Prompt Selezionato",
           "description": "Seleziona un template per migliorare le trascrizioni o creane uno nuovo. Usa ${output} nel prompt per fare riferimento alla trascrizione."
         },
-        "noPrompts": "Nessun prompt disponibile.",
+        "noPrompts": "Nessun prompt disponibile",
         "selectPrompt": "Scegli un prompt",
         "createNew": "Crea un nuovo prompt",
         "promptLabel": "Etichetta del Prompt",
@@ -394,7 +428,11 @@
       "save": "Salva la trascrizione",
       "unsave": "Rimuovi dai salvataggi",
       "delete": "Elimina elemento",
-      "deleteError": "Errore nell'eliminazione dell'elemento. Per favore, prova di nuovo."
+      "deleteError": "Errore nell'eliminazione dell'elemento. Riprova.",
+      "retranscribe": "Ri-trascrivere",
+      "retranscribeError": "Impossibile ri-trascrivere. Riprova.",
+      "transcribing": "Trascrizione in corso...",
+      "transcriptionFailed": "Trascrizione fallita. Puoi ri-trascrivere usando l'icona di ripetizione."
     },
     "debug": {
       "title": "Debug",
@@ -424,14 +462,14 @@
         "entries": "elementi"
       },
       "recordingRetention": {
-        "title": "Salvataggio delle Registrazioni",
-        "description": "Per quanto conservare le registrazioni audio",
+        "title": "Eliminazione Automatica Registrazioni",
+        "description": "Elimina automaticamente le registrazioni vecchie per liberare spazio",
         "never": "Mai",
-        "preserveLimit": "Conserva {{count}} Registrazioni",
-        "days3": "Dopo 3 Giorni",
-        "weeks2": "Dopo 2 Settimane",
-        "months3": "Dopo 3 Mesi",
-        "placeholder": "Seleziona periodo di salvataggio..."
+        "preserveLimit": "Conserva le ultime {{count}}",
+        "days3": "Dopo 3 giorni",
+        "weeks2": "Dopo 2 settimane",
+        "months3": "Dopo 3 mesi",
+        "placeholder": "Seleziona periodo di conservazione..."
       },
       "alwaysOnMicrophone": {
         "label": "Microfono Sempre Attivo",
@@ -454,9 +492,9 @@
         "description": "Aggiungi uno spazio dopo la trascrizione incollata"
       },
       "keyboardImplementation": {
-        "title": "Keyboard Implementation",
-        "description": "Choose the keyboard shortcut backend.",
-        "bindingsReset": "Keyboard shortcuts were incompatible and reset to defaults"
+        "title": "Implementazione tastiera",
+        "description": "Scegli il backend per le scorciatoie da tastiera.",
+        "bindingsReset": "Le scorciatoie da tastiera erano incompatibili e sono state ripristinate ai valori predefiniti"
       },
       "paths": {
         "appData": "Dati App:",
@@ -466,6 +504,10 @@
       "pasteDelay": {
         "title": "Ritardo incolla",
         "description": "Ritardo prima dell'invio del tasto incolla (in millisecondi). Aumentare se viene incollato il testo sbagliato."
+      },
+      "recordingBuffer": {
+        "title": "Buffer di registrazione extra",
+        "description": "Tempo extra (in millisecondi) per continuare a registrare dopo aver rilasciato il tasto, per catturare l'audio finale. 0 = nessun buffer extra."
       }
     },
     "about": {
@@ -510,7 +552,10 @@
     "downloading": "Download... {{progress}}%",
     "installing": "Installazione...",
     "preparing": "Preparazione...",
-    "checkForUpdates": "Controlla aggiornamenti"
+    "checkForUpdates": "Controlla aggiornamenti",
+    "portableUpdateTitle": "Manual update required",
+    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
+    "portableUpdateButton": "Open GitHub Releases"
   },
   "common": {
     "loading": "Caricamento...",
@@ -525,7 +570,7 @@
     "update": "Aggiorna",
     "close": "Chiudi",
     "open": "Apri",
-    "default": "Default",
+    "default": "Predefinito",
     "enabled": "Abilitato",
     "disabled": "Disabilitato",
     "on": "On",
@@ -542,6 +587,15 @@
   },
   "errors": {
     "loadDirectory": "Errore di caricamento cartella: {{error}}",
+    "micPermissionDeniedTitle": "Accesso al microfono negato",
+    "micPermissionDenied": {
+      "generic": "L'accesso al microfono è stato negato dal sistema operativo. Concedi l'autorizzazione al microfono nelle impostazioni di sistema.",
+      "windows": "Abilita l'accesso al microfono in Impostazioni → Privacy e sicurezza → Microfono (incluso l'accesso delle app desktop).",
+      "macos": "Concedi l'accesso al microfono in Impostazioni di Sistema → Privacy e sicurezza → Microfono.",
+      "linux": "Concedi l'accesso al microfono nelle impostazioni audio o sulla privacy del tuo sistema."
+    },
+    "noInputDeviceTitle": "Nessun microfono trovato",
+    "noInputDevice": "Non è stato rilevato alcun dispositivo di ingresso audio. Collega un microfono o delle cuffie e riprova.",
     "recordingFailed": "Impossibile avviare la registrazione: {{error}}",
     "modelLoadFailed": "Impossibile caricare il modello: {{model}}",
     "modelLoadFailedUnknown": "modello sconosciuto"

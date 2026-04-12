@@ -4,6 +4,7 @@
     "checkUpdates": "Kiểm tra cập nhật...",
     "copyLastTranscript": "Sao chép bản chép lời mới nhất",
     "unloadModel": "Dỡ mô hình",
+    "model": "Mô hình",
     "quit": "Thoát",
     "cancel": "Hủy"
   },
@@ -75,6 +76,18 @@
       "sense-voice-int8": {
         "name": "SenseVoice",
         "description": "Rất nhanh. Tiếng Trung, tiếng Anh, tiếng Nhật, tiếng Hàn, tiếng Quảng Đông."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "Nhận dạng giọng nói tiếng Nga. Nhanh và chính xác."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "Rất nhanh. Tiếng Anh, tiếng Đức, tiếng Tây Ban Nha, tiếng Pháp. Hỗ trợ dịch thuật."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "Đa ngôn ngữ chính xác. 25 ngôn ngữ châu Âu. Hỗ trợ dịch thuật."
       }
     },
     "errors": {
@@ -108,6 +121,8 @@
     "active": "Đang hoạt động",
     "switching": "Đang chuyển...",
     "noModelsAvailable": "Không có mô hình nào",
+    "verifying": "Đang xác minh {{modelName}}...",
+    "verifyingGeneric": "Đang xác minh...",
     "extracting": "Đang giải nén {{modelName}}...",
     "extractingMultiple": "Đang giải nén {{count}} mô hình...",
     "extractingGeneric": "Đang giải nén...",
@@ -246,6 +261,25 @@
         "label": "Tính năng thử nghiệm",
         "description": "Bật các tính năng thử nghiệm đang trong quá trình phát triển."
       },
+      "lazyStreamClose": {
+        "label": "Giữ micro mở giữa các lần phiên âm",
+        "description": "Giữ luồng micro mở trong 30 giây sau khi dừng ghi âm, giảm độ trễ khi phiên âm liên tiếp. Có thể làm giảm chất lượng âm thanh Bluetooth khi đang hoạt động."
+      },
+      "acceleration": {
+        "whisper": {
+          "title": "Tăng tốc Whisper",
+          "description": "Tăng tốc phần cứng cho các mô hình Whisper. Chế độ tự động sử dụng GPU nếu có (Metal trên macOS, Vulkan trên Windows/Linux)."
+        },
+        "ort": {
+          "title": "Tăng tốc ONNX",
+          "description": "Tăng tốc phần cứng cho các mô hình ONNX (Parakeet, Canary, Moonshine, v.v.). DirectML trên Windows là thử nghiệm. Các mô hình có thể không chuyển đổi giọng nói được."
+        },
+        "gpuDevice": {
+          "title": "Thiết bị GPU",
+          "description": "Chọn GPU để sử dụng cho suy luận Whisper. Tự động chọn GPU chuyên dụng.",
+          "auto": "Tự động"
+        }
+      },
       "startHidden": {
         "label": "Khởi động ẩn",
         "description": "Khởi động vào khay hệ thống mà không mở cửa sổ."
@@ -322,7 +356,7 @@
           "min10": "Sau 10 phút",
           "min15": "Sau 15 phút",
           "hour1": "Sau 1 giờ",
-          "sec5": "Sau 5 giây (Gỡ lỗi)"
+          "sec15": "Sau 15 giây (Gỡ lỗi)"
         }
       },
       "customWords": {
@@ -403,7 +437,11 @@
       "save": "Lưu bản ghi",
       "unsave": "Xóa khỏi đã lưu",
       "delete": "Xóa mục",
-      "deleteError": "Không thể xóa mục. Vui lòng thử lại."
+      "deleteError": "Không thể xóa mục. Vui lòng thử lại.",
+      "retranscribe": "Phiên âm lại",
+      "retranscribeError": "Không thể phiên âm lại. Vui lòng thử lại.",
+      "transcribing": "Đang phiên âm...",
+      "transcriptionFailed": "Phiên âm thất bại. Bạn có thể phiên âm lại bằng biểu tượng thử lại."
     },
     "debug": {
       "title": "Gỡ lỗi",
@@ -463,9 +501,9 @@
         "description": "Thêm một dấu cách sau bản ghi đã dán"
       },
       "keyboardImplementation": {
-        "title": "Keyboard Implementation",
-        "description": "Choose the keyboard shortcut backend.",
-        "bindingsReset": "Keyboard shortcuts were incompatible and reset to defaults"
+        "title": "Triển khai bàn phím",
+        "description": "Chọn hệ thống xử lý phím tắt.",
+        "bindingsReset": "Các phím tắt không tương thích và đã được đặt lại về mặc định"
       },
       "paths": {
         "appData": "Dữ liệu ứng dụng:",
@@ -475,6 +513,10 @@
       "pasteDelay": {
         "title": "Độ trễ dán",
         "description": "Độ trễ trước khi gửi phím dán (tính bằng mili giây). Tăng nếu văn bản sai đang được dán."
+      },
+      "recordingBuffer": {
+        "title": "Bộ đệm ghi âm thêm",
+        "description": "Thời gian thêm (tính bằng mili giây) để tiếp tục ghi âm sau khi nhả phím, để thu âm thanh cuối. 0 = không có bộ đệm thêm."
       }
     },
     "about": {
@@ -519,7 +561,10 @@
     "downloading": "Đang tải... {{progress}}%",
     "installing": "Đang cài đặt...",
     "preparing": "Đang chuẩn bị...",
-    "checkForUpdates": "Kiểm tra cập nhật"
+    "checkForUpdates": "Kiểm tra cập nhật",
+    "portableUpdateTitle": "Manual update required",
+    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
+    "portableUpdateButton": "Open GitHub Releases"
   },
   "common": {
     "loading": "Đang tải...",
@@ -551,6 +596,15 @@
   },
   "errors": {
     "loadDirectory": "Lỗi khi tải thư mục: {{error}}",
+    "micPermissionDeniedTitle": "Quyền truy cập micrô bị từ chối",
+    "micPermissionDenied": {
+      "generic": "Quyền truy cập micrô đã bị hệ điều hành từ chối. Vui lòng cấp quyền micrô trong cài đặt hệ thống.",
+      "windows": "Bật quyền truy cập micrô trong Cài đặt → Quyền riêng tư & bảo mật → Micrô (bao gồm quyền truy cập ứng dụng máy tính).",
+      "macos": "Cấp quyền truy cập micrô trong Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Micrô.",
+      "linux": "Cấp quyền truy cập micrô trong cài đặt âm thanh hoặc quyền riêng tư của hệ thống."
+    },
+    "noInputDeviceTitle": "Không tìm thấy micrô",
+    "noInputDevice": "Không phát hiện thiết bị đầu vào âm thanh nào. Vui lòng kết nối micrô hoặc tai nghe và thử lại.",
     "recordingFailed": "Không thể bắt đầu ghi âm: {{error}}",
     "modelLoadFailed": "Không thể tải mô hình: {{model}}",
     "modelLoadFailedUnknown": "mô hình không xác định"

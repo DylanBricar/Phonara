@@ -1,13 +1,12 @@
 use crate::settings::SoundTheme;
 use crate::settings::{self, AppSettings};
 use cpal::traits::{DeviceTrait, HostTrait};
-use log::error;
+use log::{debug, error, warn};
 use rodio::OutputStreamBuilder;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::thread;
-use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub enum SoundType {
@@ -20,34 +19,30 @@ fn resolve_sound_path(
     settings: &AppSettings,
     sound_type: SoundType,
 ) -> Option<PathBuf> {
-    if settings.sound_theme == SoundTheme::Custom {
-        let custom_path = match sound_type {
-            SoundType::Start => settings.custom_start_sound.as_deref(),
-            SoundType::Stop => settings.custom_stop_sound.as_deref(),
-        };
-        if let Some(path_str) = custom_path {
-            let path = PathBuf::from(path_str);
-            if path.exists() {
-                return Some(path);
-            }
+    let sound_file = get_sound_path(settings, sound_type);
+    let base_dir = get_sound_base_dir(settings);
+    match base_dir {
+        tauri::path::BaseDirectory::AppData => {
+            crate::portable::resolve_app_data(app, &sound_file).ok()
         }
-        let legacy_file = match sound_type {
-            SoundType::Start => "custom_start.wav",
-            SoundType::Stop => "custom_stop.wav",
-        };
-        return app
-            .path()
-            .resolve(legacy_file, tauri::path::BaseDirectory::AppData)
-            .ok();
+        _ => app.path().resolve(&sound_file, base_dir).ok(),
     }
+}
 
-    let sound_file = match sound_type {
-        SoundType::Start => settings.sound_theme.to_start_path(),
-        SoundType::Stop => settings.sound_theme.to_stop_path(),
-    };
-    app.path()
-        .resolve(&sound_file, tauri::path::BaseDirectory::Resource)
-        .ok()
+fn get_sound_path(settings: &AppSettings, sound_type: SoundType) -> String {
+    match (settings.sound_theme, sound_type) {
+        (SoundTheme::Custom, SoundType::Start) => "custom_start.wav".to_string(),
+        (SoundTheme::Custom, SoundType::Stop) => "custom_stop.wav".to_string(),
+        (_, SoundType::Start) => settings.sound_theme.to_start_path(),
+        (_, SoundType::Stop) => settings.sound_theme.to_stop_path(),
+    }
+}
+
+fn get_sound_base_dir(settings: &AppSettings) -> tauri::path::BaseDirectory {
+    match settings.sound_theme {
+        SoundTheme::Custom => tauri::path::BaseDirectory::AppData,
+        _ => tauri::path::BaseDirectory::Resource,
+    }
 }
 
 pub fn play_feedback_sound(app: &AppHandle, sound_type: SoundType) {
@@ -56,6 +51,7 @@ pub fn play_feedback_sound(app: &AppHandle, sound_type: SoundType) {
         return;
     }
     if is_system_muted() {
+        debug!("System volume is muted, skipping audio feedback");
         return;
     }
     if let Some(path) = resolve_sound_path(app, &settings, sound_type) {
@@ -69,6 +65,7 @@ pub fn play_feedback_sound_blocking(app: &AppHandle, sound_type: SoundType) {
         return;
     }
     if is_system_muted() {
+        debug!("System volume is muted, skipping audio feedback");
         return;
     }
     if let Some(path) = resolve_sound_path(app, &settings, sound_type) {
@@ -102,16 +99,7 @@ fn play_sound_at_path(app: &AppHandle, path: &Path) -> Result<(), Box<dyn std::e
     let settings = settings::get_settings(app);
     let volume = settings.audio_feedback_volume;
     let selected_device = settings.selected_output_device.clone();
-
-    thread::sleep(Duration::from_millis(50));
-
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        play_audio_file(path, selected_device, volume)
-    }))
-    .unwrap_or_else(|_| {
-        error!("Panic occurred while playing sound");
-        Err("Sound playback panicked".into())
-    })
+    play_audio_file(path, selected_device, volume)
 }
 
 #[cfg(target_os = "macos")]
@@ -130,9 +118,14 @@ fn is_system_muted() -> bool {
                 let volume_zero = parts[1].trim().parse::<i32>().unwrap_or(100) == 0;
                 return muted || volume_zero;
             }
+            warn!(
+                "Unexpected osascript output for volume settings: {}",
+                stdout.trim()
+            );
             false
         }
-        Err(_) => {
+        Err(e) => {
+            warn!("Failed to check system volume: {}", e);
             false
         }
     }
@@ -150,6 +143,7 @@ fn play_audio_file(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let stream_builder = if let Some(device_name) = selected_device {
         if device_name == "Default" {
+            debug!("Using default device");
             OutputStreamBuilder::from_default_device()?
         } else {
             let host = crate::audio_toolkit::get_cpal_host();
@@ -166,11 +160,13 @@ fn play_audio_file(
             match found_device {
                 Some(device) => OutputStreamBuilder::from_device(device)?,
                 None => {
+                    warn!("Device '{}' not found, using default device", device_name);
                     OutputStreamBuilder::from_default_device()?
                 }
             }
         }
     } else {
+        debug!("Using default device");
         OutputStreamBuilder::from_default_device()?
     };
 

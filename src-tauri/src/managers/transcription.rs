@@ -1,32 +1,30 @@
-use crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE;
-use crate::audio_toolkit::{apply_custom_words, apply_text_replacements, filter_transcription_output};
+use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
+use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
-use crate::settings::{get_settings, ModelUnloadTimeout};
+use crate::settings::{
+    get_settings, ModelUnloadTimeout, OrtAcceleratorSetting, WhisperAcceleratorSetting,
+};
 use anyhow::Result;
 use log::{debug, error, info, warn};
 use serde::Serialize;
+use specta::Type;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter, Manager};
 use transcribe_rs::{
-    engines::{
-        moonshine::{
-            ModelVariant, MoonshineEngine, MoonshineModelParams, MoonshineStreamingEngine,
-            StreamingModelParams,
-        },
-        parakeet::{
-            ParakeetEngine, ParakeetInferenceParams, ParakeetModelParams, TimestampGranularity,
-        },
-        sense_voice::{
-            Language as SenseVoiceLanguage, SenseVoiceEngine, SenseVoiceInferenceParams,
-            SenseVoiceModelParams,
-        },
-        whisper::{WhisperEngine, WhisperInferenceParams},
+    onnx::{
+        canary::CanaryModel,
+        gigaam::GigaAMModel,
+        moonshine::{MoonshineModel, MoonshineVariant, StreamingModel},
+        parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity},
+        sense_voice::{SenseVoiceModel, SenseVoiceParams},
+        Quantization,
     },
-    TranscriptionEngine,
+    whisper_cpp::{WhisperEngine, WhisperInferenceParams},
+    SpeechModel, TranscribeOptions,
 };
 
 #[derive(Clone, Debug, Serialize)]
@@ -37,211 +35,28 @@ pub struct ModelStateEvent {
     pub error: Option<String>,
 }
 
-#[allow(dead_code)]
 enum LoadedEngine {
     Whisper(WhisperEngine),
-    Parakeet(ParakeetEngine),
-    Moonshine(MoonshineEngine),
-    MoonshineStreaming(MoonshineStreamingEngine),
-    SenseVoice(SenseVoiceEngine),
-    GeminiApi,
-    OpenAiApi,
-    Qwen3,
+    Parakeet(ParakeetModel),
+    Moonshine(MoonshineModel),
+    MoonshineStreaming(StreamingModel),
+    SenseVoice(SenseVoiceModel),
+    GigaAM(GigaAMModel),
+    Canary(CanaryModel),
 }
 
-fn load_engine_with_recovery<F>(
-    app_handle: &AppHandle,
-    model_id: &str,
-    model_name: &str,
-    engine_label: &str,
-    loader: F,
-) -> Result<LoadedEngine>
-where
-    F: FnOnce() -> Result<LoadedEngine> + std::panic::UnwindSafe,
-{
-    match catch_unwind(loader) {
-        Ok(Ok(engine)) => Ok(engine),
-        Ok(Err(e)) => {
-            let _ = app_handle.emit(
-                "model-state-changed",
-                ModelStateEvent {
-                    event_type: "loading_failed".to_string(),
-                    model_id: Some(model_id.to_string()),
-                    model_name: Some(model_name.to_string()),
-                    error: Some(e.to_string()),
-                },
-            );
-            Err(e)
-        }
-        Err(_) => {
-            let error_msg = format!(
-                "{} model loading crashed - model file may be corrupted or incompatible with your system",
-                engine_label
-            );
-            log::error!("{}", error_msg);
-            let _ = app_handle.emit(
-                "model-state-changed",
-                ModelStateEvent {
-                    event_type: "loading_failed".to_string(),
-                    model_id: Some(model_id.to_string()),
-                    model_name: Some(model_name.to_string()),
-                    error: Some(error_msg.clone()),
-                },
-            );
-            Err(anyhow::anyhow!("{}. Try re-downloading the model.", error_msg))
-        }
-    }
+/// RAII guard that clears the `is_loading` flag and notifies waiters on drop.
+/// Ensures the loading flag is always reset, even on early returns or panics.
+pub struct LoadingGuard {
+    is_loading: Arc<Mutex<bool>>,
+    loading_condvar: Arc<Condvar>,
 }
 
-const MAX_CHUNK_SECS: f32 = 25.0;
-const CHUNK_THRESHOLD_SECS: f32 = 28.0;
-const OVERLAP_SAMPLES: usize = 8000;
-const TARGET_RMS: f32 = 0.05;
-const MIN_RMS_FOR_NORMALIZATION: f32 = 0.02;
-
-fn normalize_audio(samples: Vec<f32>) -> Vec<f32> {
-    if samples.is_empty() {
-        return Vec::new();
-    }
-    let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
-    if rms < 1e-6 {
-        return Vec::new();
-    }
-    if rms >= MIN_RMS_FOR_NORMALIZATION {
-        return samples;
-    }
-    let gain = TARGET_RMS / rms;
-    debug!("Normalizing audio: rms={:.4} -> {:.4} (gain={:.1}x)", rms, TARGET_RMS, gain);
-    samples.iter().map(|s| (s * gain).clamp(-1.0, 1.0)).collect()
-}
-
-fn apply_post_processing(text: &str, settings: &crate::settings::AppSettings) -> String {
-    let corrected = if !settings.custom_words.is_empty() {
-        apply_custom_words(text, &settings.custom_words, settings.word_correction_threshold)
-    } else {
-        text.to_string()
-    };
-    let replaced = apply_text_replacements(&corrected, &settings.text_replacements);
-    filter_transcription_output(&replaced)
-}
-
-fn chunk_audio_by_silence(audio: &[f32]) -> Vec<Vec<f32>> {
-    let sample_rate = WHISPER_SAMPLE_RATE as usize;
-    let max_chunk_samples = (MAX_CHUNK_SECS * sample_rate as f32) as usize;
-
-    let duration_secs = audio.len() as f32 / sample_rate as f32;
-    if duration_secs <= CHUNK_THRESHOLD_SECS {
-        return vec![audio.to_vec()];
-    }
-
-    debug!(
-        "Chunking {:.1}s audio into segments of max {:.0}s",
-        duration_secs, MAX_CHUNK_SECS
-    );
-
-    let frame_size = sample_rate / 20;
-    let silence_threshold = 0.005_f32;
-
-    let mut chunks: Vec<Vec<f32>> = Vec::new();
-    let mut chunk_start = 0;
-
-    while chunk_start < audio.len() {
-        let chunk_end = (chunk_start + max_chunk_samples).min(audio.len());
-
-        if chunk_end == audio.len() {
-            chunks.push(audio[chunk_start..chunk_end].to_vec());
-            break;
-        }
-
-        let search_start = chunk_start + (max_chunk_samples * 70 / 100);
-        let search_end = chunk_end;
-
-        let mut best_split = chunk_end;
-        let mut lowest_energy = f32::MAX;
-        let mut found_silence = false;
-
-        let mut pos = search_start;
-        while pos + frame_size <= search_end {
-            let frame = &audio[pos..pos + frame_size];
-            let rms = (frame.iter().map(|s| s * s).sum::<f32>() / frame_size as f32).sqrt();
-
-            if rms < lowest_energy {
-                lowest_energy = rms;
-                best_split = pos + frame_size / 2;
-            }
-
-            if rms < silence_threshold {
-                best_split = pos + frame_size / 2;
-                found_silence = true;
-                break;
-            }
-
-            pos += frame_size;
-        }
-
-        chunks.push(audio[chunk_start..best_split].to_vec());
-
-        let silence_overlap = OVERLAP_SAMPLES / 4;
-        if found_silence {
-            chunk_start = if best_split > silence_overlap {
-                best_split - silence_overlap
-            } else {
-                best_split
-            };
-        } else {
-            chunk_start = if best_split > OVERLAP_SAMPLES {
-                best_split - OVERLAP_SAMPLES
-            } else {
-                best_split
-            };
-        }
-    }
-
-    debug!(
-        "Audio split into {} chunks: [{}]",
-        chunks.len(),
-        chunks
-            .iter()
-            .map(|c| format!("{:.1}s", c.len() as f32 / sample_rate as f32))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-
-    chunks
-}
-
-fn detect_language_from_text(text: &str) -> Option<String> {
-    let lower = text.to_lowercase();
-    let words: Vec<&str> = lower.split_whitespace().collect();
-    if words.len() < 3 {
-        return None;
-    }
-
-    let lang_markers: &[(&str, &[&str])] = &[
-        ("fr", &["le", "la", "les", "de", "du", "des", "un", "une", "est", "et", "que", "qui", "dans", "pour", "avec", "pas", "sur", "ce", "sont", "nous", "vous", "ils", "elle", "mais", "ou", "donc", "c'est", "j'ai", "il", "je", "tu", "on"]),
-        ("de", &["der", "die", "das", "ein", "eine", "ist", "und", "ich", "nicht", "sie", "auf", "mit", "den", "von", "dem", "dass", "wir", "aber", "auch", "noch", "wie"]),
-        ("es", &["el", "la", "los", "las", "de", "del", "un", "una", "es", "en", "que", "por", "con", "para", "como", "pero", "más", "este", "esta", "están", "tiene", "muy"]),
-        ("it", &["il", "lo", "la", "di", "del", "che", "è", "per", "non", "con", "una", "sono", "anche", "come", "più", "questo", "questa", "gli", "dei", "delle"]),
-        ("pt", &["o", "os", "as", "de", "do", "da", "dos", "das", "um", "uma", "que", "não", "com", "para", "como", "mais", "por", "mas", "tem", "está", "são"]),
-        ("nl", &["de", "het", "een", "van", "is", "en", "dat", "niet", "op", "met", "voor", "zijn", "maar", "ook", "nog", "wel", "dit", "die"]),
-    ];
-
-    let mut best_lang = None;
-    let mut best_count = 0_usize;
-    let total = words.len();
-
-    for (lang, markers) in lang_markers {
-        let count = words.iter().filter(|w| markers.contains(w)).count();
-        if count > best_count {
-            best_count = count;
-            best_lang = Some(*lang);
-        }
-    }
-
-    if best_count * 100 / total >= 15 {
-        best_lang.map(|l| l.to_string())
-    } else {
-        None
+impl Drop for LoadingGuard {
+    fn drop(&mut self) {
+        let mut is_loading = self.is_loading.lock().unwrap();
+        *is_loading = false;
+        self.loading_condvar.notify_all();
     }
 }
 
@@ -265,87 +80,74 @@ impl TranscriptionManager {
             model_manager,
             app_handle: app_handle.clone(),
             current_model_id: Arc::new(Mutex::new(None)),
-            last_activity: Arc::new(AtomicU64::new(
-                SystemTime::now()
-                    .duration_since(SystemTime::UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64,
-            )),
+            last_activity: Arc::new(AtomicU64::new(Self::now_ms())),
             shutdown_signal: Arc::new(AtomicBool::new(false)),
             watcher_handle: Arc::new(Mutex::new(None)),
             is_loading: Arc::new(Mutex::new(false)),
             loading_condvar: Arc::new(Condvar::new()),
         };
 
+        // Start the idle watcher
         {
             let app_handle_cloned = app_handle.clone();
             let manager_cloned = manager.clone();
             let shutdown_signal = manager.shutdown_signal.clone();
             let handle = thread::spawn(move || {
-                let mut cached_timeout: Option<u64> = None;
-                let mut cached_is_immediate = false;
-                let mut iteration: u32 = 0;
-
+                debug!("Idle watcher thread started");
                 while !shutdown_signal.load(Ordering::Relaxed) {
-                    thread::sleep(Duration::from_secs(10));
+                    thread::sleep(Duration::from_secs(10)); // Check every 10 seconds
 
+                    // Check shutdown signal again after sleep
                     if shutdown_signal.load(Ordering::Relaxed) {
                         break;
                     }
 
-                    if iteration % 6 == 0 {
-                        let settings = get_settings(&app_handle_cloned);
-                        cached_timeout = settings.model_unload_timeout.to_seconds();
-                        cached_is_immediate =
-                            settings.model_unload_timeout == ModelUnloadTimeout::Immediately;
+                    let settings = get_settings(&app_handle_cloned);
+                    let timeout = settings.model_unload_timeout;
+
+                    // Skip Immediately — that variant is handled by
+                    // maybe_unload_immediately() after each transcription.
+                    // Treating it as 0s here would unload the model mid-recording.
+                    if timeout == ModelUnloadTimeout::Immediately {
+                        continue;
                     }
-                    iteration = iteration.wrapping_add(1);
 
-                    if let Some(limit_seconds) = cached_timeout {
-                        if cached_is_immediate {
-                            continue;
-                        }
+                    // While recording, keep the idle timer fresh so the
+                    // model is never unloaded mid-session.
+                    let is_recording = app_handle_cloned
+                        .try_state::<Arc<AudioRecordingManager>>()
+                        .map_or(false, |a| a.is_recording());
+                    if is_recording {
+                        manager_cloned.touch_activity();
+                        continue;
+                    }
 
+                    if let Some(limit_seconds) = timeout.to_seconds() {
                         let last = manager_cloned.last_activity.load(Ordering::Relaxed);
-                        let now_ms = SystemTime::now()
-                            .duration_since(SystemTime::UNIX_EPOCH)
-                            .unwrap()
-                            .as_millis() as u64;
+                        let now_ms = TranscriptionManager::now_ms();
+                        let idle_ms = now_ms.saturating_sub(last);
+                        let limit_ms = limit_seconds * 1000;
 
-                        if now_ms.saturating_sub(last) > limit_seconds * 1000 {
-                            let is_recording = app_handle_cloned
-                                .try_state::<Arc<crate::managers::audio::AudioRecordingManager>>()
-                                .map_or(false, |a: tauri::State<'_, Arc<crate::managers::audio::AudioRecordingManager>>| a.is_recording());
-                            if is_recording {
-                                manager_cloned.last_activity.store(
-                                    SystemTime::now()
-                                        .duration_since(SystemTime::UNIX_EPOCH)
-                                        .unwrap()
-                                        .as_millis() as u64,
-                                    std::sync::atomic::Ordering::Relaxed,
-                                );
-                                continue;
-                            }
-
+                        if idle_ms > limit_ms {
+                            // idle -> unload
                             if manager_cloned.is_model_loaded() {
                                 let unload_start = std::time::Instant::now();
-                                debug!("Starting to unload model due to inactivity");
-
-                                if let Ok(()) = manager_cloned.unload_model() {
-                                    let _ = app_handle_cloned.emit(
-                                        "model-state-changed",
-                                        ModelStateEvent {
-                                            event_type: "unloaded".to_string(),
-                                            model_id: None,
-                                            model_name: None,
-                                            error: None,
-                                        },
-                                    );
-                                    let unload_duration = unload_start.elapsed();
-                                    debug!(
-                                        "Model unloaded due to inactivity (took {}ms)",
-                                        unload_duration.as_millis()
-                                    );
+                                info!(
+                                    "Model idle for {}s (limit: {}s), unloading",
+                                    idle_ms / 1000,
+                                    limit_seconds
+                                );
+                                match manager_cloned.unload_model() {
+                                    Ok(()) => {
+                                        let unload_duration = unload_start.elapsed();
+                                        info!(
+                                            "Model unloaded due to inactivity (took {}ms)",
+                                            unload_duration.as_millis()
+                                        );
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to unload idle model: {}", e);
+                                    }
                                 }
                             }
                         }
@@ -359,6 +161,7 @@ impl TranscriptionManager {
         Ok(manager)
     }
 
+    /// Lock the engine mutex, recovering from poison if a previous transcription panicked.
     fn lock_engine(&self) -> MutexGuard<'_, Option<LoadedEngine>> {
         self.engine.lock().unwrap_or_else(|poisoned| {
             warn!("Engine mutex was poisoned by a previous panic, recovering");
@@ -371,24 +174,29 @@ impl TranscriptionManager {
         engine.is_some()
     }
 
+    /// Atomically check whether a model load is in progress and, if not, mark
+    /// one as starting. Returns a [`LoadingGuard`] whose [`Drop`] impl will
+    /// clear the flag and wake waiters. Returns `None` if a load is already in
+    /// progress.
+    pub fn try_start_loading(&self) -> Option<LoadingGuard> {
+        let mut is_loading = self.is_loading.lock().unwrap();
+        if *is_loading {
+            return None;
+        }
+        *is_loading = true;
+        Some(LoadingGuard {
+            is_loading: self.is_loading.clone(),
+            loading_condvar: self.loading_condvar.clone(),
+        })
+    }
+
     pub fn unload_model(&self) -> Result<()> {
         let unload_start = std::time::Instant::now();
         debug!("Starting to unload model");
 
         {
             let mut engine = self.lock_engine();
-            if let Some(ref mut loaded_engine) = *engine {
-                match loaded_engine {
-                    LoadedEngine::Whisper(ref mut e) => e.unload_model(),
-                    LoadedEngine::Parakeet(ref mut e) => e.unload_model(),
-                    LoadedEngine::Moonshine(ref mut e) => e.unload_model(),
-                    LoadedEngine::MoonshineStreaming(ref mut e) => e.unload_model(),
-                    LoadedEngine::SenseVoice(ref mut e) => e.unload_model(),
-                    LoadedEngine::GeminiApi => {}
-                    LoadedEngine::OpenAiApi => {}
-                    LoadedEngine::Qwen3 => {}
-                }
-            }
+            // Dropping the engine frees all resources
             *engine = None;
         }
         {
@@ -396,6 +204,7 @@ impl TranscriptionManager {
             *current_model = None;
         }
 
+        // Emit unloaded event
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {
@@ -414,6 +223,19 @@ impl TranscriptionManager {
         Ok(())
     }
 
+    fn now_ms() -> u64 {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64
+    }
+
+    /// Reset the idle timer to now.
+    fn touch_activity(&self) {
+        self.last_activity.store(Self::now_ms(), Ordering::Relaxed);
+    }
+
+    /// Unloads the model immediately if the setting is enabled and the model is loaded
     pub fn maybe_unload_immediately(&self, context: &str) {
         let settings = get_settings(&self.app_handle);
         if settings.model_unload_timeout == ModelUnloadTimeout::Immediately
@@ -430,6 +252,7 @@ impl TranscriptionManager {
         let load_start = std::time::Instant::now();
         debug!("Starting to load model: {}", model_id);
 
+        // Emit loading started event
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {
@@ -459,139 +282,94 @@ impl TranscriptionManager {
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        let model_path = if matches!(model_info.engine_type, EngineType::GeminiApi | EngineType::OpenAiApi) {
-            std::path::PathBuf::new()
-        } else {
-            self.model_manager.get_model_path(model_id)?
+        let model_path = self.model_manager.get_model_path(model_id)?;
+
+        // Create appropriate engine based on model type
+        let emit_loading_failed = |error_msg: &str| {
+            let _ = self.app_handle.emit(
+                "model-state-changed",
+                ModelStateEvent {
+                    event_type: "loading_failed".to_string(),
+                    model_id: Some(model_id.to_string()),
+                    model_name: Some(model_info.name.clone()),
+                    error: Some(error_msg.to_string()),
+                },
+            );
         };
 
         let loaded_engine = match model_info.engine_type {
             EngineType::Whisper => {
-                let app_handle = &self.app_handle;
-                let model_id_str = model_id.to_string();
-                let model_name_str = model_info.name.clone();
-                let mp = model_path.clone();
-                load_engine_with_recovery(
-                    app_handle, &model_id_str, &model_name_str, "Whisper",
-                    AssertUnwindSafe(|| {
-                        let mut engine = WhisperEngine::new();
-                        let settings = get_settings(app_handle);
-                        let whisper_params = transcribe_rs::engines::whisper::WhisperModelParams {
-                            use_gpu: settings.whisper_use_gpu,
-                            ..Default::default()
-                        };
-                        engine.load_model_with_params(&mp, whisper_params).map_err(|e| {
-                            anyhow::anyhow!("Failed to load whisper model {}: {}", model_id_str, e)
-                        })?;
-                        Ok(LoadedEngine::Whisper(engine))
-                    }),
-                )?
+                let engine = WhisperEngine::load(&model_path).map_err(|e| {
+                    let error_msg = format!("Failed to load whisper model {}: {}", model_id, e);
+                    emit_loading_failed(&error_msg);
+                    anyhow::anyhow!(error_msg)
+                })?;
+                LoadedEngine::Whisper(engine)
             }
             EngineType::Parakeet => {
-                let model_id_str = model_id.to_string();
-                let mp = model_path.clone();
-                load_engine_with_recovery(
-                    &self.app_handle, &model_id_str, &model_info.name, "Parakeet",
-                    AssertUnwindSafe(|| {
-                        let mut engine = ParakeetEngine::new();
-                        engine.load_model_with_params(&mp, ParakeetModelParams::int8()).map_err(|e| {
-                            anyhow::anyhow!("Failed to load parakeet model {}: {}", model_id_str, e)
-                        })?;
-                        Ok(LoadedEngine::Parakeet(engine))
-                    }),
-                )?
+                let engine =
+                    ParakeetModel::load(&model_path, &Quantization::Int8).map_err(|e| {
+                        let error_msg =
+                            format!("Failed to load parakeet model {}: {}", model_id, e);
+                        emit_loading_failed(&error_msg);
+                        anyhow::anyhow!(error_msg)
+                    })?;
+                LoadedEngine::Parakeet(engine)
             }
             EngineType::Moonshine => {
-                let model_id_str = model_id.to_string();
-                let mp = model_path.clone();
-                load_engine_with_recovery(
-                    &self.app_handle, &model_id_str, &model_info.name, "Moonshine",
-                    AssertUnwindSafe(|| {
-                        let mut engine = MoonshineEngine::new();
-                        engine.load_model_with_params(&mp, MoonshineModelParams::variant(ModelVariant::Base)).map_err(|e| {
-                            anyhow::anyhow!("Failed to load moonshine model {}: {}", model_id_str, e)
-                        })?;
-                        Ok(LoadedEngine::Moonshine(engine))
-                    }),
-                )?
+                let engine = MoonshineModel::load(
+                    &model_path,
+                    MoonshineVariant::Base,
+                    &Quantization::default(),
+                )
+                .map_err(|e| {
+                    let error_msg = format!("Failed to load moonshine model {}: {}", model_id, e);
+                    emit_loading_failed(&error_msg);
+                    anyhow::anyhow!(error_msg)
+                })?;
+                LoadedEngine::Moonshine(engine)
             }
             EngineType::MoonshineStreaming => {
-                let model_id_str = model_id.to_string();
-                let mp = model_path.clone();
-                load_engine_with_recovery(
-                    &self.app_handle, &model_id_str, &model_info.name, "Moonshine streaming",
-                    AssertUnwindSafe(|| {
-                        let mut engine = MoonshineStreamingEngine::new();
-                        engine.load_model_with_params(&mp, StreamingModelParams::default()).map_err(|e| {
-                            anyhow::anyhow!("Failed to load moonshine streaming model {}: {}", model_id_str, e)
-                        })?;
-                        Ok(LoadedEngine::MoonshineStreaming(engine))
-                    }),
-                )?
+                let engine = StreamingModel::load(&model_path, 0, &Quantization::default())
+                    .map_err(|e| {
+                        let error_msg = format!(
+                            "Failed to load moonshine streaming model {}: {}",
+                            model_id, e
+                        );
+                        emit_loading_failed(&error_msg);
+                        anyhow::anyhow!(error_msg)
+                    })?;
+                LoadedEngine::MoonshineStreaming(engine)
             }
             EngineType::SenseVoice => {
-                let model_id_str = model_id.to_string();
-                let mp = model_path.clone();
-                load_engine_with_recovery(
-                    &self.app_handle, &model_id_str, &model_info.name, "SenseVoice",
-                    AssertUnwindSafe(|| {
-                        let mut engine = SenseVoiceEngine::new();
-                        engine.load_model_with_params(&mp, SenseVoiceModelParams::int8()).map_err(|e| {
-                            anyhow::anyhow!("Failed to load SenseVoice model {}: {}", model_id_str, e)
-                        })?;
-                        Ok(LoadedEngine::SenseVoice(engine))
-                    }),
-                )?
+                let engine =
+                    SenseVoiceModel::load(&model_path, &Quantization::Int8).map_err(|e| {
+                        let error_msg =
+                            format!("Failed to load SenseVoice model {}: {}", model_id, e);
+                        emit_loading_failed(&error_msg);
+                        anyhow::anyhow!(error_msg)
+                    })?;
+                LoadedEngine::SenseVoice(engine)
             }
-            EngineType::GeminiApi => {
-                let settings = get_settings(&self.app_handle);
-                if settings.gemini_api_key.is_none()
-                    || settings
-                        .gemini_api_key
-                        .as_ref()
-                        .map_or(true, |k| k.is_empty())
-                {
-                    let error_msg = "Gemini API key not configured";
-                    let _ = self.app_handle.emit(
-                        "model-state-changed",
-                        ModelStateEvent {
-                            event_type: "loading_failed".to_string(),
-                            model_id: Some(model_id.to_string()),
-                            model_name: Some(model_info.name.clone()),
-                            error: Some(error_msg.to_string()),
-                        },
-                    );
-                    return Err(anyhow::anyhow!(error_msg));
-                }
-                LoadedEngine::GeminiApi
+            EngineType::GigaAM => {
+                let engine = GigaAMModel::load(&model_path, &Quantization::Int8).map_err(|e| {
+                    let error_msg = format!("Failed to load gigaam model {}: {}", model_id, e);
+                    emit_loading_failed(&error_msg);
+                    anyhow::anyhow!(error_msg)
+                })?;
+                LoadedEngine::GigaAM(engine)
             }
-            EngineType::OpenAiApi => {
-                let settings = get_settings(&self.app_handle);
-                if settings.openai_api_key.is_none()
-                    || settings
-                        .openai_api_key
-                        .as_ref()
-                        .map_or(true, |k| k.is_empty())
-                {
-                    let error_msg = "OpenAI API key not configured";
-                    let _ = self.app_handle.emit(
-                        "model-state-changed",
-                        ModelStateEvent {
-                            event_type: "loading_failed".to_string(),
-                            model_id: Some(model_id.to_string()),
-                            model_name: Some(model_info.name.clone()),
-                            error: Some(error_msg.to_string()),
-                        },
-                    );
-                    return Err(anyhow::anyhow!(error_msg));
-                }
-                LoadedEngine::OpenAiApi
-            }
-            EngineType::Qwen3 => {
-                return Err(anyhow::anyhow!("Qwen3-ASR engine requires a newer version of transcribe-rs. Please update to use this engine."));
+            EngineType::Canary => {
+                let engine = CanaryModel::load(&model_path, &Quantization::Int8).map_err(|e| {
+                    let error_msg = format!("Failed to load canary model {}: {}", model_id, e);
+                    emit_loading_failed(&error_msg);
+                    anyhow::anyhow!(error_msg)
+                })?;
+                LoadedEngine::Canary(engine)
             }
         };
 
+        // Update the current engine and model ID
         {
             let mut engine = self.lock_engine();
             *engine = Some(loaded_engine);
@@ -601,6 +379,10 @@ impl TranscriptionManager {
             *current_model = Some(model_id.to_string());
         }
 
+        // Reset idle timer so the watcher doesn't immediately unload a just-loaded model
+        self.touch_activity();
+
+        // Emit loading completed event
         let _ = self.app_handle.emit(
             "model-state-changed",
             ModelStateEvent {
@@ -620,6 +402,7 @@ impl TranscriptionManager {
         Ok(())
     }
 
+    /// Kicks off the model loading in a background thread if it's not already loaded
     pub fn initiate_model_load(&self) {
         let mut is_loading = self.is_loading.lock().unwrap();
         if *is_loading || self.is_model_loaded() {
@@ -651,14 +434,16 @@ impl TranscriptionManager {
             .map(|info| info.name)
     }
 
-    pub fn transcribe(&self, audio: Vec<f32>, language_override: Option<String>) -> Result<String> {
-        self.last_activity.store(
-            SystemTime::now()
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .unwrap()
-                .as_millis() as u64,
-            Ordering::Relaxed,
-        );
+    pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
+        #[cfg(debug_assertions)]
+        if std::env::var("HANDY_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
+            return Err(anyhow::anyhow!(
+                "Simulated transcription failure (HANDY_FORCE_TRANSCRIPTION_FAILURE)"
+            ));
+        }
+
+        // Update last activity timestamp
+        self.touch_activity();
 
         let st = std::time::Instant::now();
 
@@ -670,72 +455,9 @@ impl TranscriptionManager {
             return Ok(String::new());
         }
 
-        let audio = normalize_audio(audio);
-
-        if audio.is_empty() {
-            debug!("Audio is near-silence after normalization, skipping transcription");
-            self.maybe_unload_immediately("near-silence audio");
-            return Ok(String::new());
-        }
-
-        let chunks = chunk_audio_by_silence(&audio);
-        if chunks.len() > 1 {
-            info!(
-                "Long audio ({:.1}s) split into {} chunks for transcription",
-                audio.len() as f32 / WHISPER_SAMPLE_RATE as f32,
-                chunks.len()
-            );
-            let mut all_results = Vec::new();
-            let mut forced_language: Option<String> = language_override.clone();
-            let total_chunks = chunks.len();
-            for (i, chunk) in chunks.into_iter().enumerate() {
-                let chunk_duration = chunk.len() as f32 / WHISPER_SAMPLE_RATE as f32;
-                debug!("Transcribing chunk {}/{} ({:.1}s)", i + 1, total_chunks, chunk_duration);
-                match self.transcribe_single(chunk, forced_language.clone()) {
-                    Ok(text) if !text.is_empty() => {
-                        use crate::audio_toolkit::text::filter_transcription_output;
-                        let filtered = filter_transcription_output(&text);
-                        if filtered.is_empty() {
-                            debug!("Chunk {} discarded as hallucinated noise: {:?}", i + 1, text);
-                        } else {
-                        if i == 0 && forced_language.is_none() {
-                            let settings = get_settings(&self.app_handle);
-                            if settings.selected_language == "auto"
-                                || settings.selected_language == "os-input"
-                            {
-                                if let Some(lang) = detect_language_from_text(&text) {
-                                    info!("Auto-detected language '{}' from first chunk, forcing for remaining chunks", lang);
-                                    forced_language = Some(lang);
-                                }
-                            }
-                        }
-                        all_results.push(text);
-                        }
-                    }
-                    Ok(_) => debug!("Chunk {} returned empty result", i + 1),
-                    Err(e) => warn!("Chunk {} transcription failed: {}", i + 1, e),
-                }
-            }
-            let final_result = all_results.join(" ");
-            let settings = get_settings(&self.app_handle);
-            let final_result = apply_post_processing(&final_result, &settings);
-            info!(
-                "Chunked transcription completed in {}ms: {} chunks, {} chars",
-                st.elapsed().as_millis(),
-                all_results.len(),
-                final_result.len()
-            );
-            self.maybe_unload_immediately("chunked transcription");
-            return Ok(final_result);
-        }
-
-        self.transcribe_single(audio, language_override)
-    }
-
-    fn transcribe_single(&self, audio: Vec<f32>, language_override: Option<String>) -> Result<String> {
-        let st = std::time::Instant::now();
-
+        // Check if model is loaded, if not try to load it
         {
+            // If the model is loading, wait for it to complete.
             let mut is_loading = self.is_loading.lock().unwrap();
             while *is_loading {
                 is_loading = self.loading_condvar.wait(is_loading).unwrap();
@@ -747,92 +469,45 @@ impl TranscriptionManager {
             }
         }
 
-        let mut settings = get_settings(&self.app_handle);
+        // Get current settings for configuration
+        let settings = get_settings(&self.app_handle);
 
-        if settings.selected_language == "os-input" {
-            settings.selected_language = crate::commands::get_language_from_os_input()
-                .unwrap_or_else(|| "auto".to_string());
-            debug!("Resolved OS input language to: {}", settings.selected_language);
-        }
+        // Validate selected language against the model's supported languages.
+        // If the language isn't supported, fall back to "auto" to prevent errors.
+        let validated_language = if settings.selected_language == "auto" {
+            "auto".to_string()
+        } else {
+            let is_supported = self
+                .model_manager
+                .get_model_info(&settings.selected_model)
+                .map(|info| {
+                    info.supported_languages.is_empty()
+                        || info
+                            .supported_languages
+                            .contains(&settings.selected_language)
+                })
+                .unwrap_or(true);
 
-        if let Some(ref lang) = language_override {
-            debug!("Using language override: {}", lang);
-            settings.selected_language = lang.clone();
-        }
-
-        {
-            let engine_guard = self.lock_engine();
-            if let Some(LoadedEngine::GeminiApi) = engine_guard.as_ref() {
-                drop(engine_guard);
-                let api_key = settings
-                    .gemini_api_key
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("Gemini API key not configured"))?
-                    .clone();
-                let gemini_model = settings.gemini_model.clone();
-
-                let result = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(
-                        crate::gemini_client::transcribe_audio(&api_key, &gemini_model, &audio),
-                    )
-                })?;
-
-                let final_result = apply_post_processing(&result, &settings);
-
-                let et = std::time::Instant::now();
-                info!(
-                    "Gemini transcription completed in {}ms",
-                    (et - st).as_millis()
+            if is_supported {
+                settings.selected_language.clone()
+            } else {
+                warn!(
+                    "Language '{}' not supported by current model, falling back to auto-detect",
+                    settings.selected_language
                 );
-
-                self.maybe_unload_immediately("gemini transcription");
-                return Ok(final_result);
+                "auto".to_string()
             }
-        }
+        };
 
-        {
-            let engine_guard = self.lock_engine();
-            if let Some(LoadedEngine::OpenAiApi) = engine_guard.as_ref() {
-                drop(engine_guard);
-                let api_key = settings
-                    .openai_api_key
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("OpenAI API key not configured"))?
-                    .clone();
-                let openai_model = settings.openai_model.clone();
-                let language = if settings.selected_language == "auto" {
-                    None
-                } else {
-                    Some(settings.selected_language.clone())
-                };
-
-                let result = tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(
-                        crate::openai_client::transcribe_audio(
-                            &api_key,
-                            &openai_model,
-                            &audio,
-                            language.as_deref(),
-                        ),
-                    )
-                })?;
-
-                let final_result = apply_post_processing(&result, &settings);
-
-                let et = std::time::Instant::now();
-                info!(
-                    "OpenAI transcription completed in {}ms",
-                    (et - st).as_millis()
-                );
-
-                self.maybe_unload_immediately("openai transcription");
-                return Ok(final_result);
-            }
-        }
-
+        // Perform transcription with the appropriate engine.
+        // We use catch_unwind to prevent engine panics from poisoning the mutex,
+        // which would make the app hang indefinitely on subsequent operations.
         let result = {
             let mut engine_guard = self.lock_engine();
 
+            // Take the engine out so we own it during transcription.
+            // If the engine panics, we simply don't put it back (effectively unloading it)
+            // instead of poisoning the mutex.
             let mut engine = match engine_guard.take() {
                 Some(e) => e,
                 None => {
@@ -842,110 +517,95 @@ impl TranscriptionManager {
                 }
             };
 
+            // Release the lock before transcribing — no mutex held during the engine call
             drop(engine_guard);
-
-            let current_model_id = self.get_current_model();
-            let model_manager = &self.model_manager;
 
             let transcribe_result = catch_unwind(AssertUnwindSafe(
                 || -> Result<transcribe_rs::TranscriptionResult> {
                     match &mut engine {
                         LoadedEngine::Whisper(whisper_engine) => {
-                            let mut whisper_language = if settings.selected_language == "auto" {
+                            let whisper_language = if validated_language == "auto" {
                                 None
                             } else {
-                                let normalized = if settings.selected_language == "zh-Hans"
-                                    || settings.selected_language == "zh-Hant"
+                                let normalized = if validated_language == "zh-Hans"
+                                    || validated_language == "zh-Hant"
                                 {
                                     "zh".to_string()
                                 } else {
-                                    settings.selected_language.clone()
+                                    validated_language.clone()
                                 };
                                 Some(normalized)
                             };
 
-                            if whisper_language.is_none() {
-                                if let Some(model_id) = current_model_id.as_ref() {
-                                    if let Some(info) = model_manager.get_model_info(model_id) {
-                                        if info.supported_languages.len() == 1 {
-                                            whisper_language = Some(info.supported_languages[0].clone());
-                                        }
-                                    }
-                                }
-                            }
-
                             let params = WhisperInferenceParams {
                                 language: whisper_language,
                                 translate: settings.translate_to_english,
-                                initial_prompt: {
-                                    let mut prompt_parts = Vec::new();
-                                    if let Some(ref p) = settings.whisper_initial_prompt {
-                                        if !p.trim().is_empty() {
-                                            prompt_parts.push(p.clone());
-                                        }
-                                    }
-                                    if !settings.custom_words.is_empty() {
-                                        prompt_parts.push(settings.custom_words.join(", "));
-                                    }
-                                    if prompt_parts.is_empty() {
-                                        None
-                                    } else {
-                                        Some(prompt_parts.join(". "))
-                                    }
+                                initial_prompt: if settings.custom_words.is_empty() {
+                                    None
+                                } else {
+                                    Some(settings.custom_words.join(", "))
                                 },
                                 ..Default::default()
                             };
 
                             whisper_engine
-                                .transcribe_samples(audio, Some(params))
+                                .transcribe_with(&audio, &params)
                                 .map_err(|e| anyhow::anyhow!("Whisper transcription failed: {}", e))
                         }
                         LoadedEngine::Parakeet(parakeet_engine) => {
-                            let params = ParakeetInferenceParams {
-                                timestamp_granularity: TimestampGranularity::Segment,
+                            let params = ParakeetParams {
+                                timestamp_granularity: Some(TimestampGranularity::Segment),
                                 ..Default::default()
                             };
                             parakeet_engine
-                                .transcribe_samples(audio, Some(params))
+                                .transcribe_with(&audio, &params)
                                 .map_err(|e| {
                                     anyhow::anyhow!("Parakeet transcription failed: {}", e)
                                 })
                         }
                         LoadedEngine::Moonshine(moonshine_engine) => moonshine_engine
-                            .transcribe_samples(audio, None)
+                            .transcribe(&audio, &TranscribeOptions::default())
                             .map_err(|e| anyhow::anyhow!("Moonshine transcription failed: {}", e)),
                         LoadedEngine::MoonshineStreaming(streaming_engine) => streaming_engine
-                            .transcribe_samples(audio, None)
+                            .transcribe(&audio, &TranscribeOptions::default())
                             .map_err(|e| {
                                 anyhow::anyhow!("Moonshine streaming transcription failed: {}", e)
                             }),
                         LoadedEngine::SenseVoice(sense_voice_engine) => {
-                            let language = match settings.selected_language.as_str() {
-                                "zh" | "zh-Hans" | "zh-Hant" => SenseVoiceLanguage::Chinese,
-                                "en" => SenseVoiceLanguage::English,
-                                "ja" => SenseVoiceLanguage::Japanese,
-                                "ko" => SenseVoiceLanguage::Korean,
-                                "yue" => SenseVoiceLanguage::Cantonese,
-                                _ => SenseVoiceLanguage::Auto,
+                            let language = match validated_language.as_str() {
+                                "zh" | "zh-Hans" | "zh-Hant" => Some("zh".to_string()),
+                                "en" => Some("en".to_string()),
+                                "ja" => Some("ja".to_string()),
+                                "ko" => Some("ko".to_string()),
+                                "yue" => Some("yue".to_string()),
+                                _ => None,
                             };
-                            let params = SenseVoiceInferenceParams {
+                            let params = SenseVoiceParams {
                                 language,
-                                use_itn: true,
+                                use_itn: Some(true),
                             };
                             sense_voice_engine
-                                .transcribe_samples(audio, Some(params))
+                                .transcribe_with(&audio, &params)
                                 .map_err(|e| {
                                     anyhow::anyhow!("SenseVoice transcription failed: {}", e)
                                 })
                         }
-                        LoadedEngine::GeminiApi => {
-                            unreachable!("GeminiApi handled before catch_unwind")
-                        }
-                        LoadedEngine::OpenAiApi => {
-                            unreachable!("OpenAiApi handled before catch_unwind")
-                        }
-                        LoadedEngine::Qwen3 => {
-                            unreachable!("Qwen3 not yet loaded")
+                        LoadedEngine::GigaAM(gigaam_engine) => gigaam_engine
+                            .transcribe(&audio, &TranscribeOptions::default())
+                            .map_err(|e| anyhow::anyhow!("GigaAM transcription failed: {}", e)),
+                        LoadedEngine::Canary(canary_engine) => {
+                            let lang = if validated_language == "auto" {
+                                None
+                            } else {
+                                Some(validated_language.clone())
+                            };
+                            let options = TranscribeOptions {
+                                language: lang,
+                                translate: settings.translate_to_english,
+                            };
+                            canary_engine
+                                .transcribe(&audio, &options)
+                                .map_err(|e| anyhow::anyhow!("Canary transcription failed: {}", e))
                         }
                     }
                 },
@@ -953,11 +613,14 @@ impl TranscriptionManager {
 
             match transcribe_result {
                 Ok(inner_result) => {
+                    // Success or normal error — put the engine back
                     let mut engine_guard = self.lock_engine();
                     *engine_guard = Some(engine);
                     inner_result?
                 }
                 Err(panic_payload) => {
+                    // Engine panicked — do NOT put it back (it's in an unknown state).
+                    // The engine is dropped here, effectively unloading it.
                     let panic_msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
                         s.to_string()
                     } else if let Some(s) = panic_payload.downcast_ref::<String>() {
@@ -970,6 +633,7 @@ impl TranscriptionManager {
                         panic_msg
                     );
 
+                    // Clear the model ID so it will be reloaded on next attempt
                     {
                         let mut current_model = self
                             .current_model_id
@@ -996,7 +660,30 @@ impl TranscriptionManager {
             }
         };
 
-        let filtered_result = apply_post_processing(&result.text, &settings);
+        // Apply word correction if custom words are configured.
+        // Skip for Whisper models since custom words are already passed as initial_prompt.
+        let is_whisper = self
+            .model_manager
+            .get_model_info(&settings.selected_model)
+            .map(|info| matches!(info.engine_type, EngineType::Whisper))
+            .unwrap_or(false);
+
+        let corrected_result = if !settings.custom_words.is_empty() && !is_whisper {
+            apply_custom_words(
+                &result.text,
+                &settings.custom_words,
+                settings.word_correction_threshold,
+            )
+        } else {
+            result.text
+        };
+
+        // Filter out filler words and hallucinations
+        let filtered_result = filter_transcription_output(
+            &corrected_result,
+            &settings.app_language,
+            &settings.custom_filler_words,
+        );
 
         let et = std::time::Instant::now();
         let translation_note = if settings.translate_to_english {
@@ -1024,74 +711,106 @@ impl TranscriptionManager {
     }
 }
 
-pub fn run_transcription_hook(app_handle: &AppHandle, text: &str) {
-    use tauri::Manager;
+/// Apply the user's accelerator preferences to the transcribe-rs global atomics.
+/// Called on startup and whenever the user changes the setting.
+pub fn apply_accelerator_settings(app: &tauri::AppHandle) {
+    use transcribe_rs::accel;
 
-    let data_dir = match app_handle.path().app_data_dir() {
-        Ok(d) => d,
-        Err(_) => return,
+    let settings = get_settings(app);
+
+    let whisper_pref = match settings.whisper_accelerator {
+        WhisperAcceleratorSetting::Auto => accel::WhisperAccelerator::Auto,
+        WhisperAcceleratorSetting::Cpu => accel::WhisperAccelerator::CpuOnly,
+        WhisperAcceleratorSetting::Gpu => accel::WhisperAccelerator::Gpu,
     };
-
-    let hook_path = data_dir.join("hooks").join("transcription");
-
-    #[cfg(target_os = "windows")]
-    let hook_path = {
-        if hook_path.exists() {
-            hook_path
+    accel::set_whisper_accelerator(whisper_pref);
+    accel::set_whisper_gpu_device(settings.whisper_gpu_device);
+    info!(
+        "Whisper accelerator set to: {}, gpu_device: {}",
+        whisper_pref,
+        if settings.whisper_gpu_device == accel::GPU_DEVICE_AUTO {
+            "auto".to_string()
         } else {
-            let extensions = ["exe", "bat", "cmd"];
-            extensions
-                .iter()
-                .map(|ext| hook_path.with_extension(ext))
-                .find(|p| p.exists())
-                .unwrap_or(hook_path)
+            settings.whisper_gpu_device.to_string()
         }
+    );
+
+    let ort_pref = match settings.ort_accelerator {
+        OrtAcceleratorSetting::Auto => accel::OrtAccelerator::Auto,
+        OrtAcceleratorSetting::Cpu => accel::OrtAccelerator::CpuOnly,
+        OrtAcceleratorSetting::Cuda => accel::OrtAccelerator::Cuda,
+        OrtAcceleratorSetting::DirectMl => accel::OrtAccelerator::DirectMl,
+        OrtAcceleratorSetting::Rocm => accel::OrtAccelerator::Rocm,
     };
+    accel::set_ort_accelerator(ort_pref);
+    info!("ORT accelerator set to: {}", ort_pref);
+}
 
-    if !hook_path.exists() {
-        return;
+#[derive(Serialize, Clone, Debug, Type)]
+pub struct GpuDeviceOption {
+    pub id: i32,
+    pub name: String,
+    pub total_vram_mb: usize,
+}
+
+static GPU_DEVICES: OnceLock<Vec<GpuDeviceOption>> = OnceLock::new();
+
+fn cached_gpu_devices() -> &'static [GpuDeviceOption] {
+    use transcribe_rs::whisper_cpp::gpu::list_gpu_devices;
+
+    GPU_DEVICES.get_or_init(|| {
+        list_gpu_devices()
+            .into_iter()
+            .map(|d| GpuDeviceOption {
+                id: d.id,
+                name: d.name,
+                total_vram_mb: d.total_vram / (1024 * 1024),
+            })
+            .collect()
+    })
+}
+
+#[derive(Serialize, Clone, Debug, Type)]
+pub struct AvailableAccelerators {
+    pub whisper: Vec<String>,
+    pub ort: Vec<String>,
+    pub gpu_devices: Vec<GpuDeviceOption>,
+}
+
+/// Return which accelerators are compiled into this build.
+pub fn get_available_accelerators() -> AvailableAccelerators {
+    use transcribe_rs::accel::OrtAccelerator;
+
+    let ort_options: Vec<String> = OrtAccelerator::available()
+        .into_iter()
+        .map(|a| a.to_string())
+        .collect();
+
+    let whisper_options = vec!["auto".to_string(), "cpu".to_string(), "gpu".to_string()];
+
+    AvailableAccelerators {
+        whisper: whisper_options,
+        ort: ort_options,
+        gpu_devices: cached_gpu_devices().to_vec(),
     }
-
-    let text = text.to_string();
-    let hook = hook_path.clone();
-    std::thread::spawn(move || {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-
-        let mut child = match Command::new(&hook)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Failed to run transcription hook {:?}: {}", hook, e);
-                return;
-            }
-        };
-
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(text.as_bytes());
-        }
-
-        match child.wait() {
-            Ok(status) => {
-                if !status.success() {
-                    warn!("Transcription hook exited with status: {}", status);
-                }
-            }
-            Err(e) => warn!("Failed to wait for transcription hook: {}", e),
-        }
-    });
 }
 
 impl Drop for TranscriptionManager {
     fn drop(&mut self) {
-        debug!("Shutting down TranscriptionManager");
+        // Skip shutdown unless this is the very last clone. TranscriptionManager
+        // is cloned by initiate_model_load() and the watcher thread — those
+        // clones dropping must not kill the watcher. The watcher thread holds
+        // its own clone, so engine's strong_count is always >= 2 while the
+        // watcher is alive. When it reaches 1, only this instance remains
+        // and we can safely shut down.
+        if Arc::strong_count(&self.engine) > 1 {
+            return;
+        }
 
+        // Signal the watcher thread to shutdown
         self.shutdown_signal.store(true, Ordering::Relaxed);
 
+        // Wait for the thread to finish gracefully
         if let Some(handle) = self.watcher_handle.lock().unwrap().take() {
             if let Err(e) = handle.join() {
                 warn!("Failed to join idle watcher thread: {:?}", e);

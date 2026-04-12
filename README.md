@@ -1,8 +1,8 @@
 # Phonara
 
-A free, open-source, cross-platform speech-to-text desktop application.
+**A free, open-source, cross-platform speech-to-text desktop application that works completely offline.**
 
-Press a shortcut, speak, and your words appear in any text field. Everything runs locally on your machine.
+Press a shortcut, speak, and your words appear in any text field. Everything runs locally on your machine without sending any information to the cloud.
 
 ## How It Works
 
@@ -139,6 +139,47 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 | [cjpais/Handy](https://github.com/cjpais/Handy) | `82297fa` |
 | [Melvynx/Parler](https://github.com/Melvynx/Parler) | `daff123` |
 
+### How to Contribute
+
+1. **Check existing issues** at [github.com/cjpais/Handy/issues](https://github.com/cjpais/Handy/issues)
+2. **Fork the repository** and create a feature branch
+3. **Test thoroughly** on your target platform
+4. **Submit a pull request** with clear description of changes
+5. **Join the discussion** - reach out at [contact@handy.computer](mailto:contact@handy.computer)
+
+The goal is to create both a useful tool and a foundation for others to build upon—a well-patterned, simple codebase that serves the community.
+
+## Sponsors
+
+<div align="center">
+  We're grateful for the support of our sponsors who help make Handy possible:
+  <br><br>
+  <a href="https://wordcab.com">
+    <img src="sponsor-images/wordcab.png" alt="Wordcab" width="120" height="120">
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://github.com/epicenter-so/epicenter">
+    <img src="sponsor-images/epicenter.png" alt="Epicenter" width="120" height="120">
+  </a>
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <a href="https://boltai.com?utm_source=handy">
+    <img src="sponsor-images/boltai.jpg" alt="Bolt AI" width="120" height="120">
+  </a>
+</div>
+
+## Related Projects
+
+- **[Handy CLI](https://github.com/cjpais/handy-cli)** - The original Python command-line version
+- **[handy.computer](https://handy.computer)** - Project website with demos and documentation
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+- **Whisper** by OpenAI for the speech recognition model
+- **whisper.cpp and ggml** for amazing cross-platform whisper inference/acceleration
+- **Silero** for great lightweight VAD
+- **Tauri** team for the excellent Rust-based app framework
+- **Community contributors** helping make Phonara and its upstream projects better

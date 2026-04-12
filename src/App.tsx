@@ -1,14 +1,14 @@
 import { useEffect, useState, useRef } from "react";
-import { Toaster, toast } from "sonner";
+import { toast, Toaster } from "sonner";
 import { useTranslation } from "react-i18next";
+import { listen } from "@tauri-apps/api/event";
 import { platform } from "@tauri-apps/plugin-os";
 import { getIdentifier } from "@tauri-apps/api/app";
 import {
   checkAccessibilityPermission,
   checkMicrophonePermission,
 } from "tauri-plugin-macos-permissions-api";
-import { listen } from "@tauri-apps/api/event";
-import { ModelStateEvent } from "./lib/types/events";
+import { ModelStateEvent, RecordingErrorEvent } from "./lib/types/events";
 import "./App.css";
 import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import Footer from "./components/footer";
@@ -88,18 +88,34 @@ function App() {
     };
   }, [settings?.debug_mode, updateSetting]);
 
+  // Listen for recording errors from the backend and show a toast
   useEffect(() => {
-    const unlisten = listen<string>("navigate-to-section", (event) => {
-      const section = event.payload as SidebarSection;
-      if (section in SECTIONS_CONFIG) {
-        setCurrentSection(section);
+    const unlisten = listen<RecordingErrorEvent>("recording-error", (event) => {
+      const { error_type, detail } = event.payload;
+
+      if (error_type === "microphone_permission_denied") {
+        const currentPlatform = platform();
+        const platformKey = `errors.micPermissionDenied.${currentPlatform}`;
+        const description = t(platformKey, {
+          defaultValue: t("errors.micPermissionDenied.generic"),
+        });
+        toast.error(t("errors.micPermissionDeniedTitle"), { description });
+      } else if (error_type === "no_input_device") {
+        toast.error(t("errors.noInputDeviceTitle"), {
+          description: t("errors.noInputDevice"),
+        });
+      } else {
+        toast.error(
+          t("errors.recordingFailed", { error: detail ?? "Unknown error" }),
+        );
       }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [t]);
 
+  // Listen for model loading failures and show a toast
   useEffect(() => {
     const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {
       if (event.payload.event_type === "loading_failed") {
@@ -119,19 +135,11 @@ function App() {
     };
   }, [t]);
 
-  useEffect(() => {
-    const unlisten = listen<string>("recording-error", (event) => {
-      toast.error(t("errors.recordingFailed", { error: event.payload }));
-    });
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [t]);
-
   const revealMainWindowForPermissions = async () => {
     try {
       await commands.showMainWindowCommand();
-    } catch {
+    } catch (e) {
+      console.warn("Failed to show main window for permission onboarding:", e);
     }
   };
 
@@ -145,9 +153,10 @@ function App() {
       const currentPlatform = platform();
 
       if (hasModels) {
+        // Returning user - check if they need to grant permissions first
         setIsReturningUser(true);
 
-        if (currentPlatform === "macos" && !isDevFlavor) {
+        if (currentPlatform === "macos") {
           try {
             const [hasAccessibility, hasMicrophone] = await Promise.all([
               checkAccessibilityPermission(),
@@ -158,7 +167,9 @@ function App() {
               setOnboardingStep("accessibility");
               return;
             }
-          } catch {
+          } catch (e) {
+            console.warn("Failed to check macOS permissions:", e);
+            // If we can't check, proceed to main app and let them fix it there
           }
         }
 
@@ -174,7 +185,9 @@ function App() {
               setOnboardingStep("accessibility");
               return;
             }
-          } catch {
+          } catch (e) {
+            console.warn("Failed to check Windows microphone permissions:", e);
+            // If we can't check, proceed to main app and let them fix it there
           }
         }
 

@@ -3,21 +3,32 @@ use hound::{WavReader, WavSpec, WavWriter};
 use log::debug;
 use std::path::Path;
 
-pub fn load_wav_file<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>> {
+/// Read a WAV file and return normalised f32 samples.
+pub fn read_wav_samples<P: AsRef<Path>>(file_path: P) -> Result<Vec<f32>> {
     let reader = WavReader::open(file_path.as_ref())?;
-    let samples: Vec<f32> = reader
+    let samples = reader
         .into_samples::<i16>()
         .map(|s| s.map(|v| v as f32 / i16::MAX as f32))
-        .collect::<std::result::Result<Vec<f32>, _>>()?;
-    debug!(
-        "Loaded WAV file: {:?} ({} samples)",
-        file_path.as_ref(),
-        samples.len()
-    );
+        .collect::<Result<Vec<f32>, _>>()?;
     Ok(samples)
 }
 
-pub async fn save_wav_file<P: AsRef<Path>>(file_path: P, samples: &[f32]) -> Result<()> {
+/// Verify a WAV file by reading it back and checking the sample count.
+pub fn verify_wav_file<P: AsRef<Path>>(file_path: P, expected_samples: usize) -> Result<()> {
+    let reader = WavReader::open(file_path.as_ref())?;
+    let actual_samples = reader.len() as usize;
+    if actual_samples != expected_samples {
+        anyhow::bail!(
+            "WAV sample count mismatch: expected {}, got {}",
+            expected_samples,
+            actual_samples
+        );
+    }
+    Ok(())
+}
+
+/// Save audio samples as a WAV file
+pub fn save_wav_file<P: AsRef<Path>>(file_path: P, samples: &[f32]) -> Result<()> {
     let spec = WavSpec {
         channels: 1,
         sample_rate: 16000,
@@ -27,6 +38,7 @@ pub async fn save_wav_file<P: AsRef<Path>>(file_path: P, samples: &[f32]) -> Res
 
     let mut writer = WavWriter::create(file_path.as_ref(), spec)?;
 
+    // Convert f32 samples to i16 for WAV
     for sample in samples {
         let sample_i16 = (sample * i16::MAX as f32) as i16;
         writer.write_sample(sample_i16)?;

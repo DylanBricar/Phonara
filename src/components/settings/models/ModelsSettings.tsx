@@ -34,6 +34,7 @@ export const ModelsSettings: React.FC = () => {
     downloadingModels,
     downloadProgress,
     downloadStats,
+    verifyingModels,
     extractingModels,
     loading,
     downloadModel,
@@ -48,9 +49,18 @@ export const ModelsSettings: React.FC = () => {
   const hasOpenaiKey = !!openaiApiKey && openaiApiKey.length > 0;
 
   const getModelStatus = (modelId: string): ModelCardStatus => {
-    if (modelId in extractingModels) return "extracting";
-    if (modelId in downloadingModels) return "downloading";
-    if (switchingModelId === modelId) return "switching";
+    if (modelId in extractingModels) {
+      return "extracting";
+    }
+    if (modelId in verifyingModels) {
+      return "verifying";
+    }
+    if (modelId in downloadingModels) {
+      return "downloading";
+    }
+    if (switchingModelId === modelId) {
+      return "switching";
+    }
     if (modelId === currentModel) {
       if (modelId === "gemini-api" && !hasGeminiKey) return "available";
       if (modelId === "openai-api" && !hasOpenaiKey) return "available";

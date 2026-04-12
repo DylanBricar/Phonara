@@ -56,8 +56,7 @@ pub fn handle_shortcut_event(
         if is_pressed {
             let audio_manager = app.state::<Arc<AudioRecordingManager>>();
             if audio_manager.is_recording() {
-                let paused = audio_manager.toggle_pause();
-                crate::overlay::emit_recording_paused(app, paused);
+                let _paused = audio_manager.toggle_pause();
             }
         }
         return;

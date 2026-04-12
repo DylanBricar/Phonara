@@ -1,11 +1,12 @@
 use crate::managers::history::{HistoryEntry, HistoryManager};
+use crate::managers::model::ModelManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::settings;
 use crate::tray_i18n::get_tray_translations;
-use log::error;
+use log::{error, info, warn};
 use std::sync::Arc;
 use tauri::image::Image;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIcon;
 use tauri::{AppHandle, Manager, Theme};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -21,18 +22,21 @@ pub enum TrayIconState {
 pub enum AppTheme {
     Dark,
     Light,
-    Colored,
+    Colored, // Pink/colored theme for Linux
 }
 
+/// Gets the current app theme, with Linux defaulting to Colored theme
 pub fn get_current_theme(app: &AppHandle) -> AppTheme {
     if cfg!(target_os = "linux") {
+        // On Linux, always use the colored theme
         AppTheme::Colored
     } else {
+        // On other platforms, map system theme to our app theme
         if let Some(main_window) = app.get_webview_window("main") {
             match main_window.theme().unwrap_or(Theme::Dark) {
                 Theme::Light => AppTheme::Light,
                 Theme::Dark => AppTheme::Dark,
-                _ => AppTheme::Dark,
+                _ => AppTheme::Dark, // Default fallback
             }
         } else {
             AppTheme::Dark
@@ -40,14 +44,18 @@ pub fn get_current_theme(app: &AppHandle) -> AppTheme {
     }
 }
 
+/// Gets the appropriate icon path for the given theme and state
 pub fn get_icon_path(theme: AppTheme, state: TrayIconState) -> &'static str {
     match (theme, state) {
+        // Dark theme uses light icons
         (AppTheme::Dark, TrayIconState::Idle) => "resources/tray_idle.png",
         (AppTheme::Dark, TrayIconState::Recording) => "resources/tray_recording.png",
         (AppTheme::Dark, TrayIconState::Transcribing) => "resources/tray_transcribing.png",
+        // Light theme uses dark icons
         (AppTheme::Light, TrayIconState::Idle) => "resources/tray_idle_dark.png",
         (AppTheme::Light, TrayIconState::Recording) => "resources/tray_recording_dark.png",
         (AppTheme::Light, TrayIconState::Transcribing) => "resources/tray_transcribing_dark.png",
+        // Colored theme uses pink icons (for Linux)
         (AppTheme::Colored, TrayIconState::Idle) => "resources/handy.png",
         (AppTheme::Colored, TrayIconState::Recording) => "resources/recording.png",
         (AppTheme::Colored, TrayIconState::Transcribing) => "resources/transcribing.png",
@@ -69,6 +77,7 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
         .expect("failed to set icon"),
     ));
 
+    // Update menu based on state
     update_tray_menu(app, &icon, None);
 }
 
@@ -78,11 +87,13 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
     let locale = locale.unwrap_or(&settings.app_language);
     let strings = get_tray_translations(Some(locale.to_string()));
 
+    // Platform-specific accelerators
     #[cfg(target_os = "macos")]
     let (settings_accelerator, quit_accelerator) = (Some("Cmd+,"), Some("Cmd+Q"));
     #[cfg(not(target_os = "macos"))]
     let (settings_accelerator, quit_accelerator) = (Some("Ctrl+,"), Some("Ctrl+Q"));
 
+    // Create common menu items
     let version_label = if cfg!(debug_assertions) {
         format!("Phonara v{} (Dev)", env!("CARGO_PKG_VERSION"))
     } else {
@@ -115,6 +126,40 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
     )
     .expect("failed to create copy last transcript item");
     let model_loaded = app.state::<Arc<TranscriptionManager>>().is_model_loaded();
+    let quit_i = MenuItem::with_id(app, "quit", &strings.quit, true, quit_accelerator)
+        .expect("failed to create quit item");
+    let separator = || PredefinedMenuItem::separator(app).expect("failed to create separator");
+
+    // Build model submenu — label is the active model name
+    let model_manager = app.state::<Arc<ModelManager>>();
+    let models = model_manager.get_available_models();
+    let current_model_id = &settings.selected_model;
+
+    let mut downloaded: Vec<_> = models.into_iter().filter(|m| m.is_downloaded).collect();
+    downloaded.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let submenu_label = downloaded
+        .iter()
+        .find(|m| m.id == *current_model_id)
+        .map(|m| m.name.clone())
+        .unwrap_or_else(|| strings.model.clone());
+
+    let model_submenu = {
+        let submenu = Submenu::with_id(app, "model_submenu", &submenu_label, true)
+            .expect("failed to create model submenu");
+
+        for model in &downloaded {
+            let is_active = model.id == *current_model_id;
+            let item_id = format!("model_select:{}", model.id);
+            let item =
+                CheckMenuItem::with_id(app, &item_id, &model.name, true, is_active, None::<&str>)
+                    .expect("failed to create model item");
+            let _ = submenu.append(&item);
+        }
+
+        submenu
+    };
+
     let unload_model_i = MenuItem::with_id(
         app,
         "unload_model",
@@ -123,9 +168,6 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
         None::<&str>,
     )
     .expect("failed to create unload model item");
-    let quit_i = MenuItem::with_id(app, "quit", &strings.quit, true, quit_accelerator)
-        .expect("failed to create quit item");
-    let separator = || PredefinedMenuItem::separator(app).expect("failed to create separator");
 
     let menu = match state {
         TrayIconState::Recording | TrayIconState::Transcribing => {
@@ -154,6 +196,8 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
                 &version_i,
                 &separator(),
                 &copy_last_transcript_i,
+                &separator(),
+                &model_submenu,
                 &unload_model_i,
                 &separator(),
                 &settings_i,
@@ -181,26 +225,40 @@ pub fn set_tray_visibility(app: &AppHandle, visible: bool) {
     let tray = app.state::<TrayIcon>();
     if let Err(e) = tray.set_visible(visible) {
         error!("Failed to set tray visibility: {}", e);
+    } else {
+        info!("Tray visibility set to: {}", visible);
     }
 }
 
 pub fn copy_last_transcript(app: &AppHandle) {
     let history_manager = app.state::<Arc<HistoryManager>>();
-    let entry = match history_manager.get_latest_entry() {
+    let entry = match history_manager.get_latest_completed_entry() {
         Ok(Some(entry)) => entry,
         Ok(None) => {
+            warn!("No completed transcription history entries available for tray copy.");
             return;
         }
         Err(err) => {
-            error!("Failed to fetch last transcription entry: {}", err);
+            error!(
+                "Failed to fetch last completed transcription entry: {}",
+                err
+            );
             return;
         }
     };
 
-    if let Err(err) = app.clipboard().write_text(last_transcript_text(&entry)) {
+    let text = last_transcript_text(&entry);
+    if text.trim().is_empty() {
+        warn!("Last completed transcription is empty; skipping tray copy.");
+        return;
+    }
+
+    if let Err(err) = app.clipboard().write_text(text) {
         error!("Failed to copy last transcript to clipboard: {}", err);
         return;
     }
+
+    info!("Copied last transcript to clipboard via tray.");
 }
 
 #[cfg(test)]
@@ -218,8 +276,7 @@ mod tests {
             transcription_text: transcription.to_string(),
             post_processed_text: post_processed.map(|text| text.to_string()),
             post_process_prompt: None,
-            post_process_action_key: None,
-            model_name: None,
+            post_process_requested: false,
         }
     }
 

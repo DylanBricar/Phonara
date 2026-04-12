@@ -15,7 +15,7 @@ export const ModelSettingsCard: React.FC = () => {
 
   const isWhisper = currentModelInfo?.engine_type === "Whisper";
   const supportsLanguageSelection =
-    isWhisper || currentModelInfo?.engine_type === "SenseVoice";
+    currentModelInfo?.supports_language_selection ?? false;
   const supportsTranslation = currentModelInfo?.supports_translation ?? false;
   const hasAnySettings =
     supportsLanguageSelection || supportsTranslation || isWhisper;

@@ -1,6 +1,7 @@
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::apple_intelligence;
 use crate::audio_feedback::{play_feedback_sound, play_feedback_sound_blocking, SoundType};
+use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
@@ -11,17 +12,25 @@ use crate::utils::{
     self, show_processing_overlay, show_recording_overlay, show_transcribing_overlay,
 };
 use crate::TranscriptionCoordinator;
-use chrono::Local;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
-use log::error;
+use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use std::time::Instant;
 use tauri::Manager;
+use tauri::{AppHandle, Emitter};
+
+#[derive(Clone, serde::Serialize)]
+struct RecordingErrorEvent {
+    error_type: String,
+    detail: Option<String>,
+}
 
 pub struct ActiveActionState(pub Mutex<Option<u8>>);
 
+/// Drop guard that notifies the [`TranscriptionCoordinator`] when the
+/// transcription pipeline finishes — whether it completes normally or panics.
 struct FinishGuard(AppHandle);
 impl Drop for FinishGuard {
     fn drop(&mut self) {
@@ -31,52 +40,36 @@ impl Drop for FinishGuard {
     }
 }
 
+// Shortcut Action Trait
 pub trait ShortcutAction: Send + Sync {
     fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
     fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str);
 }
 
+// Transcribe Action
 struct TranscribeAction {
     post_process: bool,
 }
 
+/// Field name for structured output JSON schema
 const TRANSCRIPTION_FIELD: &str = "transcription";
 
+/// Strip invisible Unicode characters that some LLMs may insert
 fn strip_invisible_chars(s: &str) -> String {
     s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
 }
 
-fn sanitize_error_for_logging(error: &str, api_key: &str) -> String {
-    if api_key.is_empty() {
-        return error.to_string();
-    }
-    error.replace(api_key, "[REDACTED]")
-}
-
-fn substitute_template_variables(prompt: &str, language: &str) -> String {
-    let now = Local::now();
-    let mut result = prompt
-        .replace("$time_local", &now.format("%H:%M:%S").to_string())
-        .replace("$date", &now.format("%Y-%m-%d").to_string())
-        .replace("$language", language);
-
-    if result.contains("${OCR}") || result.contains("${ocr}") {
-        let ocr_text = crate::ocr::fetch_ocr_text();
-        result = result.replace("${OCR}", &ocr_text).replace("${ocr}", &ocr_text);
-    }
-
-    result
-}
-
-fn build_system_prompt(prompt_template: &str, language: &str) -> String {
-    let prompt = substitute_template_variables(prompt_template, language);
-    prompt.replace("${output}", "").trim().to_string()
+/// Build a system prompt from the user's prompt template.
+/// Removes `${output}` placeholder since the transcription is sent as the user message.
+fn build_system_prompt(prompt_template: &str) -> String {
+    prompt_template.replace("${output}", "").trim().to_string()
 }
 
 async fn post_process_transcription(settings: &AppSettings, transcription: &str) -> Option<String> {
     let provider = match settings.active_post_process_provider().cloned() {
         Some(provider) => provider,
         None => {
+            debug!("Post-processing enabled but no provider is selected");
             return None;
         }
     };
@@ -88,12 +81,17 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         .unwrap_or_default();
 
     if model.trim().is_empty() {
+        debug!(
+            "Post-processing skipped because provider '{}' has no model configured",
+            provider.id
+        );
         return None;
     }
 
     let selected_prompt_id = match &settings.post_process_selected_prompt_id {
         Some(id) => id.clone(),
         None => {
+            debug!("Post-processing skipped because no prompt is selected");
             return None;
         }
     };
@@ -105,38 +103,44 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     {
         Some(prompt) => prompt.prompt.clone(),
         None => {
+            debug!(
+                "Post-processing skipped because prompt '{}' was not found",
+                selected_prompt_id
+            );
             return None;
         }
     };
 
     if prompt.trim().is_empty() {
+        debug!("Post-processing skipped because the selected prompt is empty");
         return None;
     }
 
-    let mut api_key = settings
+    debug!(
+        "Starting LLM post-processing with provider '{}' (model: {})",
+        provider.id, model
+    );
+
+    let api_key = settings
         .post_process_api_keys
         .get(&provider.id)
         .cloned()
         .unwrap_or_default();
 
-    if api_key.is_empty() {
-        api_key = std::env::var(format!("{}_API_KEY", provider.id.to_uppercase().replace("-", "_")))
-            .unwrap_or_default();
-    }
-
-    if api_key.is_empty() && provider.requires_api_key {
-        error!("No API key configured for provider '{}' which requires one", provider.id);
-        return None;
-    }
-
     if provider.supports_structured_output {
-        let system_prompt = build_system_prompt(&prompt, &settings.selected_language);
+        debug!("Using structured outputs for provider '{}'", provider.id);
+
+        let system_prompt = build_system_prompt(&prompt);
         let user_content = transcription.to_string();
 
+        // Handle Apple Intelligence separately since it uses native Swift APIs
         if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
             #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             {
                 if !apple_intelligence::check_apple_intelligence_availability() {
+                    debug!(
+                        "Apple Intelligence selected but not currently available on this device"
+                    );
                     return None;
                 }
 
@@ -148,9 +152,14 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
                 ) {
                     Ok(result) => {
                         if result.trim().is_empty() {
+                            debug!("Apple Intelligence returned an empty response");
                             None
                         } else {
                             let result = strip_invisible_chars(&result);
+                            debug!(
+                                "Apple Intelligence post-processing succeeded. Output length: {} chars",
+                                result.len()
+                            );
                             Some(result)
                         }
                     }
@@ -163,10 +172,12 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
 
             #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
             {
+                debug!("Apple Intelligence provider selected on unsupported platform");
                 return None;
             }
         }
 
+        // Define JSON schema for transcription output
         let json_schema = serde_json::json!({
             "type": "object",
             "properties": {
@@ -190,12 +201,18 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         .await
         {
             Ok(Some(content)) => {
+                // Parse the JSON response to extract the transcription field
                 match serde_json::from_str::<serde_json::Value>(&content) {
                     Ok(json) => {
                         if let Some(transcription_value) =
                             json.get(TRANSCRIPTION_FIELD).and_then(|t| t.as_str())
                         {
                             let result = strip_invisible_chars(transcription_value);
+                            debug!(
+                                "Structured output post-processing succeeded for provider '{}'. Output length: {} chars",
+                                provider.id,
+                                result.len()
+                            );
                             return Some(result);
                         } else {
                             error!("Structured output response missing 'transcription' field");
@@ -216,20 +233,29 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
                 return None;
             }
             Err(e) => {
-                let err_str = sanitize_error_for_logging(&e.to_string(), &api_key);
-                error!("Structured LLM post-processing failed for provider '{}': {}", provider.id, err_str);
+                warn!(
+                    "Structured output failed for provider '{}': {}. Falling back to legacy mode.",
+                    provider.id, e
+                );
+                // Fall through to legacy mode below
             }
         }
     }
 
-    let processed_prompt = substitute_template_variables(&prompt, &settings.selected_language)
-        .replace("${output}", transcription);
+    // Legacy mode: Replace ${output} variable in the prompt with the actual text
+    let processed_prompt = prompt.replace("${output}", transcription);
+    debug!("Processed prompt length: {} chars", processed_prompt.len());
 
-    match crate::llm_client::send_chat_completion(&provider, api_key.clone(), &model, processed_prompt)
+    match crate::llm_client::send_chat_completion(&provider, api_key, &model, processed_prompt)
         .await
     {
         Ok(Some(content)) => {
             let content = strip_invisible_chars(&content);
+            debug!(
+                "LLM post-processing succeeded for provider '{}'. Output length: {} chars",
+                provider.id,
+                content.len()
+            );
             Some(content)
         }
         Ok(None) => {
@@ -237,11 +263,10 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
             None
         }
         Err(e) => {
-            let err_str = sanitize_error_for_logging(&e.to_string(), &api_key);
             error!(
                 "LLM post-processing failed for provider '{}': {}. Falling back to original transcription.",
                 provider.id,
-                err_str
+                e
             );
             None
         }
@@ -259,6 +284,10 @@ async fn process_action(
         match settings.post_process_provider(pid).cloned() {
             Some(p) => p,
             None => {
+                debug!(
+                    "Action provider '{}' not found, falling back to active provider",
+                    pid
+                );
                 settings.active_post_process_provider().cloned()?
             }
         }
@@ -266,6 +295,7 @@ async fn process_action(
         match settings.active_post_process_provider().cloned() {
             Some(p) => p,
             None => {
+                debug!("Action processing skipped: no provider configured");
                 return None;
             }
         }
@@ -277,17 +307,25 @@ async fn process_action(
         .or_else(|| settings.post_process_models.get(&provider.id).cloned())
         .unwrap_or_default();
 
-    let prompt_with_vars = substitute_template_variables(prompt, &settings.selected_language);
-    let full_prompt = if prompt_with_vars.contains("${output}") {
-        prompt_with_vars.replace("${output}", transcription)
+    let full_prompt = if prompt.contains("${output}") {
+        prompt.replace("${output}", transcription)
     } else {
-        format!("{}\n\n{}", prompt_with_vars, transcription)
+        format!("{}\n\n{}", prompt, transcription)
     };
 
+    debug!(
+        "Starting action processing with provider '{}', model '{}', prompt length: {}",
+        provider.id,
+        model,
+        full_prompt.len()
+    );
+
+    // Handle Apple Intelligence via native Swift APIs
     if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
         #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         {
             if !apple_intelligence::check_apple_intelligence_availability() {
+                debug!("Apple Intelligence selected but not available for action processing");
                 return None;
             }
             let token_limit = model.trim().parse::<i32>().unwrap_or(0);
@@ -298,9 +336,14 @@ async fn process_action(
             ) {
                 Ok(result) if !result.trim().is_empty() => {
                     let result = strip_invisible_chars(&result);
+                    debug!(
+                        "Apple Intelligence action processing succeeded. Output length: {} chars",
+                        result.len()
+                    );
                     Some(result)
                 }
                 Ok(_) => {
+                    debug!("Apple Intelligence action returned empty result");
                     None
                 }
                 Err(err) => {
@@ -312,35 +355,30 @@ async fn process_action(
 
         #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
         {
+            debug!("Apple Intelligence provider selected on unsupported platform");
             return None;
         }
     }
 
     if model.trim().is_empty() {
+        debug!(
+            "Action processing skipped: no model configured for provider '{}'",
+            provider.id
+        );
         return None;
     }
 
-    let mut api_key = settings
+    let api_key = settings
         .post_process_api_keys
         .get(&provider.id)
         .cloned()
         .unwrap_or_default();
 
-    if api_key.is_empty() {
-        api_key = std::env::var(format!("{}_API_KEY", provider.id.to_uppercase().replace("-", "_")))
-            .unwrap_or_default();
-    }
-
-    if api_key.is_empty() && provider.requires_api_key {
-        error!("No API key configured for provider '{}' which requires one", provider.id);
-        return None;
-    }
-
     let system_prompt = "You are a text processing assistant. Output ONLY the final processed text. Do not add any explanation, commentary, preamble, or formatting such as markdown code blocks. Just output the raw result text, nothing else.".to_string();
 
     match crate::llm_client::send_chat_completion_with_schema(
         &provider,
-        api_key.clone(),
+        api_key,
         &model,
         full_prompt,
         Some(system_prompt),
@@ -350,16 +388,21 @@ async fn process_action(
     {
         Ok(Some(content)) if !content.is_empty() => {
             let result = strip_invisible_chars(&content);
+            debug!(
+                "Action processing succeeded for provider '{}'. Output length: {} chars",
+                provider.id,
+                result.len()
+            );
             Some(result)
         }
         Ok(_) => {
+            debug!("Action processing returned empty result");
             None
         }
         Err(e) => {
-            let err_str = sanitize_error_for_logging(&e.to_string(), &api_key);
             error!(
                 "Action processing failed for provider '{}': {}",
-                provider.id, err_str
+                provider.id, e
             );
             None
         }
@@ -370,22 +413,37 @@ async fn maybe_convert_chinese_variant(
     settings: &AppSettings,
     transcription: &str,
 ) -> Option<String> {
+    // Check if language is set to Simplified or Traditional Chinese
     let is_simplified = settings.selected_language == "zh-Hans";
     let is_traditional = settings.selected_language == "zh-Hant";
 
     if !is_simplified && !is_traditional {
+        debug!("selected_language is not Simplified or Traditional Chinese; skipping translation");
         return None;
     }
 
+    debug!(
+        "Starting Chinese translation using OpenCC for language: {}",
+        settings.selected_language
+    );
+
+    // Use OpenCC to convert based on selected language
     let config = if is_simplified {
+        // Convert Traditional Chinese to Simplified Chinese
         BuiltinConfig::Tw2sp
     } else {
-        BuiltinConfig::S2twp
+        // Convert Simplified Chinese to Traditional Chinese
+        BuiltinConfig::S2tw
     };
 
     match OpenCC::from_config(config) {
         Ok(converter) => {
             let converted = converter.convert(transcription);
+            debug!(
+                "OpenCC translation completed. Input length: {}, Output length: {}",
+                transcription.len(),
+                converted.len()
+            );
             Some(converted)
         }
         Err(e) => {
@@ -395,68 +453,154 @@ async fn maybe_convert_chinese_variant(
     }
 }
 
+pub(crate) struct ProcessedTranscription {
+    pub final_text: String,
+    pub post_processed_text: Option<String>,
+    pub post_process_prompt: Option<String>,
+}
+
+pub(crate) async fn process_transcription_output(
+    app: &AppHandle,
+    transcription: &str,
+    post_process: bool,
+) -> ProcessedTranscription {
+    let settings = get_settings(app);
+    let mut final_text = transcription.to_string();
+    let mut post_processed_text: Option<String> = None;
+    let mut post_process_prompt: Option<String> = None;
+
+    if let Some(converted_text) = maybe_convert_chinese_variant(&settings, transcription).await {
+        final_text = converted_text;
+    }
+
+    if post_process {
+        if let Some(processed_text) = post_process_transcription(&settings, &final_text).await {
+            post_processed_text = Some(processed_text.clone());
+            final_text = processed_text;
+
+            if let Some(prompt_id) = &settings.post_process_selected_prompt_id {
+                if let Some(prompt) = settings
+                    .post_process_prompts
+                    .iter()
+                    .find(|prompt| &prompt.id == prompt_id)
+                {
+                    post_process_prompt = Some(prompt.prompt.clone());
+                }
+            }
+        }
+    } else if final_text != transcription {
+        post_processed_text = Some(final_text.clone());
+    }
+
+    ProcessedTranscription {
+        final_text,
+        post_processed_text,
+        post_process_prompt,
+    }
+}
+
 impl ShortcutAction for TranscribeAction {
     fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
+        let start_time = Instant::now();
+        debug!("TranscribeAction::start called for binding: {}", binding_id);
+
+        // Load model in the background
         let tm = app.state::<Arc<TranscriptionManager>>();
         tm.initiate_model_load();
 
         let binding_id = binding_id.to_string();
+        change_tray_icon(app, TrayIconState::Recording);
+        show_recording_overlay(app);
 
         let rm = app.state::<Arc<AudioRecordingManager>>();
 
+        // Get the microphone mode to determine audio feedback timing
         let settings = get_settings(app);
         let is_always_on = settings.always_on_microphone;
+        debug!("Microphone mode - always_on: {}", is_always_on);
 
-        let mut recording_started = false;
         let mut recording_error: Option<String> = None;
         if is_always_on {
+            // Always-on mode: Play audio feedback immediately, then apply mute after sound finishes
+            debug!("Always-on mode: Playing audio feedback immediately");
             let rm_clone = Arc::clone(&rm);
             let app_clone = app.clone();
+            // The blocking helper exits immediately if audio feedback is disabled,
+            // so we can always reuse this thread to ensure mute happens right after playback.
             std::thread::spawn(move || {
                 play_feedback_sound_blocking(&app_clone, SoundType::Start);
                 rm_clone.apply_mute();
             });
 
-            match rm.try_start_recording(&binding_id) {
-                Ok(()) => recording_started = true,
-                Err(e) => recording_error = Some(e),
+            if let Err(e) = rm.try_start_recording(&binding_id) {
+                debug!("Recording failed: {}", e);
+                recording_error = Some(e);
             }
         } else {
+            // On-demand mode: Start recording first, then play audio feedback, then apply mute
+            // This allows the microphone to be activated before playing the sound
+            debug!("On-demand mode: Starting recording first, then audio feedback");
+            let recording_start_time = Instant::now();
             match rm.try_start_recording(&binding_id) {
                 Ok(()) => {
-                    recording_started = true;
+                    debug!("Recording started in {:?}", recording_start_time.elapsed());
+                    // Small delay to ensure microphone stream is active
                     let app_clone = app.clone();
                     let rm_clone = Arc::clone(&rm);
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(100));
+                        debug!("Handling delayed audio feedback/mute sequence");
+                        // Helper handles disabled audio feedback by returning early, so we reuse it
+                        // to keep mute sequencing consistent in every mode.
                         play_feedback_sound_blocking(&app_clone, SoundType::Start);
                         rm_clone.apply_mute();
                     });
                 }
-                Err(e) => recording_error = Some(e),
+                Err(e) => {
+                    debug!("Failed to start recording: {}", e);
+                    recording_error = Some(e);
+                }
             }
         }
 
-        if let Some(err) = recording_error {
-            error!("Recording failed to start: {}", err);
-            let _ = app.emit("recording-error", err);
+        if recording_error.is_none() {
+            // Dynamically register the cancel shortcut in a separate task to avoid deadlock
+            shortcut::register_cancel_shortcut(app);
+        } else {
+            // Starting failed (for example due to blocked microphone permissions).
+            // Revert UI state so we don't stay stuck in the recording overlay.
+            utils::hide_recording_overlay(app);
+            change_tray_icon(app, TrayIconState::Idle);
+            if let Some(err) = recording_error {
+                let error_type = if is_microphone_access_denied(&err) {
+                    "microphone_permission_denied"
+                } else if is_no_input_device_error(&err) {
+                    "no_input_device"
+                } else {
+                    "unknown"
+                };
+                let _ = app.emit(
+                    "recording-error",
+                    RecordingErrorEvent {
+                        error_type: error_type.to_string(),
+                        detail: Some(err),
+                    },
+                );
+            }
         }
 
-        if recording_started {
-            change_tray_icon(app, TrayIconState::Recording);
-            show_recording_overlay(app);
-            crate::shortcut::handler::reset_cancel_suppression();
-            shortcut::register_cancel_shortcut(app);
-            shortcut::register_pause_shortcut(app);
-            shortcut::register_action_shortcuts(app);
-        }
+        debug!(
+            "TranscribeAction::start completed in {:?}",
+            start_time.elapsed()
+        );
     }
 
     fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
-        crate::shortcut::handler::reset_cancel_confirmation();
+        // Unregister the cancel shortcut when transcription stops
         shortcut::unregister_cancel_shortcut(app);
-        shortcut::unregister_pause_shortcut(app);
-        shortcut::unregister_action_shortcuts(app);
+
+        let stop_time = Instant::now();
+        debug!("TranscribeAction::stop called for binding: {}", binding_id);
 
         let ah = app.clone();
         let rm = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
@@ -466,8 +610,10 @@ impl ShortcutAction for TranscribeAction {
         change_tray_icon(app, TrayIconState::Transcribing);
         show_transcribing_overlay(app);
 
+        // Unmute before playing audio feedback so the stop sound is audible
         rm.remove_mute();
 
+        // Play audio feedback for recording stop
         play_feedback_sound(app, SoundType::Stop);
 
         let binding_id = binding_id.to_string();
@@ -485,218 +631,184 @@ impl ShortcutAction for TranscribeAction {
 
         tauri::async_runtime::spawn(async move {
             let _guard = FinishGuard(ah.clone());
-            let binding_id = binding_id.clone();
+            debug!(
+                "Starting async transcription task for binding: {}, action: {:?}",
+                binding_id, selected_action_key
+            );
 
+            let stop_recording_time = Instant::now();
             if let Some(samples) = rm.stop_recording(&binding_id) {
-                let duration_seconds = samples.len() as f32 / 16000.0;
-                let settings_for_model = get_settings(&ah);
-                let original_model = tm.get_current_model();
-                let mut switched_model = false;
+                debug!(
+                    "Recording stopped and samples retrieved in {:?}, sample count: {}",
+                    stop_recording_time.elapsed(),
+                    samples.len()
+                );
 
-                if let Some(ref long_model_id) = settings_for_model.long_audio_model {
-                    if duration_seconds > settings_for_model.long_audio_threshold_seconds
-                        && original_model.as_deref() != Some(long_model_id.as_str())
-                    {
-                        if let Err(_e) = tm.load_model(long_model_id) {
-                        } else {
-                            switched_model = true;
-                        }
-                    }
-                }
-
-                let samples_clone = samples.clone();
-                let effective_language = if binding_id == "transcribe_secondary" {
-                    settings_for_model.secondary_selected_language.clone()
+                if samples.is_empty() {
+                    debug!("Recording produced no audio samples; skipping persistence");
+                    utils::hide_recording_overlay(&ah);
+                    change_tray_icon(&ah, TrayIconState::Idle);
                 } else {
-                    settings_for_model.selected_language.clone()
-                };
+                    // Save WAV concurrently with transcription
+                    let sample_count = samples.len();
+                    let file_name = format!("handy-{}.wav", chrono::Utc::now().timestamp());
+                    let wav_path = hm.recordings_dir().join(&file_name);
+                    let wav_path_for_verify = wav_path.clone();
+                    let samples_for_wav = samples.clone();
+                    let wav_handle = tauri::async_runtime::spawn_blocking(move || {
+                        crate::audio_toolkit::save_wav_file(&wav_path, &samples_for_wav)
+                    });
 
-                let entry_id = if duration_seconds > 1.0 {
-                    match hm.save_recording_pending(samples_clone.clone()).await {
-                        Ok(id) => Some(id),
-                        Err(e) => {
-                            error!("Failed to save recording pending: {}", e);
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
+                    // Transcribe concurrently with WAV save
+                    let transcription_time = Instant::now();
+                    let transcription_result = tm.transcribe(samples);
 
-                match tm.transcribe(samples, Some(effective_language.clone())) {
-                    Ok(transcription) => {
-                        let mut transcription = transcription;
-
-                        if transcription.is_empty()
-                            && duration_seconds > 1.0
-                            && !switched_model
-                        {
-                            if let Some(ref long_model_id) = settings_for_model.long_audio_model {
-                                let already_using_long = original_model.as_deref()
-                                    == Some(long_model_id.as_str());
-                                if !already_using_long {
-                                    match tm.load_model(long_model_id) {
-                                        Ok(()) => {
-                                            switched_model = true;
-                                            match tm.transcribe(samples_clone.clone(), Some(effective_language.clone())) {
-                                                Ok(retry_result) => {
-                                                    if !retry_result.is_empty() {
-                                                        transcription = retry_result;
-                                                    }
-                                                }
-                                                Err(_e) => {
-                                                }
-                                            }
-                                        }
-                                        Err(_e) => {
-                                        }
-                                    }
+                    // Await WAV save and verify
+                    let wav_saved = match wav_handle.await {
+                        Ok(Ok(())) => {
+                            match crate::audio_toolkit::verify_wav_file(
+                                &wav_path_for_verify,
+                                sample_count,
+                            ) {
+                                Ok(()) => true,
+                                Err(e) => {
+                                    error!("WAV verification failed: {}", e);
+                                    false
                                 }
                             }
                         }
+                        Ok(Err(e)) => {
+                            error!("Failed to save WAV file: {}", e);
+                            false
+                        }
+                        Err(e) => {
+                            error!("WAV save task panicked: {}", e);
+                            false
+                        }
+                    };
 
-                        let mut post_processed_text: Option<String> = None;
-                        let mut post_process_prompt: Option<String> = None;
+                    match transcription_result {
+                        Ok(transcription) => {
+                            debug!(
+                                "Transcription completed in {:?}: '{}'",
+                                transcription_time.elapsed(),
+                                transcription
+                            );
 
-                        if !transcription.is_empty() {
                             let settings = get_settings(&ah);
-                            let mut final_text = transcription.clone();
 
-                            if let Some(converted_text) =
-                                maybe_convert_chinese_variant(&settings, &transcription).await
-                            {
-                                final_text = converted_text;
-                            }
-
-                            let selected_action = selected_action_key.and_then(|key| {
-                                settings
-                                    .post_process_actions
-                                    .iter()
-                                    .find(|a| a.key == key)
-                                    .cloned()
-                            });
-
-                            if selected_action.is_some() || post_process {
+                            if post_process {
                                 show_processing_overlay(&ah);
                             }
 
-                            let processed = if let Some(ref action) = selected_action {
-                                process_action(
+                            let mut final_text = transcription.clone();
+                            let mut post_processed_text: Option<String> = None;
+                            let mut post_process_prompt: Option<String> = None;
+
+                            // Post-processing via LLM
+                            let processed = if post_process {
+                                match process_action(
                                     &settings,
-                                    &final_text,
-                                    &action.prompt,
-                                    action.model.as_deref(),
-                                    action.provider_id.as_deref(),
+                                    &transcription,
+                                    "",
+                                    None,
+                                    None,
                                 )
                                 .await
-                            } else if post_process {
-                                post_process_transcription(&settings, &final_text).await
-                            } else {
-                                None
-                            };
-
-                            if let Some(processed_text) = processed {
-                                post_processed_text = Some(processed_text.clone());
-                                final_text = processed_text;
-
-                                if let Some(action) = selected_action {
-                                    post_process_prompt = Some(action.prompt);
-                                } else if let Some(prompt_id) =
-                                    &settings.post_process_selected_prompt_id
                                 {
-                                    if let Some(prompt) = settings
-                                        .post_process_prompts
-                                        .iter()
-                                        .find(|p| &p.id == prompt_id)
-                                    {
-                                        post_process_prompt = Some(prompt.prompt.clone());
+                                    Some(result) => {
+                                        post_processed_text = Some(result.clone());
+                                        final_text = result.clone();
+                                        ProcessedTranscription {
+                                            final_text: final_text.clone(),
+                                            post_processed_text,
+                                            post_process_prompt,
+                                        }
+                                    }
+                                    None => {
+                                        ProcessedTranscription {
+                                            final_text,
+                                            post_processed_text,
+                                            post_process_prompt,
+                                        }
                                     }
                                 }
-                            } else if final_text != transcription {
-                                post_processed_text = Some(final_text.clone());
+                            } else {
+                                process_transcription_output(&ah, &transcription, post_process).await
+                            };
+
+                            // Save to history if WAV was saved
+                            if wav_saved {
+                                if let Err(err) = hm.save_entry(
+                                    file_name,
+                                    transcription,
+                                    post_process,
+                                    processed.post_processed_text.clone(),
+                                    processed.post_process_prompt.clone(),
+                                ) {
+                                    error!("Failed to save history entry: {}", err);
+                                }
                             }
 
-                            let ah_clone = ah.clone();
-                            ah.run_on_main_thread(move || {
-                                match utils::paste(final_text, ah_clone.clone()) {
-                                    Ok(()) => {}
-                                    Err(e) => error!("Failed to paste transcription: {}", e),
-                                }
-                                utils::hide_recording_overlay(&ah_clone);
-                                change_tray_icon(&ah_clone, TrayIconState::Idle);
-                            })
-                            .unwrap_or_else(|e| {
-                                error!("Failed to run paste on main thread: {:?}", e);
+                            if processed.final_text.is_empty() {
                                 utils::hide_recording_overlay(&ah);
                                 change_tray_icon(&ah, TrayIconState::Idle);
-                            });
-                        } else {
+                            } else {
+                                let ah_clone = ah.clone();
+                                let paste_time = Instant::now();
+                                let final_text = processed.final_text;
+                                ah.run_on_main_thread(move || {
+                                    match utils::paste(final_text, ah_clone.clone()) {
+                                        Ok(()) => debug!(
+                                            "Text pasted successfully in {:?}",
+                                            paste_time.elapsed()
+                                        ),
+                                        Err(e) => error!("Failed to paste transcription: {}", e),
+                                    }
+                                    utils::hide_recording_overlay(&ah_clone);
+                                    change_tray_icon(&ah_clone, TrayIconState::Idle);
+                                })
+                                .unwrap_or_else(|e| {
+                                    error!("Failed to run paste on main thread: {:?}", e);
+                                    utils::hide_recording_overlay(&ah);
+                                    change_tray_icon(&ah, TrayIconState::Idle);
+                                });
+                            }
+                        }
+                        Err(err) => {
+                            debug!("Global Shortcut Transcription error: {}", err);
+                            // Save entry with empty text so user can retry
+                            if wav_saved {
+                                if let Err(save_err) = hm.save_entry(
+                                    file_name,
+                                    String::new(),
+                                    post_process,
+                                    None,
+                                    None,
+                                ) {
+                                    error!("Failed to save failed history entry: {}", save_err);
+                                }
+                            }
                             utils::hide_recording_overlay(&ah);
                             change_tray_icon(&ah, TrayIconState::Idle);
-                        }
-
-                        if !transcription.is_empty() {
-                            crate::managers::transcription::run_transcription_hook(
-                                &ah,
-                                &transcription,
-                            );
-                        }
-
-                        if let Some(id) = entry_id {
-                            let hm_clone = Arc::clone(&hm);
-                            let transcription_for_history = transcription.clone();
-                            let model_name_for_history = tm.get_current_model_name();
-                            let action_key_for_history = if post_processed_text.is_some() {
-                                selected_action_key
-                            } else {
-                                None
-                            };
-                            tauri::async_runtime::spawn(async move {
-                                if let Err(e) = hm_clone
-                                    .update_transcription_result(
-                                        id,
-                                        transcription_for_history,
-                                        post_processed_text,
-                                        post_process_prompt,
-                                        action_key_for_history,
-                                        model_name_for_history,
-                                    )
-                                {
-                                    error!("Failed to update transcription result: {}", e);
-                                }
-                            });
-                        }
-                    }
-                    Err(err) => {
-                        error!("Transcription failed: {}", err);
-                        if let Some(id) = entry_id {
-                            let hm_clone = Arc::clone(&hm);
-                            let error_text = format!("[Transcription failed: {}]", err);
-                            tauri::async_runtime::spawn(async move {
-                                let _ = hm_clone.update_transcription_result(
-                                    id, error_text, None, None, None, None,
-                                );
-                            });
-                        }
-                        utils::hide_recording_overlay(&ah);
-                        change_tray_icon(&ah, TrayIconState::Idle);
-                    }
-                }
-
-                if switched_model {
-                    if let Some(ref orig_id) = original_model {
-                        if let Err(_e) = tm.load_model(orig_id) {
                         }
                     }
                 }
             } else {
+                debug!("No samples retrieved from recording stop");
                 utils::hide_recording_overlay(&ah);
                 change_tray_icon(&ah, TrayIconState::Idle);
             }
         });
+
+        debug!(
+            "TranscribeAction::stop completed in {:?}",
+            stop_time.elapsed()
+        );
     }
 }
 
+// Cancel Action
 struct CancelAction;
 
 impl ShortcutAction for CancelAction {
@@ -705,29 +817,38 @@ impl ShortcutAction for CancelAction {
     }
 
     fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+        // Nothing to do on stop for cancel
     }
 }
 
+// Test Action
 struct TestAction;
 
 impl ShortcutAction for TestAction {
-    fn start(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+    fn start(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
+        log::info!(
+            "Shortcut ID '{}': Started - {} (App: {})", // Changed "Pressed" to "Started" for consistency
+            binding_id,
+            shortcut_str,
+            app.package_info().name
+        );
     }
 
-    fn stop(&self, _app: &AppHandle, _binding_id: &str, _shortcut_str: &str) {
+    fn stop(&self, app: &AppHandle, binding_id: &str, shortcut_str: &str) {
+        log::info!(
+            "Shortcut ID '{}': Stopped - {} (App: {})", // Changed "Released" to "Stopped" for consistency
+            binding_id,
+            shortcut_str,
+            app.package_info().name
+        );
     }
 }
 
+// Static Action Map
 pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::new(|| {
     let mut map = HashMap::new();
     map.insert(
         "transcribe".to_string(),
-        Arc::new(TranscribeAction {
-            post_process: false,
-        }) as Arc<dyn ShortcutAction>,
-    );
-    map.insert(
-        "transcribe_secondary".to_string(),
         Arc::new(TranscribeAction {
             post_process: false,
         }) as Arc<dyn ShortcutAction>,

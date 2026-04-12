@@ -1,5 +1,6 @@
-import React, { useState } from "react";
-import { useTranslation } from "react-i18next";
+import React, { useEffect, useState } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { RefreshCcw } from "lucide-react";
 import { commands } from "@/bindings";
 
 import {
@@ -264,7 +265,10 @@ const PostProcessingActionsComponent: React.FC = () => {
                 )}
               />
               <p className="text-xs text-mid-gray/70">
-                {t("settings.postProcessing.actions.promptTip")}
+                <Trans
+                  i18nKey="settings.postProcessing.prompts.promptTip"
+                  components={{ code: <code /> }}
+                />
               </p>
             </div>
 

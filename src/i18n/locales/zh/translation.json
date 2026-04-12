@@ -4,6 +4,7 @@
     "checkUpdates": "检查更新...",
     "copyLastTranscript": "复制最新转录",
     "unloadModel": "卸载模型",
+    "model": "模型",
     "quit": "退出",
     "cancel": "取消"
   },
@@ -75,6 +76,18 @@
       "sense-voice-int8": {
         "name": "SenseVoice",
         "description": "非常快速。支持中文、英语、日语、韩语、粤语。"
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "俄语语音识别。快速且准确。"
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "非常快速。支持英语、德语、西班牙语、法语。支持翻译。"
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "准确的多语言模型。25种欧洲语言。支持翻译。"
       }
     },
     "errors": {
@@ -108,6 +121,8 @@
     "active": "活跃",
     "switching": "切换中...",
     "noModelsAvailable": "没有可用的模型",
+    "verifying": "正在验证 {{modelName}}...",
+    "verifyingGeneric": "正在验证...",
     "extracting": "正在解压 {{modelName}}...",
     "extractingMultiple": "正在解压 {{count}} 个模型...",
     "extractingGeneric": "解压中...",
@@ -237,6 +252,25 @@
         "label": "实验性功能",
         "description": "启用仍在开发中的实验性功能。"
       },
+      "lazyStreamClose": {
+        "label": "在转录之间保持麦克风开启",
+        "description": "录音停止后保持麦克风流开启30秒，减少连续转录时的延迟。激活时可能会降低蓝牙音频质量。"
+      },
+      "acceleration": {
+        "whisper": {
+          "title": "Whisper 加速",
+          "description": "Whisper 模型的硬件加速。自动模式在可用时使用 GPU（macOS 上使用 Metal，Windows/Linux 上使用 Vulkan）。"
+        },
+        "ort": {
+          "title": "ONNX 加速",
+          "description": "ONNX 模型的硬件加速（Parakeet、Canary、Moonshine 等）。Windows 上的 DirectML 为实验性功能。模型可能无法正常转录。"
+        },
+        "gpuDevice": {
+          "title": "GPU 设备",
+          "description": "选择用于 Whisper 推理的 GPU。自动选择独立 GPU。",
+          "auto": "自动"
+        }
+      },
       "startHidden": {
         "label": "隐藏启动",
         "description": "启动到系统托盘而不打开窗口。"
@@ -313,7 +347,7 @@
           "min10": "10 分钟后",
           "min15": "15 分钟后",
           "hour1": "1 小时后",
-          "sec5": "5 秒后（调试）"
+          "sec15": "15 秒后（调试）"
         }
       },
       "customWords": {
@@ -394,7 +428,11 @@
       "save": "保存转录",
       "unsave": "从已保存中移除",
       "delete": "删除条目",
-      "deleteError": "删除条目失败，请重试。"
+      "deleteError": "删除条目失败，请重试。",
+      "retranscribe": "重新转录",
+      "retranscribeError": "重新转录失败。请重试。",
+      "transcribing": "转录中...",
+      "transcriptionFailed": "转录失败。您可以使用重试图标重新转录。"
     },
     "debug": {
       "title": "调试",
@@ -454,9 +492,9 @@
         "description": "在粘贴的转录后添加空格"
       },
       "keyboardImplementation": {
-        "title": "Keyboard Implementation",
-        "description": "Choose the keyboard shortcut backend.",
-        "bindingsReset": "Keyboard shortcuts were incompatible and reset to defaults"
+        "title": "键盘实现",
+        "description": "选择键盘快捷键的后端。",
+        "bindingsReset": "键盘快捷键不兼容，已重置为默认值"
       },
       "paths": {
         "appData": "应用数据:",
@@ -466,6 +504,10 @@
       "pasteDelay": {
         "title": "粘贴延迟",
         "description": "发送粘贴按键前的延迟（毫秒）。如果粘贴了错误的文本，请增加此值。"
+      },
+      "recordingBuffer": {
+        "title": "额外录音缓冲",
+        "description": "放开按键后继续录音的额外时间（毫秒），以捕捉尾音。0 = 无额外缓冲。"
       }
     },
     "about": {
@@ -510,7 +552,10 @@
     "downloading": "下载中... {{progress}}%",
     "installing": "安装中...",
     "preparing": "准备中...",
-    "checkForUpdates": "检查更新"
+    "checkForUpdates": "检查更新",
+    "portableUpdateTitle": "Manual update required",
+    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
+    "portableUpdateButton": "Open GitHub Releases"
   },
   "common": {
     "loading": "加载中...",
@@ -542,6 +587,15 @@
   },
   "errors": {
     "loadDirectory": "加载目录时出错: {{error}}",
+    "micPermissionDeniedTitle": "麦克风访问被拒绝",
+    "micPermissionDenied": {
+      "generic": "操作系统拒绝了麦克风访问。请在系统设置中授予麦克风权限。",
+      "windows": "在设置 → 隐私和安全性 → 麦克风（包括桌面应用访问）中启用麦克风访问。",
+      "macos": "在系统设置 → 隐私与安全性 → 麦克风中授予麦克风访问权限。",
+      "linux": "在系统的声音或隐私设置中授予麦克风访问权限。"
+    },
+    "noInputDeviceTitle": "未找到麦克风",
+    "noInputDevice": "未检测到音频输入设备。请连接麦克风或耳机后重试。",
     "recordingFailed": "录音启动失败: {{error}}",
     "modelLoadFailed": "加载模型失败: {{model}}",
     "modelLoadFailedUnknown": "未知模型"

@@ -85,6 +85,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
 
     setPermissionPlatform(nextPlatform);
 
+    // Skip immediately on unsupported platforms
     if (nextPlatform === "other") {
       onComplete();
       return;
@@ -98,13 +99,15 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
             checkMicrophonePermission(),
           ]);
 
+          // If accessibility is granted, initialize Enigo and shortcuts
           if (accessibilityGranted) {
             try {
               await Promise.all([
                 commands.initializeEnigo(),
                 commands.initializeShortcuts(),
               ]);
-            } catch {
+            } catch (e) {
+              console.warn("Failed to initialize after permission grant:", e);
             }
           }
 
@@ -118,7 +121,8 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           if (accessibilityGranted && microphoneGranted) {
             await completeOnboarding();
           }
-        } catch {
+        } catch (error) {
+          console.error("Failed to check macOS permissions:", error);
           toast.error(t("onboarding.permissions.errors.checkFailed"));
           setPermissions({
             accessibility: "needed",
@@ -140,7 +144,8 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
         if (microphoneGranted) {
           await completeOnboarding();
         }
-      } catch {
+      } catch (error) {
+        console.warn("Failed to check Windows microphone permissions:", error);
         setPermissions({
           accessibility: "granted",
           microphone: "granted",
@@ -264,6 +269,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
       permissions.microphone === "checking") ||
     (isWindows && permissions.microphone === "checking");
 
+  // Still checking platform/initial permissions
   if (isChecking) {
     return (
       <div className="h-screen w-screen flex items-center justify-center">
@@ -301,6 +307,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           </p>
         </div>
 
+        {/* Microphone Permission Card */}
         {showMicrophonePermission && (
           <div className="w-full p-4 rounded-lg bg-white/5 border border-mid-gray/20">
             <div className="flex items-center gap-4">
@@ -339,6 +346,7 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
           </div>
         )}
 
+        {/* Accessibility Permission Card */}
         {showAccessibilityPermission && (
           <div className="w-full p-4 rounded-lg bg-white/5 border border-mid-gray/20">
             <div className="flex items-center gap-4">
@@ -374,13 +382,6 @@ const AccessibilityOnboarding: React.FC<AccessibilityOnboardingProps> = ({
             </div>
           </div>
         )}
-
-        <button
-          onClick={onComplete}
-          className="text-sm text-text/40 hover:text-text/60 transition-colors mt-2"
-        >
-          {t("onboarding.permissions.skip")}
-        </button>
       </div>
     </div>
   );

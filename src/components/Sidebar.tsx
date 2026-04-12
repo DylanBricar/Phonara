@@ -31,6 +31,7 @@ interface SectionConfig {
   icon: React.ComponentType<LucideProps>;
   component: React.ComponentType;
   debugOnly?: boolean;
+  enabled?: (settings: import("../bindings").AppSettings | null) => boolean;
 }
 
 export const SECTIONS_CONFIG = {
@@ -54,15 +55,16 @@ export const SECTIONS_CONFIG = {
     icon: Cog,
     component: AdvancedSettings,
   },
-  postprocessing: {
-    labelKey: "sidebar.postProcessing",
-    icon: Sparkles,
-    component: PostProcessingSettings,
-  },
   history: {
     labelKey: "sidebar.history",
     icon: History,
     component: HistorySettings,
+  },
+  postprocessing: {
+    labelKey: "sidebar.postProcessing",
+    icon: Sparkles,
+    component: PostProcessingSettings,
+    enabled: (settings) => settings?.post_process_enabled ?? false,
   },
   debug: {
     labelKey: "sidebar.debug",

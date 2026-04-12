@@ -4,6 +4,7 @@
     "checkUpdates": "Rechercher des mises à jour...",
     "copyLastTranscript": "Copier la dernière transcription",
     "unloadModel": "Décharger le modèle",
+    "model": "Modèle",
     "quit": "Quitter",
     "cancel": "Annuler"
   },
@@ -96,6 +97,18 @@
       "whisper-distil-fr": {
         "name": "Whisper Français Lite",
         "description": "Modèle français compact. 5,8x plus rapide, moitié de la taille. Bonne précision."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "Reconnaissance vocale en russe. Rapide et précis."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "Très rapide. Anglais, allemand, espagnol, français. Supporte la traduction."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "Multilingue précis. 25 langues européennes. Supporte la traduction."
       }
     },
     "errors": {
@@ -129,6 +142,8 @@
     "active": "Actif",
     "switching": "Changement...",
     "noModelsAvailable": "Aucun modèle disponible",
+    "verifying": "Vérification de {{modelName}}...",
+    "verifyingGeneric": "Vérification...",
     "extracting": "Extraction de {{modelName}}...",
     "extractingMultiple": "Extraction de {{count}} modèles...",
     "extractingGeneric": "Extraction...",
@@ -326,6 +341,25 @@
         "label": "Fonctionnalités Expérimentales",
         "description": "Activer les fonctionnalités expérimentales encore en développement."
       },
+      "lazyStreamClose": {
+        "label": "Garder le micro ouvert entre les transcriptions",
+        "description": "Maintient le flux du microphone ouvert pendant 30 secondes après l'arrêt de l'enregistrement, réduisant la latence pour les transcriptions consécutives. Peut dégrader la qualité audio Bluetooth."
+      },
+      "acceleration": {
+        "whisper": {
+          "title": "Accélération Whisper",
+          "description": "Accélération matérielle pour les modèles Whisper. Auto utilise le GPU si disponible (Metal sur macOS, Vulkan sur Windows/Linux)."
+        },
+        "ort": {
+          "title": "Accélération ONNX",
+          "description": "Accélération matérielle pour les modèles ONNX (Parakeet, Canary, Moonshine, etc.). DirectML sur Windows est expérimental. Les modèles peuvent échouer à transcrire."
+        },
+        "gpuDevice": {
+          "title": "Appareil GPU",
+          "description": "Sélectionnez le GPU à utiliser pour l'inférence Whisper. Auto choisit le GPU dédié.",
+          "auto": "Auto"
+        }
+      },
       "startHidden": {
         "label": "Démarrer masqué",
         "description": "Lancer dans la barre système sans ouvrir la fenêtre."
@@ -431,7 +465,7 @@
           "min10": "Après 10 minutes",
           "min15": "Après 15 minutes",
           "hour1": "Après 1 heure",
-          "sec5": "Après 5 secondes (Débogage)"
+          "sec15": "Après 15 secondes (Débogage)"
         }
       },
       "customWords": {
@@ -558,7 +592,11 @@
       "selectModel": "Sélectionner un modèle",
       "originalTranscript": "Original",
       "postProcessed": "Post-traitement",
-      "action": "Action {{key}}"
+      "action": "Action {{key}}",
+      "retranscribe": "Re-transcrire",
+      "retranscribeError": "Impossible de re-transcrire. Veuillez réessayer.",
+      "transcribing": "Transcription en cours...",
+      "transcriptionFailed": "La transcription a échoué. Vous pouvez re-transcrire en utilisant l'icône de réessai."
     },
     "debug": {
       "title": "Débogage",
@@ -614,8 +652,8 @@
         "description": "Couper le son du système pendant l'enregistrement"
       },
       "appendTrailingSpace": {
-        "label": "Ajouter un espace final",
-        "description": "Ajouter un espace après la transcription collée"
+        "label": "Ajouter une espace final",
+        "description": "Ajouter une espace après la transcription collée"
       },
       "keyboardImplementation": {
         "title": "Implémentation clavier",
@@ -639,6 +677,10 @@
       "pasteDelay": {
         "title": "Délai de collage",
         "description": "Délai avant l'envoi de la touche de collage (en millisecondes). Augmentez si le mauvais texte est collé."
+      },
+      "recordingBuffer": {
+        "title": "Tampon d'enregistrement supplémentaire",
+        "description": "Temps supplémentaire (en millisecondes) pour continuer l'enregistrement après avoir relâché la touche, pour capturer l'audio restant. 0 = pas de tampon supplémentaire."
       }
     },
     "appearance": {
@@ -753,7 +795,10 @@
     "downloading": "Téléchargement... {{progress}}%",
     "installing": "Installation...",
     "preparing": "Préparation...",
-    "checkForUpdates": "Rechercher des mises à jour"
+    "checkForUpdates": "Rechercher des mises à jour",
+    "portableUpdateTitle": "Manual update required",
+    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
+    "portableUpdateButton": "Open GitHub Releases"
   },
   "common": {
     "loading": "Chargement...",
@@ -785,6 +830,15 @@
   },
   "errors": {
     "loadDirectory": "Erreur lors du chargement du répertoire : {{error}}",
+    "micPermissionDeniedTitle": "Accès au microphone refusé",
+    "micPermissionDenied": {
+      "generic": "L'accès au microphone a été refusé par le système d'exploitation. Veuillez accorder l'autorisation du microphone dans les paramètres système.",
+      "windows": "Activez l'accès au microphone dans Paramètres → Confidentialité et sécurité → Microphone (y compris l'accès des applications de bureau).",
+      "macos": "Accordez l'accès au microphone dans Réglages du système → Confidentialité et sécurité → Microphone.",
+      "linux": "Accordez l'accès au microphone dans les paramètres de son ou de confidentialité de votre système."
+    },
+    "noInputDeviceTitle": "Aucun microphone trouvé",
+    "noInputDevice": "Aucun périphérique d'entrée audio n'a été détecté. Veuillez connecter un microphone ou un casque et réessayer.",
     "recordingFailed": "Échec du démarrage de l'enregistrement : {{error}}",
     "modelLoadFailed": "Échec du chargement du modèle : {{model}}",
     "modelLoadFailedUnknown": "modèle inconnu"
