@@ -178,13 +178,18 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // after permissions are confirmed (on macOS) or after onboarding completes.
     // This matches the pattern used for Enigo initialization.
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     let sig_post_process = libc::SIGRTMIN() + 1;
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     let signals = Signals::new(&[sig_post_process, SIGUSR2]).unwrap();
-    // Set up signal handlers for toggling transcription
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     signal_handle::setup_signal_handler(app_handle.clone(), signals, sig_post_process);
+
+    #[cfg(target_os = "macos")]
+    {
+        let signals = Signals::new(&[SIGUSR2]).unwrap();
+        signal_handle::setup_signal_handler_macos(app_handle.clone(), signals);
+    }
 
     // Apply macOS Accessory policy if starting hidden and tray is available.
     // If the tray icon is disabled, keep the dock icon so the user can reopen.

@@ -21,7 +21,7 @@ pub fn send_transcription_input(app: &AppHandle, binding_id: &str, source: &str)
     }
 }
 
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 pub fn setup_signal_handler(app_handle: AppHandle, mut signals: Signals, sig_post_process: i32) {
     debug!("Signal handlers registered (SIGRTMIN+1, SIGUSR2)");
     thread::spawn(move || {
@@ -35,6 +35,19 @@ pub fn setup_signal_handler(app_handle: AppHandle, mut signals: Signals, sig_pos
             };
             debug!("Received {signal_name}");
             send_transcription_input(&app_handle, binding_id, signal_name);
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+pub fn setup_signal_handler_macos(app_handle: AppHandle, mut signals: Signals) {
+    debug!("Signal handler registered (SIGUSR2)");
+    thread::spawn(move || {
+        for sig in signals.forever() {
+            if sig == SIGUSR2 {
+                debug!("Received SIGUSR2");
+                send_transcription_input(&app_handle, "transcribe", "SIGUSR2");
+            }
         }
     });
 }
