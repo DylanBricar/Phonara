@@ -13,7 +13,7 @@
     "macOSPrivateApi": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost; media-src 'self' blob: asset: https://asset.localhost; connect-src ipc: http://ipc.localhost http://localhost:1420 ws://localhost:1420",
+      "csp": null,
       "assetProtocol": {
         "enable": true,
         "scope": {
