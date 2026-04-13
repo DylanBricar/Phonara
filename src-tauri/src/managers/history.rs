@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Local, Utc};
-use log::{debug, error, info};
+use log::{debug, error, info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::{Error as MigrationError, MigrationDefinitionError, Migrations, M};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
@@ -32,6 +32,7 @@ static MIGRATIONS: &[M] = &[
     M::up("ALTER TABLE transcription_history ADD COLUMN post_processed_text TEXT;"),
     M::up("ALTER TABLE transcription_history ADD COLUMN post_process_prompt TEXT;"),
     M::up("ALTER TABLE transcription_history ADD COLUMN post_process_requested BOOLEAN NOT NULL DEFAULT 0;"),
+    M::up("ALTER TABLE transcription_history ADD COLUMN model_name TEXT;"),
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize, Type)]
@@ -98,6 +99,29 @@ impl HistoryManager {
     }
 
     fn init_database(db_path: &PathBuf) -> Result<Connection> {
+        match Self::try_open_and_migrate(db_path) {
+            Ok(conn) => Ok(conn),
+            Err(err) => {
+                // If the DB was written by a newer app version (schema ahead of current
+                // migrations), rusqlite_migration returns DatabaseTooFarAhead. Rather than
+                // panicking and bricking dev runs on an older checkout, rename the file
+                // aside and start fresh. User data is preserved in the backup.
+                if Self::is_database_too_far_ahead(&err) {
+                    let backup_path = Self::quarantine_database(db_path)?;
+                    warn!(
+                        "History database is from a newer app version. \
+                         Moved to {:?} and creating a fresh database. \
+                         Restore manually if needed.",
+                        backup_path
+                    );
+                    return Self::try_open_and_migrate(db_path);
+                }
+                Err(err)
+            }
+        }
+    }
+
+    fn try_open_and_migrate(db_path: &PathBuf) -> Result<Connection> {
         info!("Initializing database at {:?}", db_path);
 
         let mut conn = Connection::open(db_path)?;
@@ -134,6 +158,59 @@ impl HistoryManager {
         }
 
         Ok(conn)
+    }
+
+    fn is_database_too_far_ahead(err: &anyhow::Error) -> bool {
+        err.downcast_ref::<MigrationError>()
+            .is_some_and(|e| {
+                matches!(
+                    e,
+                    MigrationError::MigrationDefinition(
+                        MigrationDefinitionError::DatabaseTooFarAhead
+                    )
+                )
+            })
+    }
+
+    /// Rename the existing DB to a timestamped backup beside it and return the new path.
+    /// Also moves any SQLite sidecar files (-wal, -shm) so the next open starts truly fresh.
+    fn quarantine_database(db_path: &PathBuf) -> Result<PathBuf> {
+        let timestamp = Utc::now().format("%Y%m%d-%H%M%S");
+        let file_name = db_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("history.db");
+        let backup_name = format!("{}.too-far-ahead-{}.bak", file_name, timestamp);
+        let backup_path = db_path.with_file_name(backup_name);
+
+        fs::rename(db_path, &backup_path)
+            .map_err(|e| anyhow!("Failed to quarantine database {:?}: {}", db_path, e))?;
+
+        for suffix in ["-wal", "-shm"] {
+            let sidecar = db_path.with_extension(format!(
+                "{}{}",
+                db_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("db"),
+                suffix
+            ));
+            if sidecar.exists() {
+                let sidecar_backup = backup_path.with_extension(format!(
+                    "{}{}",
+                    backup_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("bak"),
+                    suffix
+                ));
+                if let Err(e) = fs::rename(&sidecar, &sidecar_backup) {
+                    warn!("Failed to move sidecar {:?}: {}", sidecar, e);
+                }
+            }
+        }
+
+        Ok(backup_path)
     }
 
     /// Migrate from tauri-plugin-sql's migration tracking to rusqlite_migration's.
@@ -719,7 +796,8 @@ mod tests {
                 transcription_text TEXT NOT NULL,
                 post_processed_text TEXT,
                 post_process_prompt TEXT,
-                post_process_requested BOOLEAN NOT NULL DEFAULT 0
+                post_process_requested BOOLEAN NOT NULL DEFAULT 0,
+                model_name TEXT
             );",
         )
         .expect("create transcription_history table");
