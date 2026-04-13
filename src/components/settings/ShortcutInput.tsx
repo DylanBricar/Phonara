@@ -1,7 +1,7 @@
 import React from "react";
 import { useSettings } from "../../hooks/useSettings";
 import { GlobalShortcutInput } from "./GlobalShortcutInput";
-import { HandyKeysShortcutInput } from "./HandyKeysShortcutInput";
+import { PhonaraKeysShortcutInput } from "./PhonaraKeysShortcutInput";
 
 interface ShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
@@ -14,8 +14,8 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = (props) => {
   const { getSetting } = useSettings();
   const keyboardImplementation = getSetting("keyboard_implementation");
 
-  if (keyboardImplementation === "handy_keys") {
-    return <HandyKeysShortcutInput {...props} />;
+  if (keyboardImplementation === "phonara_keys") {
+    return <PhonaraKeysShortcutInput {...props} />;
   }
 
   return <GlobalShortcutInput {...props} />;

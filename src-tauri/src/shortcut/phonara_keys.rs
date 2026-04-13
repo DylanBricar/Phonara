@@ -26,7 +26,7 @@ enum ManagerCommand {
     Shutdown,
 }
 
-pub struct HandyKeysState {
+pub struct PhonaraKeysState {
     command_sender: Mutex<Sender<ManagerCommand>>,
     thread_handle: Mutex<Option<JoinHandle<()>>>,
     recording_listener: Mutex<Option<KeyboardListener>>,
@@ -43,7 +43,7 @@ pub struct FrontendKeyEvent {
     pub hotkey_string: String,
 }
 
-impl HandyKeysState {
+impl PhonaraKeysState {
     pub fn new(app: AppHandle) -> Result<Self, String> {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ManagerCommand>();
 
@@ -227,7 +227,7 @@ impl HandyKeysState {
     fn recording_loop(app: AppHandle, running: Arc<AtomicBool>) {
         while running.load(Ordering::SeqCst) {
             let event = {
-                let state = match app.try_state::<HandyKeysState>() {
+                let state = match app.try_state::<PhonaraKeysState>() {
                     Some(s) => s,
                     None => break,
                 };
@@ -246,7 +246,7 @@ impl HandyKeysState {
                         .unwrap_or_default(),
                 };
 
-                if let Err(e) = app.emit("handy-keys-event", &frontend_event) {
+                if let Err(e) = app.emit("phonara-keys-event", &frontend_event) {
                     error!("Failed to emit key event: {}", e);
                 }
             } else {
@@ -278,7 +278,7 @@ impl HandyKeysState {
     }
 }
 
-impl Drop for HandyKeysState {
+impl Drop for PhonaraKeysState {
     fn drop(&mut self) {
         self.recording_running.store(false, Ordering::SeqCst);
         self.is_recording.store(false, Ordering::SeqCst);
@@ -329,11 +329,11 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     }
     raw.parse::<Hotkey>()
         .map(|_| ())
-        .map_err(|e| format!("Invalid shortcut for HandyKeys: {}", e))
+        .map_err(|e| format!("Invalid shortcut for PhonaraKeys: {}", e))
 }
 
 pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
-    let state = HandyKeysState::new(app.clone())?;
+    let state = PhonaraKeysState::new(app.clone())?;
 
     let default_bindings = settings::get_default_settings().bindings;
     let user_settings = settings::load_or_create_app_settings(app);
@@ -358,7 +358,7 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
 
         if let Err(e) = state.register(&binding) {
             error!(
-                "Failed to register handy-keys shortcut {} during init: {}",
+                "Failed to register phonara-keys shortcut {} during init: {}",
                 id, e
             );
         }
@@ -380,7 +380,7 @@ pub fn register_cancel_shortcut(app: &AppHandle) {
         let app_clone = app.clone();
         tauri::async_runtime::spawn(async move {
             if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                if let Some(state) = app_clone.try_state::<HandyKeysState>() {
+                if let Some(state) = app_clone.try_state::<PhonaraKeysState>() {
                     if let Err(e) = state.register(&cancel_binding) {
                         error!("Failed to register cancel shortcut: {}", e);
                     }
@@ -402,7 +402,7 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
         let app_clone = app.clone();
         tauri::async_runtime::spawn(async move {
             if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                if let Some(state) = app_clone.try_state::<HandyKeysState>() {
+                if let Some(state) = app_clone.try_state::<PhonaraKeysState>() {
                     let _ = state.unregister(&cancel_binding);
                 }
             }
@@ -422,7 +422,7 @@ pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
         let app_clone = app.clone();
         let binding_clone = binding;
         tauri::async_runtime::spawn(async move {
-            if let Some(state) = app_clone.try_state::<HandyKeysState>() {
+            if let Some(state) = app_clone.try_state::<PhonaraKeysState>() {
                 if let Err(e) = state.register(&binding_clone) {
                     error!(
                         "Failed to register action shortcut '{}': {}",
@@ -446,7 +446,7 @@ pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
         let app_clone = app.clone();
         let binding_clone = binding;
         tauri::async_runtime::spawn(async move {
-            if let Some(state) = app_clone.try_state::<HandyKeysState>() {
+            if let Some(state) = app_clone.try_state::<PhonaraKeysState>() {
                 let _ = state.unregister(&binding_clone);
             }
         });
@@ -455,42 +455,42 @@ pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
 
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let state = app
-        .try_state::<HandyKeysState>()
-        .ok_or("HandyKeysState not initialized")?;
+        .try_state::<PhonaraKeysState>()
+        .ok_or("PhonaraKeysState not initialized")?;
     state.register(&binding)
 }
 
 pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
     let state = app
-        .try_state::<HandyKeysState>()
-        .ok_or("HandyKeysState not initialized")?;
+        .try_state::<PhonaraKeysState>()
+        .ok_or("PhonaraKeysState not initialized")?;
     state.unregister(&binding)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<(), String> {
+pub fn start_phonara_keys_recording(app: AppHandle, binding_id: String) -> Result<(), String> {
     let settings = get_settings(&app);
-    if settings.keyboard_implementation != settings::KeyboardImplementation::HandyKeys {
-        return Err("handy-keys is not the active keyboard implementation".into());
+    if settings.keyboard_implementation != settings::KeyboardImplementation::PhonaraKeys {
+        return Err("phonara-keys is not the active keyboard implementation".into());
     }
 
     let state = app
-        .try_state::<HandyKeysState>()
-        .ok_or("HandyKeysState not initialized")?;
+        .try_state::<PhonaraKeysState>()
+        .ok_or("PhonaraKeysState not initialized")?;
     state.start_recording(&app, binding_id)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {
+pub fn stop_phonara_keys_recording(app: AppHandle) -> Result<(), String> {
     let settings = get_settings(&app);
-    if settings.keyboard_implementation != settings::KeyboardImplementation::HandyKeys {
-        return Err("handy-keys is not the active keyboard implementation".into());
+    if settings.keyboard_implementation != settings::KeyboardImplementation::PhonaraKeys {
+        return Err("phonara-keys is not the active keyboard implementation".into());
     }
 
     let state = app
-        .try_state::<HandyKeysState>()
-        .ok_or("HandyKeysState not initialized")?;
+        .try_state::<PhonaraKeysState>()
+        .ok_or("PhonaraKeysState not initialized")?;
     state.stop_recording()
 }

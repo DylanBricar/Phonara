@@ -9,21 +9,23 @@ import { useOsType } from "../../hooks/useOsType";
 import { commands } from "@/bindings";
 import { toast } from "sonner";
 
-interface HandyKeysShortcutInputProps {
+interface PhonaraKeysShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
   grouped?: boolean;
   shortcutId: string;
   disabled?: boolean;
 }
 
-interface HandyKeysEvent {
+interface PhonaraKeysEvent {
   modifiers: string[];
   key: string | null;
   is_key_down: boolean;
   hotkey_string: string;
 }
 
-export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
+export const PhonaraKeysShortcutInput: React.FC<
+  PhonaraKeysShortcutInputProps
+> = ({
   descriptionMode = "tooltip",
   grouped = false,
   shortcutId,
@@ -50,7 +52,7 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
       unlistenRef.current = null;
     }
 
-    await commands.stopHandyKeysRecording().catch(() => {});
+    await commands.stopPhonaraKeysRecording().catch(() => {});
 
     if (originalBinding) {
       try {
@@ -72,8 +74,8 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
     let cleanup = false;
 
     const setupListener = async () => {
-      const unlisten = await listen<HandyKeysEvent>(
-        "handy-keys-event",
+      const unlisten = await listen<PhonaraKeysEvent>(
+        "phonara-keys-event",
         async (event) => {
           if (cleanup) return;
 
@@ -106,7 +108,7 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
               unlistenRef.current();
               unlistenRef.current = null;
             }
-            await commands.stopHandyKeysRecording().catch(() => {});
+            await commands.stopPhonaraKeysRecording().catch(() => {});
             setIsRecording(false);
             setCurrentKeys("");
             currentKeysRef.current = "";
@@ -136,7 +138,7 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
         unlistenRef.current();
         unlistenRef.current = null;
       }
-      commands.stopHandyKeysRecording().catch(() => {});
+      commands.stopPhonaraKeysRecording().catch(() => {});
     };
   }, [
     isRecording,
@@ -169,7 +171,7 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
     setOriginalBinding(bindings[shortcutId]?.current_binding || "");
 
     try {
-      await commands.startHandyKeysRecording(shortcutId);
+      await commands.startPhonaraKeysRecording(shortcutId);
       setIsRecording(true);
       setCurrentKeys("");
       currentKeysRef.current = "";
