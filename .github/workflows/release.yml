@@ -145,11 +145,15 @@ jobs:
       matrix:
         include:
           - platform: "macos-15" # for Arm based macs (M1 and above).
-            args: "--target aarch64-apple-darwin"
+            # Skip --bundles dmg: bundle_dmg.sh is flaky on macos runners
+            # (AppleScript/Finder automation under CI sandbox fails silently).
+            # The .app bundle + app.tar.gz (generated automatically for the
+            # updater) are enough to ship.
+            args: "--target aarch64-apple-darwin --bundles app"
             target: "aarch64-apple-darwin"
             apple_signing: false
           - platform: "macos-latest" # for Intel based macs.
-            args: "--target x86_64-apple-darwin"
+            args: "--target x86_64-apple-darwin --bundles app"
             target: "x86_64-apple-darwin"
             apple_signing: false
           - platform: "ubuntu-22.04" # Build .deb on 22.04
