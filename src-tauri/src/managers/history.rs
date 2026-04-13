@@ -161,15 +161,12 @@ impl HistoryManager {
     }
 
     fn is_database_too_far_ahead(err: &anyhow::Error) -> bool {
-        err.downcast_ref::<MigrationError>()
-            .is_some_and(|e| {
-                matches!(
-                    e,
-                    MigrationError::MigrationDefinition(
-                        MigrationDefinitionError::DatabaseTooFarAhead
-                    )
-                )
-            })
+        err.downcast_ref::<MigrationError>().is_some_and(|e| {
+            matches!(
+                e,
+                MigrationError::MigrationDefinition(MigrationDefinitionError::DatabaseTooFarAhead)
+            )
+        })
     }
 
     /// Rename the existing DB to a timestamped backup beside it and return the new path.
@@ -189,10 +186,7 @@ impl HistoryManager {
         for suffix in ["-wal", "-shm"] {
             let sidecar = db_path.with_extension(format!(
                 "{}{}",
-                db_path
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("db"),
+                db_path.extension().and_then(|e| e.to_str()).unwrap_or("db"),
                 suffix
             ));
             if sidecar.exists() {
