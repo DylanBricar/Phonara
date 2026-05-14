@@ -106,6 +106,17 @@ jobs:
           # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ contains(inputs.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
+      - name: Verify Rust toolchain
+        shell: bash
+        run: |
+          # macos-latest sometimes has a stale rustup-init shim that hijacks
+          # `cargo` and makes `cargo metadata` fail. Force-select stable and
+          # print versions so this surfaces clearly if anything is wrong.
+          rustup default stable
+          rustup show
+          cargo --version
+          rustc --version
+
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
