@@ -30,7 +30,7 @@ serde = { version = "1", features = ["derive"] }
 
 [dependencies]
 once_cell = "1"
-tauri = { version = "~2.10.2", features = [
+tauri = { version = "=2.10.2", features = [
   "protocol-asset",
   "macos-private-api",
   "tray-icon",
@@ -115,6 +115,7 @@ gtk = "0.18"
 transcribe-rs = { version = "0.3.3", features = ["whisper-vulkan"] }
 
 [patch.crates-io]
+tauri = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-runtime-wry = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
