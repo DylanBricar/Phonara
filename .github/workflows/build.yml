@@ -375,20 +375,38 @@ jobs:
       - name: Ensure cargo is the real cargo (not rustup-init)
         shell: bash
         run: |
-          # macos-latest occasionally ships with a rustup-init shim that
-          # hijacks `cargo` and breaks `cargo metadata` (called by tauri-cli).
-          # Force ~/.cargo/bin to the front of PATH and force-select stable.
+          # macos-latest ships a rustup-init shim that hijacks both `cargo`
+          # AND `rustup`, so `cargo metadata` and `rustup default` both fail
+          # with "unexpected argument". The dtolnay action sometimes does not
+          # override this. Force a fresh install via the canonical rustup
+          # bootstrap and prepend its bindir so our binaries win.
+          set -e
+          echo "--- preflight ---"
+          (command -v cargo && file "$(command -v cargo)") || echo "no cargo on PATH"
+          (command -v rustup && file "$(command -v rustup)") || echo "no rustup on PATH"
+
+          # Run rustup-init in update mode to (re)install a real toolchain.
+          # --no-modify-path because we manage PATH via GITHUB_PATH.
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
+
+          # Prepend ~/.cargo/bin for future steps and the rest of this one.
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
-          rustup default stable
-          echo "--- cargo location ---"
+
+          # Re-add the cross-compile targets we may need on macOS.
+          if [[ "${{ inputs.platform }}" == *"macos"* ]]; then
+            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          fi
+          if [[ -n "${{ inputs.target }}" ]]; then
+            rustup target add "${{ inputs.target }}" || true
+          fi
+
+          echo "--- after fix ---"
           command -v cargo
-          echo "--- cargo version ---"
           cargo --version
-          echo "--- rustc version ---"
           rustc --version
-          echo "--- PATH ---"
-          echo "$PATH"
+          rustup --version
 
       - name: Build with Tauri (signed)
         if: ${{ inputs.sign-binaries && inputs.apple_signing }}
