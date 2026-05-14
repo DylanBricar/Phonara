@@ -190,7 +190,7 @@
         { lib, pkgs, ... }:
         {
           imports = [ ./nix/module.nix ];
-          programs.handy.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.handy;
+          programs.phonara.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.phonara;
         };
 
       # Home-manager module for per-user service
@@ -198,7 +198,7 @@
         { lib, pkgs, ... }:
         {
           imports = [ ./nix/hm-module.nix ];
-          services.handy.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.handy;
+          services.phonara.package = lib.mkDefault self.packages.${pkgs.stdenv.hostPlatform.system}.phonara;
         };
 
       # Development shell for building from source

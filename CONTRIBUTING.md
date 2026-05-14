@@ -1,16 +1,16 @@
-# Contributing to Handy
+# Contributing to Phonara
 
-Thank you for your interest in contributing to Handy! This guide will help you get started with contributing to this open source speech-to-text application.
+Thank you for your interest in contributing to Phonara! This guide will help you get started with contributing to this open source speech-to-text application.
 
 ## ⚠️ Feature Freeze
 
-**Handy is currently undergoing a feature freeze.** If you are submitting a PR which is a new feature that the community has not asked for, it will be rejected. If the community has asked for it, or you have explicitly gathered support, it may still be considered.
+**Phonara is currently undergoing a feature freeze.** If you are submitting a PR which is a new feature that the community has not asked for, it will be rejected. If the community has asked for it, or you have explicitly gathered support, it may still be considered.
 
 **Bug fixes are the top priority.** There are 60+ issues to fix. Please focus your contributions on fixing bugs and improving stability.
 
 ## 📖 Philosophy
 
-Handy aims to be the most forkable speech-to-text app. The goal is to create both a useful tool and a foundation for others to build upon—a well-patterned, simple codebase that serves the community. We prioritize:
+Phonara aims to be the most forkable speech-to-text app. The goal is to create both a useful tool and a foundation for others to build upon—a well-patterned, simple codebase that serves the community. We prioritize:
 
 - **Simplicity**: Clear, maintainable code over clever solutions
 - **Extensibility**: Make it easy for others to fork and customize
@@ -34,8 +34,8 @@ Before you begin, ensure you have the following installed:
 2. **Clone your fork**:
 
    ```bash
-   git clone git@github.com:YOUR_USERNAME/Handy.git
-   cd Handy
+   git clone git@github.com:YOUR_USERNAME/Phonara.git
+   cd Phonara
    ```
 
 3. **Add upstream remote**:
@@ -68,7 +68,7 @@ For detailed platform-specific setup instructions, see [BUILD.md](BUILD.md).
 
 ### Understanding the Codebase
 
-Handy follows a clean architecture pattern:
+Phonara follows a clean architecture pattern:
 
 **Backend (Rust - `src-tauri/src/`):**
 
@@ -139,7 +139,7 @@ We use GitHub Discussions for feature requests rather than issues. This keeps is
    - The problem you're trying to solve
    - Your proposed solution
    - Any alternatives you've considered
-   - How it fits with Handy's philosophy
+   - How it fits with Phonara's philosophy
 
 ## 🔧 Making Code Contributions
 
@@ -158,9 +158,9 @@ We use GitHub Discussions for feature requests rather than issues. This keeps is
    - Gather community feedback first via [Discussions](https://github.com/cjpais/Handy/discussions)
    - Link to that discussion in your PR
 
-3. **Get community feedback for features** - PRs with demonstrated community interest are **much more likely to be merged**. Start a discussion, get feedback, and link to it in your PR. This helps ensure Handy stays focused and useful for the most people without becoming bloated.
+3. **Get community feedback for features** - PRs with demonstrated community interest are **much more likely to be merged**. Start a discussion, get feedback, and link to it in your PR. This helps ensure Phonara stays focused and useful for the most people without becoming bloated.
 
-Community feedback is essential to keeping Handy the best it can be for everyone. It helps prioritize what matters most and prevents feature creep.
+Community feedback is essential to keeping Phonara the best it can be for everyone. It helps prioritize what matters most and prevents feature creep.
 
 ### Development Workflow
 
@@ -315,8 +315,8 @@ Look for issues labeled `good first issue` or `help wanted` if you're new to the
 
 ## 📜 License
 
-By contributing to Handy, you agree that your contributions will be licensed under the MIT License. See [LICENSE](LICENSE) for details.
+By contributing to Phonara, you agree that your contributions will be licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
 ---
 
-**Thank you for contributing to Handy!** Your efforts help make speech-to-text technology more accessible, private, and extensible for everyone.
+**Thank you for contributing to Phonara!** Your efforts help make speech-to-text technology more accessible, private, and extensible for everyone.

@@ -22,7 +22,7 @@ pub fn install_panic_logging(app_handle: &AppHandle) -> Result<PathBuf, String> 
         )
     })?;
 
-    let crash_log_path = log_dir.join("parler-crash.log");
+    let crash_log_path = log_dir.join("phonara-crash.log");
 
     PANIC_HOOK.call_once({
         let crash_log_path = crash_log_path.clone();

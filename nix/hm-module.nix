@@ -1,8 +1,8 @@
-# Home-manager module for Handy speech-to-text
+# Home-manager module for Phonara speech-to-text
 #
 # Provides a systemd user service for autostart.
-# Usage: imports = [ handy.homeManagerModules.default ];
-#        services.handy.enable = true;
+# Usage: imports = [ phonara.homeManagerModules.default ];
+#        services.phonara.enable = true;
 {
   config,
   lib,
@@ -10,28 +10,28 @@
   ...
 }:
 let
-  cfg = config.services.handy;
+  cfg = config.services.phonara;
 in
 {
-  options.services.handy = {
-    enable = lib.mkEnableOption "Handy speech-to-text user service";
+  options.services.phonara = {
+    enable = lib.mkEnableOption "Phonara speech-to-text user service";
 
     package = lib.mkOption {
       type = lib.types.package;
-      defaultText = lib.literalExpression "handy.packages.\${system}.handy";
-      description = "The Handy package to use.";
+      defaultText = lib.literalExpression "phonara.packages.\${system}.phonara";
+      description = "The Phonara package to use.";
     };
   };
 
   config = lib.mkIf cfg.enable {
-    systemd.user.services.handy = {
+    systemd.user.services.phonara = {
       Unit = {
-        Description = "Handy speech-to-text";
+        Description = "Phonara speech-to-text";
         After = [ "graphical-session.target" ];
         PartOf = [ "graphical-session.target" ];
       };
       Service = {
-        ExecStart = "${cfg.package}/bin/handy";
+        ExecStart = "${cfg.package}/bin/phonara";
         Restart = "on-failure";
         RestartSec = 5;
       };

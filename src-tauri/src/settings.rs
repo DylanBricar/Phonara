@@ -234,7 +234,8 @@ pub enum RecordingRetentionPeriod {
 #[serde(rename_all = "snake_case")]
 pub enum KeyboardImplementation {
     Tauri,
-    HandyKeys,
+    #[serde(alias = "handy_keys")]
+    PhonaraKeys,
 }
 
 impl Default for KeyboardImplementation {
@@ -242,7 +243,7 @@ impl Default for KeyboardImplementation {
         #[cfg(target_os = "linux")]
         return KeyboardImplementation::Tauri;
         #[cfg(not(target_os = "linux"))]
-        return KeyboardImplementation::HandyKeys;
+        return KeyboardImplementation::PhonaraKeys;
     }
 }
 

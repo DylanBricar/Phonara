@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { LucideProps } from "lucide-react";
 import PhonaraTextLogo from "./icons/PhonaraTextLogo";
-import HandyHand from "./icons/HandyHand";
+import PhonaraHand from "./icons/PhonaraHand";
 import { useSettingsStore } from "../stores/settingsStore";
 import {
   GeneralSettings,
@@ -37,7 +37,7 @@ interface SectionConfig {
 export const SECTIONS_CONFIG = {
   general: {
     labelKey: "sidebar.general",
-    icon: HandyHand,
+    icon: PhonaraHand,
     component: GeneralSettings,
   },
   models: {

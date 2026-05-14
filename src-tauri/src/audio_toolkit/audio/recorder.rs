@@ -377,7 +377,7 @@ pub fn is_no_input_device_error(error_message: &str) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
+mod error_detection_tests {
     use super::{is_microphone_access_denied, is_no_input_device_error};
 
     #[test]
@@ -505,27 +505,29 @@ fn run_consumer(
     }
 
     loop {
-        let chunk = match sample_rx.recv() {
-            Ok(c) => c,
-            Err(_) => break, // stream closed
+        // Wait for an audio chunk with a timeout so Cmd::Shutdown and other
+        // commands are still processed when no audio is flowing (mic idle,
+        // test harness with no producer, etc.).
+        let raw = match sample_rx.recv_timeout(Duration::from_millis(50)) {
+            Ok(AudioChunk::Samples(s)) => Some(s),
+            Ok(AudioChunk::EndOfStream) => None,
+            Err(mpsc::RecvTimeoutError::Timeout) => None,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
 
-        let raw = match chunk {
-            AudioChunk::Samples(s) => s,
-            AudioChunk::EndOfStream => continue,
-        };
-
-        // ---------- spectrum processing ---------------------------------- //
-        if let Some(buckets) = visualizer.feed(&raw) {
-            if let Some(cb) = &level_cb {
-                cb(buckets);
+        if let Some(raw) = raw {
+            // ---------- spectrum processing ------------------------------ //
+            if let Some(buckets) = visualizer.feed(&raw) {
+                if let Some(cb) = &level_cb {
+                    cb(buckets);
+                }
             }
-        }
 
-        // ---------- existing pipeline ------------------------------------ //
-        frame_resampler.push(&raw, &mut |frame: &[f32]| {
-            handle_frame(frame, recording, &vad, &mut processed_samples)
-        });
+            // ---------- existing pipeline -------------------------------- //
+            frame_resampler.push(&raw, &mut |frame: &[f32]| {
+                handle_frame(frame, recording, &vad, &mut processed_samples)
+            });
+        }
 
         // non-blocking check for a command
         while let Ok(cmd) = cmd_rx.try_recv() {
@@ -574,5 +576,41 @@ fn run_consumer(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod consumer_tests {
+    use super::{run_consumer, AudioChunk, Cmd};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
+    #[test]
+    fn shutdown_command_exits_without_waiting_for_samples() {
+        let (sample_tx, sample_rx) = mpsc::channel::<AudioChunk>();
+        let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
+        let stop_flag = Arc::new(AtomicBool::new(false));
+
+        let worker = std::thread::spawn({
+            let stop_flag = stop_flag.clone();
+            move || {
+                run_consumer(16_000, None, sample_rx, cmd_rx, None, stop_flag);
+            }
+        });
+
+        cmd_tx.send(Cmd::Shutdown).expect("send shutdown");
+
+        let (joined_tx, joined_rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = worker.join();
+            let _ = joined_tx.send(());
+        });
+
+        joined_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("worker should exit after shutdown");
+
+        drop(sample_tx);
     }
 }
