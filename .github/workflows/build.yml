@@ -106,17 +106,6 @@ jobs:
           # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ contains(inputs.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
-      - name: Verify Rust toolchain
-        shell: bash
-        run: |
-          # macos-latest sometimes has a stale rustup-init shim that hijacks
-          # `cargo` and makes `cargo metadata` fail. Force-select stable and
-          # print versions so this surfaces clearly if anything is wrong.
-          rustup default stable
-          rustup show
-          cargo --version
-          rustc --version
-
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
@@ -382,6 +371,24 @@ jobs:
              --arg sov "$ORT_DIR/lib/libonnxruntime.so.1.24.2" \
             '.bundle.linux.deb.files["/usr/lib/libonnxruntime.so"] = $so | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1"] = $so1 | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1.24.2"] = $sov' \
             src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
+      - name: Ensure cargo is the real cargo (not rustup-init)
+        shell: bash
+        run: |
+          # macos-latest occasionally ships with a rustup-init shim that
+          # hijacks `cargo` and breaks `cargo metadata` (called by tauri-cli).
+          # Force ~/.cargo/bin to the front of PATH and force-select stable.
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup default stable
+          echo "--- cargo location ---"
+          command -v cargo
+          echo "--- cargo version ---"
+          cargo --version
+          echo "--- rustc version ---"
+          rustc --version
+          echo "--- PATH ---"
+          echo "$PATH"
 
       - name: Build with Tauri (signed)
         if: ${{ inputs.sign-binaries && inputs.apple_signing }}
