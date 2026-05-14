@@ -605,6 +605,7 @@ impl HistoryManager {
         Ok(path)
     }
 
+    #[allow(dead_code)]
     pub fn update_transcription_text(
         &self,
         id: i64,

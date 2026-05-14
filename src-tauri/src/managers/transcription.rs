@@ -1,3 +1,4 @@
+use crate::audio_toolkit::constants::WHISPER_SAMPLE_RATE;
 use crate::audio_toolkit::{apply_custom_words, filter_transcription_output};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
@@ -445,6 +446,7 @@ impl TranscriptionManager {
         current_model.clone()
     }
 
+    #[allow(dead_code)]
     pub fn get_current_model_name(&self) -> Option<String> {
         let model_id = self.get_current_model()?;
         self.model_manager
@@ -482,6 +484,48 @@ impl TranscriptionManager {
             );
             self.maybe_unload_immediately("silent audio");
             return Ok(String::new());
+        }
+
+        // Duration-based model switching: if the audio exceeds the configured
+        // threshold and a long-audio model is set, swap models before loading.
+        let duration_seconds = audio.len() as f32 / WHISPER_SAMPLE_RATE as f32;
+        {
+            let settings_for_switch = get_settings(&self.app_handle);
+            if let Some(ref long_model_id) = settings_for_switch.long_audio_model {
+                if duration_seconds > settings_for_switch.long_audio_threshold_seconds
+                    && self.get_current_model().as_deref() != Some(long_model_id.as_str())
+                {
+                    info!(
+                        "Audio duration {:.1}s exceeds threshold {:.1}s, switching to long audio model: {}",
+                        duration_seconds,
+                        settings_for_switch.long_audio_threshold_seconds,
+                        long_model_id
+                    );
+                    if let Err(e) = self.load_model(long_model_id) {
+                        warn!(
+                            "Failed to load long audio model '{}': {}. Falling back to current model.",
+                            long_model_id, e
+                        );
+                    }
+                } else if duration_seconds <= settings_for_switch.long_audio_threshold_seconds
+                    && self.get_current_model().as_deref() == Some(long_model_id.as_str())
+                    && self.get_current_model().as_deref()
+                        != Some(settings_for_switch.selected_model.as_str())
+                {
+                    info!(
+                        "Audio duration {:.1}s under threshold {:.1}s, restoring default model: {}",
+                        duration_seconds,
+                        settings_for_switch.long_audio_threshold_seconds,
+                        settings_for_switch.selected_model
+                    );
+                    if let Err(e) = self.load_model(&settings_for_switch.selected_model) {
+                        warn!(
+                            "Failed to restore default model '{}': {}",
+                            settings_for_switch.selected_model, e
+                        );
+                    }
+                }
+            }
         }
 
         // Check if model is loaded, if not try to load it

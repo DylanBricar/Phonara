@@ -1,6 +1,6 @@
 [package]
 name = "phonara"
-version = "0.8.3"
+version = "0.8.6"
 description = "Phonara"
 authors = ["Dylan Bricar"]
 edition = "2021"
@@ -123,7 +123,7 @@ tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.1
 tempfile = "3"
 
 [profile.release]
-lto = true
+lto = "thin"
 opt-level = 3
 codegen-units = 1
 strip = true

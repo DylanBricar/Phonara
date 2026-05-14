@@ -773,12 +773,12 @@ fn default_post_process_prompts() -> Vec<LLMPrompt> {
     }]
 }
 
-fn default_whisper_gpu_device() -> i32 {
-    -1 // auto
-}
-
 fn default_long_audio_threshold_seconds() -> f32 {
     10.0
+}
+
+fn default_whisper_gpu_device() -> i32 {
+    -1 // auto
 }
 
 fn default_gemini_model() -> String {
@@ -916,6 +916,36 @@ pub fn get_default_settings() -> AppSettings {
             description: "Cancels the current recording.".to_string(),
             default_binding: "escape".to_string(),
             current_binding: "escape".to_string(),
+        },
+    );
+    bindings.insert(
+        "pause".to_string(),
+        ShortcutBinding {
+            id: "pause".to_string(),
+            name: "Pause / Resume".to_string(),
+            description: "Pauses or resumes the current recording.".to_string(),
+            default_binding: "f6".to_string(),
+            current_binding: "f6".to_string(),
+        },
+    );
+    bindings.insert(
+        "show_history".to_string(),
+        ShortcutBinding {
+            id: "show_history".to_string(),
+            name: "Show History".to_string(),
+            description: "Opens the app window and navigates to the History tab.".to_string(),
+            default_binding: "".to_string(),
+            current_binding: "".to_string(),
+        },
+    );
+    bindings.insert(
+        "copy_latest_history".to_string(),
+        ShortcutBinding {
+            id: "copy_latest_history".to_string(),
+            name: "Copy Latest History".to_string(),
+            description: "Copies the latest transcription entry to your clipboard.".to_string(),
+            default_binding: "".to_string(),
+            current_binding: "".to_string(),
         },
     );
 
@@ -1106,7 +1136,25 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
         default_settings
     };
 
+    let mut updated = false;
+
+    // Backfill new default bindings that the user's stored settings don't know
+    // about yet (e.g. new bindings added in later versions). Without this, the
+    // UI renders undefined bindings using the generic fallback label.
+    let default_bindings = get_default_settings().bindings;
+    for (key, value) in default_bindings {
+        if !settings.bindings.contains_key(&key) {
+            debug!("Adding missing binding: {}", key);
+            settings.bindings.insert(key, value);
+            updated = true;
+        }
+    }
+
     if ensure_post_process_defaults(&mut settings) {
+        updated = true;
+    }
+
+    if updated {
         store.set(
             "settings",
             serde_json::to_value(&settings).expect("AppSettings must be serializable"),
