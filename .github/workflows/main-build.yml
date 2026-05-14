@@ -10,10 +10,10 @@ on:
   push:
     branches: [main]
 
-# Shares the concurrency group with the Release workflow so a manual release
-# dispatch supersedes the push build (same macOS matrix, no point running both).
+# Cancel earlier Main Branch Build runs on the same ref when a newer push
+# lands. Distinct group from the Release workflow so both run in parallel.
 concurrency:
-  group: parler-macos-build-${{ github.ref }}
+  group: phonara-main-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

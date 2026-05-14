@@ -9,10 +9,11 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Shared with Main Branch Build so dispatching a release cancels the duplicate
-# push build, and so two release dispatches on the same ref collapse to one.
+# Cancel earlier Release runs on the same ref when a newer push lands so the
+# release matrix doesn't queue up duplicates. Distinct group from Main Branch
+# Build so the two workflows run in parallel on push.
 concurrency:
-  group: parler-macos-build-${{ github.ref }}
+  group: phonara-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
