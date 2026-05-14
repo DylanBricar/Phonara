@@ -720,6 +720,7 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
         allow_base_url_edit: false,
         models_endpoint: Some("/models".to_string()),
         supports_structured_output: true,
+        requires_api_key: true,
     });
 
     // Custom provider always comes last

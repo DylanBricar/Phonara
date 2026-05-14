@@ -4,11 +4,9 @@ pub mod models;
 pub mod openai;
 pub mod transcription;
 
-use crate::managers::audio::AudioRecordingManager;
 use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
 use crate::utils::cancel_current_operation;
-use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 #[tauri::command]
