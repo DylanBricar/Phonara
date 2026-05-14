@@ -6,7 +6,7 @@ use log::warn;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::Arc;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(target_os = "windows")]
 use winreg::{
@@ -318,7 +318,6 @@ pub fn get_microphone_channels(device_name: String) -> Result<u16, String> {
         list_input_devices().map_err(|e| format!("Failed to list audio devices: {}", e))?;
 
     if device_name == "default" {
-        // Return channels for the default device
         return Ok(devices
             .iter()
             .find(|d| d.is_default)
@@ -347,10 +346,19 @@ pub fn set_selected_channel(app: AppHandle, channel: Option<u16>) -> Result<(), 
     settings.selected_channel = channel;
     write_settings(&app, settings);
 
-    // Recreate the recorder to apply the new channel selection
     let rm = app.state::<Arc<AudioRecordingManager>>();
     rm.update_selected_device()
         .map_err(|e| format!("Failed to update audio recorder: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn toggle_pause(app: AppHandle) -> Result<bool, String> {
+    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
+    let paused = audio_manager.toggle_pause();
+    app.emit("recording-paused", paused)
+        .map_err(|e| format!("Failed to emit pause state: {}", e))?;
+    Ok(paused)
 }

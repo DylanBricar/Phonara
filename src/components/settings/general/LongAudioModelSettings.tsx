@@ -1,11 +1,11 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { SettingsGroup } from "../../ui/SettingsGroup";
-import { SettingContainer } from "../../ui/SettingContainer";
-import { Dropdown } from "../../ui/Dropdown";
+import type { ModelInfo } from "@/bindings";
 import { useSettings } from "../../../hooks/useSettings";
 import { useModelStore } from "../../../stores/modelStore";
-import type { ModelInfo } from "@/bindings";
+import { Dropdown } from "../../ui/Dropdown";
+import { SettingContainer } from "../../ui/SettingContainer";
+import { SettingsGroup } from "../../ui/SettingsGroup";
 
 const THRESHOLD_OPTIONS = [5, 10, 15, 20, 30, 60];
 

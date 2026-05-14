@@ -9,6 +9,12 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# Shared with Main Branch Build so dispatching a release cancels the duplicate
+# push build, and so two release dispatches on the same ref collapse to one.
+concurrency:
+  group: parler-macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   create-release:
     permissions:
@@ -147,7 +153,7 @@ jobs:
           - platform: "macos-15" # for Arm based macs (M1 and above).
             args: "--target aarch64-apple-darwin"
             target: "aarch64-apple-darwin"
-            apple_signing: false
+            apple_signing: true
           - platform: "macos-latest" # for Intel based macs.
             args: "--target x86_64-apple-darwin"
             target: "x86_64-apple-darwin"
