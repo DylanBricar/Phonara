@@ -372,7 +372,8 @@ jobs:
             '.bundle.linux.deb.files["/usr/lib/libonnxruntime.so"] = $so | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1"] = $so1 | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1.24.2"] = $sov' \
             src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
 
-      - name: Ensure cargo is the real cargo (not rustup-init)
+      - name: Ensure cargo is the real cargo (macOS only)
+        if: contains(inputs.platform, 'macos')
         shell: bash
         run: |
           # macos-latest ships a rustup-init shim that hijacks both `cargo`
@@ -380,24 +381,21 @@ jobs:
           # with "unexpected argument". The dtolnay action sometimes does not
           # override this. Force a fresh install via the canonical rustup
           # bootstrap and prepend its bindir so our binaries win.
+          #
+          # macOS-only: on Windows the sh.rustup.rs script installs the GNU
+          # toolchain, but we need MSVC for ort-sys prebuilt binaries.
           set -e
           echo "--- preflight ---"
           (command -v cargo && file "$(command -v cargo)") || echo "no cargo on PATH"
           (command -v rustup && file "$(command -v rustup)") || echo "no rustup on PATH"
 
-          # Run rustup-init in update mode to (re)install a real toolchain.
-          # --no-modify-path because we manage PATH via GITHUB_PATH.
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
 
-          # Prepend ~/.cargo/bin for future steps and the rest of this one.
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
 
-          # Re-add the cross-compile targets we may need on macOS.
-          if [[ "${{ inputs.platform }}" == *"macos"* ]]; then
-            rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          fi
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
           if [[ -n "${{ inputs.target }}" ]]; then
             rustup target add "${{ inputs.target }}" || true
           fi
