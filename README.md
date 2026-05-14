@@ -136,8 +136,8 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 
 | Source                                              | Last Commit Hash |
 | --------------------------------------------------- | ---------------- |
-| [cjpais/Handy](https://github.com/cjpais/Handy)     | `82297fa`        |
-| [Melvynx/Parler](https://github.com/Melvynx/Parler) | `daff123`        |
+| [cjpais/Handy](https://github.com/cjpais/Handy)     | `e3206aa`        |
+| [Melvynx/Parler](https://github.com/Melvynx/Parler) | `ce14cd8`        |
 
 ### How to Contribute
 
