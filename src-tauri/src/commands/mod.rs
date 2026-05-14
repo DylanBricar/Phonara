@@ -19,15 +19,6 @@ pub fn cancel_operation(app: AppHandle) {
 
 #[tauri::command]
 #[specta::specta]
-pub fn toggle_pause(app: AppHandle) -> bool {
-    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
-    let paused = audio_manager.toggle_pause();
-    let _ = app.emit("recording-paused", paused);
-    paused
-}
-
-#[tauri::command]
-#[specta::specta]
 pub fn is_portable() -> bool {
     crate::portable::is_portable()
 }
