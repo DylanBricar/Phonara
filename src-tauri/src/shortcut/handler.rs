@@ -74,7 +74,10 @@ pub fn handle_shortcut_event(
         if is_pressed {
             let audio_manager = app.state::<Arc<AudioRecordingManager>>();
             if audio_manager.is_recording() {
-                let _paused = audio_manager.toggle_pause();
+                let paused = audio_manager.toggle_pause();
+                if let Err(e) = app.emit("recording-paused", paused) {
+                    warn!("Failed to emit pause state from shortcut: {}", e);
+                }
             }
         }
         return;

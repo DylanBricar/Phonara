@@ -601,7 +601,7 @@
         "whisper": {
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
-          "details": "Parler uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+          "details": "Parler uses Whisper.cpp for fast, local speech-to-text processing and builds on the original Handy project from handy.computer. Thanks to Georgi Gerganov, the Whisper.cpp contributors, and the Handy maintainers."
         }
       }
     }
