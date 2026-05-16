@@ -13,6 +13,23 @@ use tauri::WebviewWindowBuilder;
 use tauri::WebviewUrl;
 
 #[cfg(target_os = "macos")]
+use core_foundation::{
+    base::{CFType, TCFType},
+    dictionary::CFDictionary,
+    number::CFNumber,
+    string::CFString,
+};
+
+#[cfg(target_os = "macos")]
+use core_graphics::{
+    geometry::CGRect,
+    window::{
+        copy_window_info, kCGNullWindowID, kCGWindowBounds, kCGWindowLayer,
+        kCGWindowListExcludeDesktopElements, kCGWindowListOptionOnScreenOnly,
+    },
+};
+
+#[cfg(target_os = "macos")]
 use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelBuilder, PanelLevel};
 
 #[cfg(target_os = "linux")]
@@ -43,6 +60,14 @@ const OVERLAY_BOTTOM_OFFSET: f64 = 15.0;
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 const OVERLAY_BOTTOM_OFFSET: f64 = 40.0;
+
+#[cfg(target_os = "macos")]
+struct LogicalRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
 
 #[cfg(target_os = "linux")]
 fn update_gtk_layer_shell_anchors(overlay_window: &tauri::webview::WebviewWindow) {
@@ -133,42 +158,122 @@ fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     });
 }
 
-fn get_monitor_with_cursor(app_handle: &AppHandle) -> Option<tauri::Monitor> {
-    if let Some(mouse_location) = input::get_cursor_position(app_handle) {
-        if let Ok(monitors) = app_handle.available_monitors() {
-            for monitor in monitors {
-                // Tauri's monitor position/size are physical pixels, but enigo
-                // may return logical coordinates (confirmed on macOS via
-                // NSEvent::mouseLocation; on Windows, GetCursorPos behavior
-                // depends on the process DPI-awareness context). Dividing by
-                // scale_factor normalizes to logical, which is safe regardless:
-                // if enigo returns logical it matches directly, and if it returns
-                // physical on a scale=1 monitor the division is a no-op.
-                let scale = monitor.scale_factor();
-                let pos = PhysicalPosition::new(
-                    (monitor.position().x as f64 / scale) as i32,
-                    (monitor.position().y as f64 / scale) as i32,
-                );
-                let size = PhysicalSize::new(
-                    (monitor.size().width as f64 / scale) as u32,
-                    (monitor.size().height as f64 / scale) as u32,
-                );
-                if is_mouse_within_monitor(mouse_location, &pos, &size) {
-                    return Some(monitor);
-                }
+fn get_monitor_containing_logical_point(
+    app_handle: &AppHandle,
+    x: f64,
+    y: f64,
+) -> Option<tauri::Monitor> {
+    if let Ok(monitors) = app_handle.available_monitors() {
+        for monitor in monitors {
+            // Tauri's monitor position/size are physical pixels. Dividing by
+            // scale_factor normalizes them for logical points from CoreGraphics
+            // on macOS and preserves the existing cursor-based behavior.
+            let scale = monitor.scale_factor();
+            let pos = PhysicalPosition::new(
+                (monitor.position().x as f64 / scale) as i32,
+                (monitor.position().y as f64 / scale) as i32,
+            );
+            let size = PhysicalSize::new(
+                (monitor.size().width as f64 / scale) as u32,
+                (monitor.size().height as f64 / scale) as u32,
+            );
+            if is_point_within_monitor((x, y), &pos, &size) {
+                return Some(monitor);
             }
+        }
+    }
+
+    None
+}
+
+fn get_monitor_with_cursor(app_handle: &AppHandle) -> Option<tauri::Monitor> {
+    if let Some((mouse_x, mouse_y)) = input::get_cursor_position(app_handle) {
+        if let Some(monitor) =
+            get_monitor_containing_logical_point(app_handle, mouse_x as f64, mouse_y as f64)
+        {
+            return Some(monitor);
         }
     }
 
     app_handle.primary_monitor().ok().flatten()
 }
 
-fn is_mouse_within_monitor(
-    mouse_pos: (i32, i32),
+#[cfg(target_os = "macos")]
+fn get_monitor_with_focused_window(app_handle: &AppHandle) -> Option<tauri::Monitor> {
+    let window_rect = get_frontmost_window_rect()?;
+    let center_x = window_rect.x + window_rect.width / 2.0;
+    let center_y = window_rect.y + window_rect.height / 2.0;
+
+    get_monitor_containing_logical_point(app_handle, center_x, center_y)
+}
+
+#[cfg(target_os = "macos")]
+fn get_frontmost_window_rect() -> Option<LogicalRect> {
+    let window_infos = copy_window_info(
+        kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
+        kCGNullWindowID,
+    )?;
+
+    let layer_key = unsafe { CFString::wrap_under_get_rule(kCGWindowLayer) };
+    let bounds_key = unsafe { CFString::wrap_under_get_rule(kCGWindowBounds) };
+
+    for window_info_ref in window_infos.get_all_values() {
+        let window_info = unsafe {
+            CFDictionary::<CFString, CFType>::wrap_under_get_rule(
+                window_info_ref as core_foundation::dictionary::CFDictionaryRef,
+            )
+        };
+
+        let layer = window_info
+            .find(&layer_key)
+            .and_then(|value| value.downcast::<CFNumber>())
+            .and_then(|value| value.to_i32());
+
+        if layer != Some(0) {
+            continue;
+        }
+
+        let bounds = window_info
+            .find(&bounds_key)
+            .and_then(|value| value.downcast::<CFDictionary>())
+            .and_then(|value| CGRect::from_dict_representation(&value));
+
+        let Some(bounds) = bounds else {
+            continue;
+        };
+
+        if bounds.size.width <= 1.0 || bounds.size.height <= 1.0 {
+            continue;
+        }
+
+        return Some(LogicalRect {
+            x: bounds.origin.x,
+            y: bounds.origin.y,
+            width: bounds.size.width,
+            height: bounds.size.height,
+        });
+    }
+
+    None
+}
+
+fn get_monitor_for_overlay(app_handle: &AppHandle) -> Option<tauri::Monitor> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(monitor) = get_monitor_with_focused_window(app_handle) {
+            return Some(monitor);
+        }
+    }
+
+    get_monitor_with_cursor(app_handle)
+}
+
+fn is_point_within_monitor(
+    point: (f64, f64),
     monitor_pos: &PhysicalPosition<i32>,
     monitor_size: &PhysicalSize<u32>,
 ) -> bool {
-    let (mouse_x, mouse_y) = mouse_pos;
+    let (point_x, point_y) = point;
     let PhysicalPosition {
         x: monitor_x,
         y: monitor_y,
@@ -178,10 +283,10 @@ fn is_mouse_within_monitor(
         height: monitor_height,
     } = *monitor_size;
 
-    mouse_x >= monitor_x
-        && mouse_x < (monitor_x + monitor_width as i32)
-        && mouse_y >= monitor_y
-        && mouse_y < (monitor_y + monitor_height as i32)
+    point_x >= monitor_x as f64
+        && point_x < (monitor_x + monitor_width as i32) as f64
+        && point_y >= monitor_y as f64
+        && point_y < (monitor_y + monitor_height as i32) as f64
 }
 
 /// Returns overlay position in logical coordinates (points on macOS).
@@ -195,7 +300,7 @@ fn is_mouse_within_monitor(
 /// converts PhysicalPosition using the scale factor of the monitor the window
 /// is *currently* on, which is wrong when moving cross-monitor.
 fn calculate_overlay_position(app_handle: &AppHandle) -> Option<(f64, f64)> {
-    let monitor = get_monitor_with_cursor(app_handle)?;
+    let monitor = get_monitor_for_overlay(app_handle)?;
     let scale = monitor.scale_factor();
     let monitor_x = monitor.position().x as f64 / scale;
     let monitor_y = monitor.position().y as f64 / scale;
