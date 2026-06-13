@@ -270,7 +270,7 @@ impl AudioRecorder {
             }
 
             if sample_tx
-                .send(AudioChunk::Samples(output_buffer.clone()))
+                .send(AudioChunk::Samples(std::mem::take(&mut output_buffer)))
                 .is_err()
             {
                 log::error!("Failed to send samples");
@@ -522,6 +522,9 @@ fn run_consumer(
         }
     }
 
+    const LEVEL_EMIT_INTERVAL: Duration = Duration::from_millis(25);
+    let mut last_level_emit: Option<std::time::Instant> = None;
+
     loop {
         let chunk = match sample_rx.recv() {
             Ok(c) => c,
@@ -534,9 +537,18 @@ fn run_consumer(
         };
 
         // ---------- spectrum processing ---------------------------------- //
-        if let Some(buckets) = visualizer.feed(&raw) {
-            if let Some(cb) = &level_cb {
-                cb(buckets);
+        // Only run the FFT and emit levels while recording (the overlay is the
+        // sole consumer), and throttle to ~40Hz instead of the raw callback
+        // rate (~94Hz at 48kHz) to cut CPU and IPC traffic.
+        if recording && level_cb.is_some() {
+            let due = last_level_emit.is_none_or(|t| t.elapsed() >= LEVEL_EMIT_INTERVAL);
+            if due {
+                if let Some(buckets) = visualizer.feed(&raw) {
+                    if let Some(cb) = &level_cb {
+                        cb(buckets);
+                        last_level_emit = Some(std::time::Instant::now());
+                    }
+                }
             }
         }
 

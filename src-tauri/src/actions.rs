@@ -5,7 +5,9 @@ use crate::audio_toolkit::{is_microphone_access_denied, is_no_input_device_error
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::history::HistoryManager;
 use crate::managers::transcription::TranscriptionManager;
-use crate::settings::{get_settings, AppSettings, APPLE_INTELLIGENCE_PROVIDER_ID};
+use crate::settings::{
+    get_settings, AppSettings, PostProcessAction, APPLE_INTELLIGENCE_PROVIDER_ID,
+};
 use crate::shortcut;
 use crate::tray::{change_tray_icon, TrayIconState};
 use crate::utils::{
@@ -13,7 +15,7 @@ use crate::utils::{
 };
 use crate::TranscriptionCoordinator;
 use ferrous_opencc::{config::BuiltinConfig, OpenCC};
-use log::{debug, error, warn};
+use log::{debug, error};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -27,7 +29,9 @@ struct RecordingErrorEvent {
     detail: Option<String>,
 }
 
-pub struct ActiveActionState(pub Mutex<Option<u8>>);
+/// Id of the post-process action selected for the in-flight transcription,
+/// set by the coordinator right before the pipeline stops.
+pub struct ActiveActionState(pub Mutex<Option<String>>);
 
 /// Drop guard that notifies the [`TranscriptionCoordinator`] when the
 /// transcription pipeline finishes — whether it completes normally or panics.
@@ -51,224 +55,42 @@ struct TranscribeAction {
     post_process: bool,
 }
 
-/// Field name for structured output JSON schema
-const TRANSCRIPTION_FIELD: &str = "transcription";
-
 /// Strip invisible Unicode characters that some LLMs may insert
 fn strip_invisible_chars(s: &str) -> String {
     s.replace(['\u{200B}', '\u{200C}', '\u{200D}', '\u{FEFF}'], "")
 }
 
-/// Build a system prompt from the user's prompt template.
-/// Removes `${output}` placeholder since the transcription is sent as the user message.
-fn build_system_prompt(prompt_template: &str) -> String {
-    prompt_template.replace("${output}", "").trim().to_string()
-}
+/// Run a post-process action over the given text, resolving its saved
+/// language model (falling back to the first saved model, then to the legacy
+/// active provider configuration).
+pub(crate) async fn run_post_process_action(
+    settings: &AppSettings,
+    text: &str,
+    action: &PostProcessAction,
+) -> Option<String> {
+    let model = action
+        .llm_model_id
+        .as_deref()
+        .and_then(|id| settings.llm_model(id))
+        .or_else(|| settings.llm_models.first());
 
-async fn post_process_transcription(settings: &AppSettings, transcription: &str) -> Option<String> {
-    let provider = match settings.active_post_process_provider().cloned() {
-        Some(provider) => provider,
-        None => {
-            debug!("Post-processing enabled but no provider is selected");
-            return None;
+    match model {
+        Some(model) => {
+            process_action(
+                settings,
+                text,
+                &action.prompt,
+                Some(&model.model),
+                Some(&model.provider_id),
+            )
+            .await
         }
-    };
-
-    let model = settings
-        .post_process_models
-        .get(&provider.id)
-        .cloned()
-        .unwrap_or_default();
-
-    if model.trim().is_empty() {
-        debug!(
-            "Post-processing skipped because provider '{}' has no model configured",
-            provider.id
-        );
-        return None;
-    }
-
-    let selected_prompt_id = match &settings.post_process_selected_prompt_id {
-        Some(id) => id.clone(),
-        None => {
-            debug!("Post-processing skipped because no prompt is selected");
-            return None;
-        }
-    };
-
-    let prompt = match settings
-        .post_process_prompts
-        .iter()
-        .find(|prompt| prompt.id == selected_prompt_id)
-    {
-        Some(prompt) => prompt.prompt.clone(),
         None => {
             debug!(
-                "Post-processing skipped because prompt '{}' was not found",
-                selected_prompt_id
+                "Action '{}' has no saved language model; using active provider configuration",
+                action.id
             );
-            return None;
-        }
-    };
-
-    if prompt.trim().is_empty() {
-        debug!("Post-processing skipped because the selected prompt is empty");
-        return None;
-    }
-
-    debug!(
-        "Starting LLM post-processing with provider '{}' (model: {})",
-        provider.id, model
-    );
-
-    let api_key = settings
-        .post_process_api_keys
-        .get(&provider.id)
-        .cloned()
-        .unwrap_or_default();
-
-    if provider.supports_structured_output {
-        debug!("Using structured outputs for provider '{}'", provider.id);
-
-        let system_prompt = build_system_prompt(&prompt);
-        let user_content = transcription.to_string();
-
-        // Handle Apple Intelligence separately since it uses native Swift APIs
-        if provider.id == APPLE_INTELLIGENCE_PROVIDER_ID {
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-            {
-                if !apple_intelligence::check_apple_intelligence_availability() {
-                    debug!(
-                        "Apple Intelligence selected but not currently available on this device"
-                    );
-                    return None;
-                }
-
-                let token_limit = model.trim().parse::<i32>().unwrap_or(0);
-                return match apple_intelligence::process_text_with_system_prompt(
-                    &system_prompt,
-                    &user_content,
-                    token_limit,
-                ) {
-                    Ok(result) => {
-                        if result.trim().is_empty() {
-                            debug!("Apple Intelligence returned an empty response");
-                            None
-                        } else {
-                            let result = strip_invisible_chars(&result);
-                            debug!(
-                                "Apple Intelligence post-processing succeeded. Output length: {} chars",
-                                result.len()
-                            );
-                            Some(result)
-                        }
-                    }
-                    Err(err) => {
-                        error!("Apple Intelligence post-processing failed: {}", err);
-                        None
-                    }
-                };
-            }
-
-            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-            {
-                debug!("Apple Intelligence provider selected on unsupported platform");
-                return None;
-            }
-        }
-
-        // Define JSON schema for transcription output
-        let json_schema = serde_json::json!({
-            "type": "object",
-            "properties": {
-                (TRANSCRIPTION_FIELD): {
-                    "type": "string",
-                    "description": "The cleaned and processed transcription text"
-                }
-            },
-            "required": [TRANSCRIPTION_FIELD],
-            "additionalProperties": false
-        });
-
-        match crate::llm_client::send_chat_completion_with_schema(
-            &provider,
-            api_key.clone(),
-            &model,
-            user_content,
-            Some(system_prompt),
-            Some(json_schema),
-        )
-        .await
-        {
-            Ok(Some(content)) => {
-                // Parse the JSON response to extract the transcription field
-                match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(json) => {
-                        if let Some(transcription_value) =
-                            json.get(TRANSCRIPTION_FIELD).and_then(|t| t.as_str())
-                        {
-                            let result = strip_invisible_chars(transcription_value);
-                            debug!(
-                                "Structured output post-processing succeeded for provider '{}'. Output length: {} chars",
-                                provider.id,
-                                result.len()
-                            );
-                            return Some(result);
-                        } else {
-                            error!("Structured output response missing 'transcription' field");
-                            return Some(strip_invisible_chars(&content));
-                        }
-                    }
-                    Err(e) => {
-                        error!(
-                            "Failed to parse structured output JSON: {}. Returning raw content.",
-                            e
-                        );
-                        return Some(strip_invisible_chars(&content));
-                    }
-                }
-            }
-            Ok(None) => {
-                error!("LLM API response has no content");
-                return None;
-            }
-            Err(e) => {
-                warn!(
-                    "Structured output failed for provider '{}': {}. Falling back to legacy mode.",
-                    provider.id, e
-                );
-                // Fall through to legacy mode below
-            }
-        }
-    }
-
-    // Legacy mode: Replace ${output} variable in the prompt with the actual text
-    let processed_prompt = prompt.replace("${output}", transcription);
-    debug!("Processed prompt length: {} chars", processed_prompt.len());
-
-    match crate::llm_client::send_chat_completion(&provider, api_key, &model, processed_prompt)
-        .await
-    {
-        Ok(Some(content)) => {
-            let content = strip_invisible_chars(&content);
-            debug!(
-                "LLM post-processing succeeded for provider '{}'. Output length: {} chars",
-                provider.id,
-                content.len()
-            );
-            Some(content)
-        }
-        Ok(None) => {
-            error!("LLM API response has no content");
-            None
-        }
-        Err(e) => {
-            error!(
-                "LLM post-processing failed for provider '{}': {}. Falling back to original transcription.",
-                provider.id,
-                e
-            );
-            None
+            process_action(settings, text, &action.prompt, None, None).await
         }
     }
 }
@@ -474,19 +296,16 @@ pub(crate) async fn process_transcription_output(
     }
 
     if post_process {
-        if let Some(processed_text) = post_process_transcription(&settings, &final_text).await {
-            post_processed_text = Some(processed_text.clone());
-            final_text = processed_text;
-
-            if let Some(prompt_id) = &settings.post_process_selected_prompt_id {
-                if let Some(prompt) = settings
-                    .post_process_prompts
-                    .iter()
-                    .find(|prompt| &prompt.id == prompt_id)
-                {
-                    post_process_prompt = Some(prompt.prompt.clone());
-                }
+        if let Some(action) = settings.default_post_process_action().cloned() {
+            if let Some(processed_text) =
+                run_post_process_action(&settings, &final_text, &action).await
+            {
+                post_processed_text = Some(processed_text.clone());
+                final_text = processed_text;
+                post_process_prompt = Some(action.prompt);
             }
+        } else {
+            debug!("Post-processing requested but no action is configured");
         }
     } else if final_text != transcription {
         post_processed_text = Some(final_text.clone());
@@ -566,6 +385,8 @@ impl ShortcutAction for TranscribeAction {
         if recording_error.is_none() {
             // Dynamically register the cancel shortcut in a separate task to avoid deadlock
             shortcut::register_cancel_shortcut(app);
+            // Register the bare-digit trigger keys for post-process actions
+            shortcut::register_recording_action_shortcuts(app);
         } else {
             // Starting failed (for example due to blocked microphone permissions).
             // Revert UI state so we don't stay stuck in the recording overlay.
@@ -598,6 +419,7 @@ impl ShortcutAction for TranscribeAction {
     fn stop(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
         // Unregister the cancel shortcut when transcription stops
         shortcut::unregister_cancel_shortcut(app);
+        shortcut::unregister_recording_action_shortcuts(app);
 
         let stop_time = Instant::now();
         debug!("TranscribeAction::stop called for binding: {}", binding_id);
@@ -619,7 +441,7 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string();
         let post_process = self.post_process;
 
-        let selected_action_key =
+        let selected_action_id =
             app.try_state::<ActiveActionState>()
                 .and_then(|s| match s.0.lock() {
                     Ok(mut guard) => guard.take(),
@@ -633,7 +455,7 @@ impl ShortcutAction for TranscribeAction {
             let _guard = FinishGuard(ah.clone());
             debug!(
                 "Starting async transcription task for binding: {}, action: {:?}",
-                binding_id, selected_action_key
+                binding_id, selected_action_id
             );
 
             let stop_recording_time = Instant::now();
@@ -697,37 +519,39 @@ impl ShortcutAction for TranscribeAction {
 
                             let settings = get_settings(&ah);
 
-                            if post_process {
+                            // Resolve the post-process action: explicitly selected
+                            // during recording (trigger key or per-action shortcut),
+                            // otherwise the default action when the generic
+                            // post-process shortcut was used.
+                            let action = selected_action_id
+                                .as_deref()
+                                .and_then(|id| settings.post_process_action(id))
+                                .or_else(|| {
+                                    if post_process {
+                                        settings.default_post_process_action()
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .cloned();
+                            let post_process_requested = post_process || action.is_some();
+
+                            let processed = if let Some(action) = action {
                                 show_processing_overlay(&ah);
-                            }
-
-                            let mut final_text = transcription.clone();
-                            let mut post_processed_text: Option<String> = None;
-                            let post_process_prompt: Option<String> = None;
-
-                            // Post-processing via LLM
-                            let processed = if post_process {
-                                match process_action(&settings, &transcription, "", None, None)
+                                let base =
+                                    process_transcription_output(&ah, &transcription, false).await;
+                                match run_post_process_action(&settings, &base.final_text, &action)
                                     .await
                                 {
-                                    Some(result) => {
-                                        post_processed_text = Some(result.clone());
-                                        final_text = result.clone();
-                                        ProcessedTranscription {
-                                            final_text: final_text.clone(),
-                                            post_processed_text,
-                                            post_process_prompt,
-                                        }
-                                    }
-                                    None => ProcessedTranscription {
-                                        final_text,
-                                        post_processed_text,
-                                        post_process_prompt,
+                                    Some(result) => ProcessedTranscription {
+                                        final_text: result.clone(),
+                                        post_processed_text: Some(result),
+                                        post_process_prompt: Some(action.prompt.clone()),
                                     },
+                                    None => base,
                                 }
                             } else {
-                                process_transcription_output(&ah, &transcription, post_process)
-                                    .await
+                                process_transcription_output(&ah, &transcription, false).await
                             };
 
                             // Save to history if WAV was saved
@@ -735,7 +559,7 @@ impl ShortcutAction for TranscribeAction {
                                 if let Err(err) = hm.save_entry(
                                     file_name,
                                     transcription,
-                                    post_process,
+                                    post_process_requested,
                                     processed.post_processed_text.clone(),
                                     processed.post_process_prompt.clone(),
                                 ) {

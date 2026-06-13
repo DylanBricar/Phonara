@@ -248,6 +248,19 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "languageModels": {
+        "description": "Add the language models you want to use for post-processing. Provide your provider API key once, then pick a model.",
+        "addModel": "Add model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Search or type a model",
+        "useModel": "Use \"{{model}}\"",
+        "fetchModels": "Refresh models",
+        "label": "Label (optional)",
+        "labelPlaceholder": "Display name for this model"
       }
     },
     "sound": {
@@ -454,27 +467,32 @@
         "createFirst": "Click 'Create New Prompt' above to create your first post-processing prompt."
       },
       "actions": {
-        "title": "Actions",
-        "description": "Bind Ctrl+number keys (1-9) to custom prompts. Press a shortcut during recording to apply the action after transcription.",
-        "noActions": "No actions configured yet.",
-        "createFirst": "Create your first action to process transcriptions with your configured provider.",
-        "addAction": "Add Action",
-        "editAction": "Edit Action",
-        "key": "Key",
-        "keyLabel": "Key (1-9)",
+        "newAction": "New action",
+        "newTitle": "New action",
+        "editTitle": "Edit action",
         "name": "Name",
-        "namePlaceholder": "e.g. Email mode",
+        "namePlaceholder": "e.g. Clean up",
+        "icon": "Icon",
         "prompt": "Prompt",
-        "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
-        "promptTip": "Tip: Use <code>${output}</code> to insert the transcribed text in your prompt.",
-        "model": "Model (optional)",
+        "promptPlaceholder": "Describe how the transcription should be processed...",
+        "promptHint": "Use ${output} to insert the transcription. If omitted, it is appended automatically.",
+        "model": "Model",
         "modelPlaceholder": "Select a model",
-        "modelTip": "Select a specific model for this action, or use the default from the API section.",
-        "defaultModel": "Default",
-        "save": "Save",
-        "cancel": "Cancel",
-        "delete": "Delete",
-        "maxActionsReached": "Maximum of 9 actions reached."
+        "noModels": "No language models saved yet. Add one in Models › Processing first.",
+        "triggerKey": "Quick key (while recording)",
+        "triggerKeyHint": "Press this number key during a recording to apply this action.",
+        "noKey": "None",
+        "keyTaken": "{{key}} (in use)",
+        "keyLabel": "Key {{key}}",
+        "shortcutAfterSave": "Save the action to assign a global shortcut.",
+        "empty": "No actions yet. Create one to start post-processing your transcriptions.",
+        "noModelShort": "No model"
+      },
+      "description": "Create post-processing actions that rewrite your transcription with an AI model. Trigger them with a global shortcut or by pressing a number key while recording.",
+      "defaultShortcut": {
+        "title": "Default shortcut",
+        "toggleLabel": "Enable default post-processing shortcut",
+        "toggleDescription": "Adds a global shortcut that transcribes and applies your first action."
       }
     },
     "history": {
@@ -490,7 +508,10 @@
       "retranscribe": "Re-transcribe",
       "retranscribeError": "Failed to re-transcribe. Please try again.",
       "transcribing": "Transcribing...",
-      "transcriptionFailed": "Transcription failed. You can re-transcribe using the retry icon."
+      "transcriptionFailed": "Transcription failed. You can re-transcribe using the retry icon.",
+      "processWith": "Process with…",
+      "processed": "Processed",
+      "processError": "Failed to process this transcription."
     },
     "debug": {
       "title": "Debug",

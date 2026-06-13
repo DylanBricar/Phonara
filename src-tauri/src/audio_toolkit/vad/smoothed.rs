@@ -39,11 +39,18 @@ impl SmoothedVad {
 
 impl VoiceActivityDetector for SmoothedVad {
     fn push_frame<'a>(&'a mut self, frame: &'a [f32]) -> Result<VadFrame<'a>> {
-        // 1. Buffer every incoming frame for possible pre-roll
-        self.frame_buffer.push_back(frame.to_vec());
-        while self.frame_buffer.len() > self.prefill_frames + 1 {
-            self.frame_buffer.pop_front();
-        }
+        // 1. Buffer every incoming frame for possible pre-roll. Recycle the
+        // allocation of the buffer falling out of the ring instead of
+        // allocating a fresh Vec on every frame (this runs ~33x/sec).
+        let mut buf = if self.frame_buffer.len() > self.prefill_frames {
+            let mut recycled = self.frame_buffer.pop_front().unwrap();
+            recycled.clear();
+            recycled
+        } else {
+            Vec::with_capacity(frame.len())
+        };
+        buf.extend_from_slice(frame);
+        self.frame_buffer.push_back(buf);
 
         // 2. Delegate to the wrapped boolean VAD
         let is_voice = self.inner_vad.is_voice(frame)?;
@@ -58,10 +65,14 @@ impl VoiceActivityDetector for SmoothedVad {
                     self.hangover_counter = self.hangover_frames;
                     self.onset_counter = 0; // Reset for next time
 
-                    // Collect prefill + current frame
+                    // Collect prefill + current frame into one contiguous
+                    // slice. Reserve up front so the extend loop reallocates
+                    // at most once.
+                    let total: usize = self.frame_buffer.iter().map(Vec::len).sum();
                     self.temp_out.clear();
+                    self.temp_out.reserve(total);
                     for buf in &self.frame_buffer {
-                        self.temp_out.extend(buf);
+                        self.temp_out.extend_from_slice(buf);
                     }
                     Ok(VadFrame::Speech(&self.temp_out))
                 } else {

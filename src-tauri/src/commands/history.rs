@@ -1,10 +1,53 @@
-use crate::actions::process_transcription_output;
+use crate::actions::{process_transcription_output, run_post_process_action};
 use crate::managers::{
-    history::{HistoryManager, PaginatedHistory},
+    history::{HistoryEntry, HistoryManager, PaginatedHistory},
     transcription::TranscriptionManager,
 };
 use std::sync::Arc;
 use tauri::{AppHandle, State};
+
+/// Re-run a post-process action over an existing history entry and persist
+/// the processed text. Returns the updated entry.
+#[tauri::command]
+#[specta::specta]
+pub async fn apply_action_to_history_entry(
+    app: AppHandle,
+    history_manager: State<'_, Arc<HistoryManager>>,
+    id: i64,
+    action_id: String,
+) -> Result<HistoryEntry, String> {
+    let entry = history_manager
+        .get_entry_by_id(id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("History entry {} not found", id))?;
+
+    if entry.transcription_text.trim().is_empty() {
+        return Err("History entry has no transcription text".to_string());
+    }
+
+    let settings = crate::settings::get_settings(&app);
+    let action = settings
+        .post_process_action(&action_id)
+        .cloned()
+        .ok_or_else(|| format!("Action '{}' not found", action_id))?;
+
+    let processed = run_post_process_action(&settings, &entry.transcription_text, &action)
+        .await
+        .ok_or_else(|| {
+            "Post-processing failed. Check the action's model configuration and API key."
+                .to_string()
+        })?;
+
+    history_manager
+        .update_transcription(
+            id,
+            entry.transcription_text,
+            Some(processed),
+            Some(action.prompt),
+        )
+        .map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 #[specta::specta]

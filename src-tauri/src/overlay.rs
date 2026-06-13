@@ -158,6 +158,7 @@ fn force_overlay_topmost(overlay_window: &tauri::webview::WebviewWindow) {
     });
 }
 
+#[cfg(target_os = "macos")]
 fn get_monitor_containing_logical_point(
     app_handle: &AppHandle,
     x: f64,
@@ -188,10 +189,19 @@ fn get_monitor_containing_logical_point(
 
 fn get_monitor_with_cursor(app_handle: &AppHandle) -> Option<tauri::Monitor> {
     if let Some((mouse_x, mouse_y)) = input::get_cursor_position(app_handle) {
-        if let Some(monitor) =
-            get_monitor_containing_logical_point(app_handle, mouse_x as f64, mouse_y as f64)
-        {
-            return Some(monitor);
+        // The cursor position is in physical pixels, so compare it against the
+        // raw physical monitor rects (unlike the logical-point helper used for
+        // CoreGraphics window coordinates).
+        if let Ok(monitors) = app_handle.available_monitors() {
+            for monitor in monitors {
+                if is_point_within_monitor(
+                    (mouse_x as f64, mouse_y as f64),
+                    monitor.position(),
+                    monitor.size(),
+                ) {
+                    return Some(monitor);
+                }
+            }
         }
     }
 
@@ -485,11 +495,7 @@ pub fn hide_recording_overlay(app_handle: &AppHandle) {
 }
 
 pub fn emit_levels(app_handle: &AppHandle, levels: &Vec<f32>) {
-    // emit levels to main app
-    let _ = app_handle.emit("mic-level", levels);
-
-    // also emit to the recording overlay if it's open
-    if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
-        let _ = overlay_window.emit("mic-level", levels);
-    }
+    // Only the recording overlay listens for mic levels; a targeted emit
+    // avoids serializing and broadcasting every level frame to all windows.
+    let _ = app_handle.emit_to("recording_overlay", "mic-level", levels);
 }

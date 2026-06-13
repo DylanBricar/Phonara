@@ -8,7 +8,8 @@ import type { ModelInfo } from "@/bindings";
 
 export const ModelSettingsCard: React.FC = () => {
   const { t } = useTranslation();
-  const { currentModel, models } = useModelStore();
+  const currentModel = useModelStore((state) => state.currentModel);
+  const models = useModelStore((state) => state.models);
 
   const currentModelInfo = models.find((m: ModelInfo) => m.id === currentModel);
 

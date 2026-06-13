@@ -12,7 +12,7 @@ const THRESHOLD_OPTIONS = [5, 10, 15, 20, 30, 60];
 export const LongAudioModelSettings: React.FC = () => {
   const { t } = useTranslation();
   const { getSetting, updateSetting } = useSettings();
-  const { models } = useModelStore();
+  const models = useModelStore((state) => state.models);
 
   const downloadedModels = models.filter((m: ModelInfo) => m.is_downloaded);
   const longAudioModel = getSetting("long_audio_model") ?? null;

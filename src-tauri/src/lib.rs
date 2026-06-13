@@ -356,6 +356,11 @@ pub fn run(cli_args: CliArgs) {
             shortcut::update_post_process_prompt,
             shortcut::delete_post_process_prompt,
             shortcut::set_post_process_selected_prompt,
+            shortcut::add_llm_model,
+            shortcut::delete_llm_model,
+            shortcut::add_post_process_action,
+            shortcut::update_post_process_action,
+            shortcut::delete_post_process_action,
             shortcut::update_custom_words,
             shortcut::suspend_binding,
             shortcut::resume_binding,
@@ -425,6 +430,7 @@ pub fn run(cli_args: CliArgs) {
             commands::history::get_audio_file_path,
             commands::history::delete_history_entry,
             commands::history::retry_history_entry_transcription,
+            commands::history::apply_action_to_history_entry,
             commands::history::update_history_limit,
             commands::history::update_recording_retention_period,
             helpers::clamshell::is_laptop,
@@ -511,21 +517,34 @@ pub fn run(cli_args: CliArgs) {
             specta_builder.mount_events(app);
 
             // Create main window programmatically so we can set data_directory
-            // for portable mode (redirects WebView2 cache to portable Data dir)
-            let mut win_builder =
-                tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("/".into()))
-                    .title("Parler")
-                    .inner_size(680.0, 570.0)
-                    .min_inner_size(680.0, 570.0)
-                    .resizable(true)
-                    .maximizable(false)
-                    .visible(false);
+            // for portable mode (redirects WebView2 cache to portable Data dir).
+            // A "main" window may already exist if a tauri config declares one
+            // (app.windows) — creating it twice would error, and any error here
+            // aborts the whole app (the setup hook runs inside
+            // applicationDidFinishLaunching, where panics cannot unwind).
+            if app.get_webview_window("main").is_none() {
+                let mut win_builder = tauri::WebviewWindowBuilder::new(
+                    app,
+                    "main",
+                    tauri::WebviewUrl::App("/".into()),
+                )
+                .title("Parler")
+                .inner_size(680.0, 570.0)
+                .min_inner_size(680.0, 570.0)
+                .resizable(true)
+                .maximizable(false)
+                .visible(false);
 
-            if let Some(data_dir) = portable::data_dir() {
-                win_builder = win_builder.data_directory(data_dir.join("webview"));
+                if let Some(data_dir) = portable::data_dir() {
+                    win_builder = win_builder.data_directory(data_dir.join("webview"));
+                }
+
+                win_builder.build()?;
+            } else {
+                log::warn!(
+                    "Webview window 'main' already exists (declared in tauri config?); skipping programmatic creation"
+                );
             }
-
-            win_builder.build()?;
 
             let mut settings = get_settings(&app.handle());
 
@@ -540,6 +559,7 @@ pub fn run(cli_args: CliArgs) {
             // Store the file log level in the atomic for the filter to use
             FILE_LOG_LEVEL.store(file_log_level.to_level_filter() as u8, Ordering::Relaxed);
             let app_handle = app.handle().clone();
+            app.manage(actions::ActiveActionState(std::sync::Mutex::new(None)));
             app.manage(TranscriptionCoordinator::new(app_handle.clone()));
 
             initialize_core_logic(&app_handle);

@@ -157,6 +157,10 @@ const settingUpdaters: {
     commands.changeExtraRecordingBufferSetting(value as number),
 };
 
+// Module-level so initialize() runs only once even though every
+// useSettings consumer invokes it on mount.
+let initializeStarted = false;
+
 export const useSettingsStore = create<SettingsStore>()(
   subscribeWithSelector((set, get) => ({
     settings: null,
@@ -574,6 +578,12 @@ export const useSettingsStore = create<SettingsStore>()(
 
     // Initialize everything
     initialize: async () => {
+      // Many components call this on mount via useSettings; only the first
+      // call should run, otherwise we fire duplicate IPC requests and stack
+      // duplicate model-state-changed listeners.
+      if (initializeStarted) return;
+      initializeStarted = true;
+
       const { refreshSettings, checkCustomSounds, loadDefaultSettings } = get();
 
       // Note: Audio devices are NOT refreshed here. The frontend (App.tsx)

@@ -93,6 +93,44 @@ pub struct LLMPrompt {
     pub prompt: String,
 }
 
+/// A saved language model: a (provider, model) pair the user added in the
+/// Models > Language Models tab. Referenced by post-process actions.
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct LLMModel {
+    pub id: String,
+    pub provider_id: String,
+    pub model: String,
+    pub label: String,
+}
+
+/// A post-processing action: a prompt applied to the transcription through a
+/// saved language model. Can be triggered by a dedicated global shortcut
+/// (stored in `bindings` under `ppa_<id>`) or by pressing `trigger_key`
+/// while a recording is in progress.
+#[derive(Serialize, Deserialize, Debug, Clone, Type)]
+pub struct PostProcessAction {
+    pub id: String,
+    pub name: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub llm_model_id: Option<String>,
+    #[serde(default = "default_action_icon")]
+    pub icon: String,
+    #[serde(default)]
+    pub trigger_key: Option<u8>,
+}
+
+pub fn default_action_icon() -> String {
+    "sparkles".to_string()
+}
+
+/// Prefix for per-action global shortcut binding ids stored in `bindings`.
+pub const ACTION_BINDING_PREFIX: &str = "ppa_";
+
+pub fn action_binding_id(action_id: &str) -> String {
+    format!("{}{}", ACTION_BINDING_PREFIX, action_id)
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
 pub struct PostProcessProvider {
     pub id: String,
@@ -402,6 +440,12 @@ pub struct AppSettings {
     #[serde(default)]
     pub post_process_selected_prompt_id: Option<String>,
     #[serde(default)]
+    pub llm_models: Vec<LLMModel>,
+    #[serde(default)]
+    pub post_process_actions: Vec<PostProcessAction>,
+    #[serde(default)]
+    pub post_process_actions_initialized: bool,
+    #[serde(default)]
     pub mute_while_recording: bool,
     #[serde(default)]
     pub append_trailing_space: bool,
@@ -547,6 +591,14 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             id: "openrouter".to_string(),
             label: "OpenRouter".to_string(),
             base_url: "https://openrouter.ai/api/v1".to_string(),
+            allow_base_url_edit: false,
+            models_endpoint: Some("/models".to_string()),
+            supports_structured_output: true,
+        },
+        PostProcessProvider {
+            id: "gemini".to_string(),
+            label: "Google Gemini".to_string(),
+            base_url: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
             allow_base_url_edit: false,
             models_endpoint: Some("/models".to_string()),
             supports_structured_output: true,
@@ -708,6 +760,54 @@ fn ensure_post_process_defaults(settings: &mut AppSettings) -> bool {
     changed
 }
 
+/// One-time migration: build saved language models and post-process actions
+/// from the legacy prompt/provider configuration. Returns true when settings
+/// were modified and need to be persisted.
+fn ensure_post_process_actions(settings: &mut AppSettings) -> bool {
+    if settings.post_process_actions_initialized {
+        return false;
+    }
+
+    // Migrate the active provider/model pair into a saved language model.
+    let mut default_model_id: Option<String> = settings.llm_models.first().map(|m| m.id.clone());
+    if default_model_id.is_none() {
+        if let Some(provider) = settings.active_post_process_provider().cloned() {
+            if provider.id != APPLE_INTELLIGENCE_PROVIDER_ID {
+                if let Some(model) = settings.post_process_models.get(&provider.id).cloned() {
+                    if !model.trim().is_empty() {
+                        let id = format!("llm_{}", chrono::Utc::now().timestamp_millis());
+                        settings.llm_models.push(LLMModel {
+                            id: id.clone(),
+                            provider_id: provider.id.clone(),
+                            model: model.clone(),
+                            label: model,
+                        });
+                        default_model_id = Some(id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Migrate prompts into actions, assigning trigger keys 1..9.
+    if settings.post_process_actions.is_empty() {
+        for (index, prompt) in settings.post_process_prompts.iter().enumerate() {
+            let trigger_key = u8::try_from(index + 1).ok().filter(|key| *key <= 9);
+            settings.post_process_actions.push(PostProcessAction {
+                id: format!("act_migrated_{}", index),
+                name: prompt.name.clone(),
+                prompt: prompt.prompt.clone(),
+                llm_model_id: default_model_id.clone(),
+                icon: default_action_icon(),
+                trigger_key,
+            });
+        }
+    }
+
+    settings.post_process_actions_initialized = true;
+    true
+}
+
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
 pub fn get_default_settings() -> AppSettings {
@@ -827,6 +927,9 @@ pub fn get_default_settings() -> AppSettings {
         post_process_models: default_post_process_models(),
         post_process_prompts: default_post_process_prompts(),
         post_process_selected_prompt_id: None,
+        llm_models: Vec::new(),
+        post_process_actions: Vec::new(),
+        post_process_actions_initialized: false,
         mute_while_recording: false,
         append_trailing_space: false,
         app_language: default_app_language(),
@@ -867,6 +970,28 @@ impl AppSettings {
         self.post_process_providers
             .iter_mut()
             .find(|provider| provider.id == provider_id)
+    }
+
+    pub fn llm_model(&self, id: &str) -> Option<&LLMModel> {
+        self.llm_models.iter().find(|model| model.id == id)
+    }
+
+    pub fn post_process_action(&self, id: &str) -> Option<&PostProcessAction> {
+        self.post_process_actions
+            .iter()
+            .find(|action| action.id == id)
+    }
+
+    pub fn post_process_action_by_trigger_key(&self, key: u8) -> Option<&PostProcessAction> {
+        self.post_process_actions
+            .iter()
+            .find(|action| action.trigger_key == Some(key))
+    }
+
+    /// The action used by the generic "transcribe with post-processing"
+    /// shortcut when no specific action was selected: the first in the list.
+    pub fn default_post_process_action(&self) -> Option<&PostProcessAction> {
+        self.post_process_actions.first()
     }
 }
 
@@ -914,7 +1039,9 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
         default_settings
     };
 
-    if ensure_post_process_defaults(&mut settings) {
+    let mut changed = ensure_post_process_defaults(&mut settings);
+    changed |= ensure_post_process_actions(&mut settings);
+    if changed {
         store.set("settings", serde_json::to_value(&settings).unwrap());
     }
 
@@ -953,6 +1080,10 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     }
 
     if ensure_post_process_defaults(&mut settings) {
+        updated = true;
+    }
+
+    if ensure_post_process_actions(&mut settings) {
         updated = true;
     }
 

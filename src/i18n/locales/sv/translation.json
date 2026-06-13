@@ -209,7 +209,20 @@
         "translation": "Översättning",
         "allLanguages": "Alla språk"
       },
-      "noModelsMatch": "Inga modeller matchar detta filter."
+      "noModelsMatch": "Inga modeller matchar detta filter.",
+      "languageModels": {
+        "description": "Add the language models you want to use for post-processing. Provide your provider API key once, then pick a model.",
+        "addModel": "Add model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Search or type a model",
+        "useModel": "Use \"{{model}}\"",
+        "fetchModels": "Refresh models",
+        "label": "Label (optional)",
+        "labelPlaceholder": "Display name for this model"
+      }
     },
     "sound": {
       "title": "Ljud",
@@ -412,6 +425,34 @@
         "cancel": "Avbryt",
         "selectToEdit": "Välj en prompt ovan för att visa och redigera dess detaljer.",
         "createFirst": "Klicka på 'Skapa ny prompt' ovan för att skapa din första prompt för efterbearbetning."
+      },
+      "description": "Create post-processing actions that rewrite your transcription with an AI model. Trigger them with a global shortcut or by pressing a number key while recording.",
+      "actions": {
+        "newAction": "New action",
+        "newTitle": "New action",
+        "editTitle": "Edit action",
+        "name": "Name",
+        "namePlaceholder": "e.g. Clean up",
+        "icon": "Icon",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Describe how the transcription should be processed...",
+        "promptHint": "Use ${output} to insert the transcription. If omitted, it is appended automatically.",
+        "model": "Model",
+        "modelPlaceholder": "Select a model",
+        "noModels": "No language models saved yet. Add one in Models › Processing first.",
+        "triggerKey": "Quick key (while recording)",
+        "triggerKeyHint": "Press this number key during a recording to apply this action.",
+        "noKey": "None",
+        "keyTaken": "{{key}} (in use)",
+        "keyLabel": "Key {{key}}",
+        "shortcutAfterSave": "Save the action to assign a global shortcut.",
+        "empty": "No actions yet. Create one to start post-processing your transcriptions.",
+        "noModelShort": "No model"
+      },
+      "defaultShortcut": {
+        "title": "Default shortcut",
+        "toggleLabel": "Enable default post-processing shortcut",
+        "toggleDescription": "Adds a global shortcut that transcribes and applies your first action."
       }
     },
     "history": {
@@ -427,7 +468,10 @@
       "retranscribe": "Transkribera igen",
       "retranscribeError": "Misslyckades med att transkribera igen. Försök igen.",
       "transcribing": "Transkriberar...",
-      "transcriptionFailed": "Transkribering misslyckades. Du kan transkribera igen med hjälp av ikonen för nytt försök."
+      "transcriptionFailed": "Transkribering misslyckades. Du kan transkribera igen med hjälp av ikonen för nytt försök.",
+      "processWith": "Process with…",
+      "processed": "Processed",
+      "processError": "Failed to process this transcription."
     },
     "debug": {
       "title": "Felsökning",

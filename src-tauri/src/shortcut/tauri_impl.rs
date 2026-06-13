@@ -41,6 +41,22 @@ pub fn init_shortcuts(app: &AppHandle) {
             error!("Failed to register shortcut {} during init: {}", id, e);
         }
     }
+
+    // Register per-action post-process shortcuts (dynamic bindings)
+    for (id, binding) in &user_settings.bindings {
+        if !id.starts_with(settings::ACTION_BINDING_PREFIX) {
+            continue;
+        }
+        if binding.current_binding.trim().is_empty() {
+            continue;
+        }
+        if let Err(e) = register_shortcut(app, binding.clone()) {
+            error!(
+                "Failed to register action shortcut {} during init: {}",
+                id, e
+            );
+        }
+    }
 }
 
 /// Validate a shortcut string for the Tauri global-shortcut implementation.

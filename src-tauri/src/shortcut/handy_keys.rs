@@ -456,6 +456,22 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
         }
     }
 
+    // Register per-action post-process shortcuts (dynamic bindings)
+    for (id, binding) in &user_settings.bindings {
+        if !id.starts_with(settings::ACTION_BINDING_PREFIX) {
+            continue;
+        }
+        if binding.current_binding.trim().is_empty() {
+            continue;
+        }
+        if let Err(e) = state.register(binding) {
+            error!(
+                "Failed to register handy-keys action shortcut {} during init: {}",
+                id, e
+            );
+        }
+    }
+
     app.manage(state);
     info!("handy-keys shortcuts initialized");
     Ok(())

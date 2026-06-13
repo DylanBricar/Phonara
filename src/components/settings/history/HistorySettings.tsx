@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { readFile } from "@tauri-apps/plugin-fs";
-import { Check, Copy, FolderOpen, RotateCcw, Star, Trash2 } from "lucide-react";
+import {
+  Check,
+  Copy,
+  FolderOpen,
+  RotateCcw,
+  Sparkles,
+  Star,
+  Trash2,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import {
@@ -9,8 +17,11 @@ import {
   events,
   type HistoryEntry,
   type HistoryUpdatePayload,
+  type PostProcessAction,
 } from "@/bindings";
 import { useOsType } from "@/hooks/useOsType";
+import { useSettings } from "@/hooks/useSettings";
+import { getActionIcon } from "@/lib/constants/actionIcons";
 import { formatDateTime } from "@/utils/dateFormat";
 import { AudioPlayer } from "../../ui/AudioPlayer";
 import { Button } from "../../ui/Button";
@@ -62,6 +73,8 @@ const OpenRecordingsButton: React.FC<OpenRecordingsButtonProps> = ({
 export const HistorySettings: React.FC = () => {
   const { t } = useTranslation();
   const osType = useOsType();
+  const { settings } = useSettings();
+  const actions = settings?.post_process_actions || [];
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
@@ -223,6 +236,14 @@ export const HistorySettings: React.FC = () => {
     }
   };
 
+  const processEntryWithAction = async (id: number, actionId: string) => {
+    const result = await commands.applyActionToHistoryEntry(id, actionId);
+    if (result.status !== "ok") {
+      throw new Error(String(result.error));
+    }
+    // Backend emits an "updated" event that refreshes the entry in the list.
+  };
+
   const openRecordingsFolder = async () => {
     try {
       const result = await commands.openRecordingsFolder();
@@ -256,11 +277,13 @@ export const HistorySettings: React.FC = () => {
             <HistoryEntryComponent
               key={entry.id}
               entry={entry}
+              actions={actions}
               onToggleSaved={() => toggleSaved(entry.id)}
               onCopyText={() => copyToClipboard(entry.transcription_text)}
               getAudioUrl={getAudioUrl}
               deleteAudio={deleteAudioEntry}
               retryTranscription={retryHistoryEntry}
+              processWithAction={processEntryWithAction}
             />
           ))}
         </div>
@@ -294,26 +317,61 @@ export const HistorySettings: React.FC = () => {
 
 interface HistoryEntryProps {
   entry: HistoryEntry;
+  actions: PostProcessAction[];
   onToggleSaved: () => void;
   onCopyText: () => void;
   getAudioUrl: (fileName: string) => Promise<string | null>;
   deleteAudio: (id: number) => Promise<void>;
   retryTranscription: (id: number) => Promise<void>;
+  processWithAction: (id: number, actionId: string) => Promise<void>;
 }
 
 const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
   entry,
+  actions,
   onToggleSaved,
   onCopyText,
   getAudioUrl,
   deleteAudio,
   retryTranscription,
+  processWithAction,
 }) => {
   const { t, i18n } = useTranslation();
   const [showCopied, setShowCopied] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const hasTranscription = entry.transcription_text.trim().length > 0;
+  const hasProcessed =
+    !!entry.post_processed_text &&
+    entry.post_processed_text.trim().length > 0 &&
+    entry.post_processed_text !== entry.transcription_text;
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [menuOpen]);
+
+  const handleProcess = async (actionId: string) => {
+    setMenuOpen(false);
+    try {
+      setProcessing(true);
+      await processWithAction(entry.id, actionId);
+    } catch (error) {
+      console.error("Failed to process entry:", error);
+      toast.error(t("settings.history.processError"));
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const handleLoadAudio = useCallback(
     () => getAudioUrl(entry.file_name),
@@ -400,6 +458,49 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
               }
             />
           </IconButton>
+          {actions.length > 0 && (
+            <div className="relative" ref={menuRef}>
+              <IconButton
+                onClick={() => setMenuOpen((open) => !open)}
+                disabled={!hasTranscription || retrying || processing}
+                active={menuOpen || processing}
+                title={t("settings.history.processWith")}
+              >
+                <Sparkles
+                  width={16}
+                  height={16}
+                  style={
+                    processing
+                      ? { animation: "spin 1s linear infinite" }
+                      : undefined
+                  }
+                />
+              </IconButton>
+              {menuOpen && (
+                <div className="absolute end-0 top-full mt-1 w-52 bg-background border border-mid-gray/80 rounded-md shadow-lg z-50 overflow-hidden">
+                  {actions.map((action) => {
+                    const Icon = getActionIcon(action.icon);
+                    return (
+                      <button
+                        key={action.id}
+                        type="button"
+                        onClick={() => handleProcess(action.id)}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-start hover:bg-logo-primary/10 transition-colors"
+                      >
+                        <Icon className="w-3.5 h-3.5 text-logo-primary shrink-0" />
+                        <span className="truncate flex-1">{action.name}</span>
+                        {action.trigger_key != null && (
+                          <span className="text-xs text-text/40">
+                            {action.trigger_key}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <IconButton
             onClick={handleDeleteEntry}
             disabled={retrying}
@@ -438,6 +539,20 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = ({
             ? entry.transcription_text
             : t("settings.history.transcriptionFailed")}
       </p>
+
+      {hasProcessed && !retrying && (
+        <div className="rounded-md border border-logo-primary/30 bg-logo-primary/5 px-3 py-2">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Sparkles className="w-3 h-3 text-logo-primary" />
+            <span className="text-xs font-medium text-logo-primary uppercase tracking-wide">
+              {t("settings.history.processed")}
+            </span>
+          </div>
+          <p className="text-sm text-text/90 select-text cursor-text whitespace-pre-wrap break-words">
+            {entry.post_processed_text}
+          </p>
+        </div>
+      )}
 
       <AudioPlayer onLoadRequest={handleLoadAudio} className="w-full" />
     </div>

@@ -7,199 +7,313 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { ChevronDown, Globe, RefreshCcw } from "lucide-react";
+import { ChevronDown, Globe, Plus, RefreshCcw, Trash2, X } from "lucide-react";
 import type { ModelCardStatus } from "@/components/onboarding";
 import { ModelCard } from "@/components/onboarding";
 import { useModelStore } from "@/stores/modelStore";
 import { useSettings } from "@/hooks/useSettings";
 import { LANGUAGES } from "@/lib/constants/languages.ts";
 import type { ModelInfo } from "@/bindings";
+import { commands } from "@/bindings";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Dropdown } from "@/components/ui";
+import { Dropdown, Select } from "@/components/ui";
 
 // check if model supports a language based on its supported_languages list
 const modelSupportsLanguage = (model: ModelInfo, langCode: string): boolean => {
   return model.supported_languages.includes(langCode);
 };
 
-const ProcessingModelsSection: React.FC = () => {
+const LanguageModelsSection: React.FC = () => {
   const { t } = useTranslation();
   const {
     settings,
+    refreshSettings,
     fetchPostProcessModels,
     updatePostProcessApiKey,
-    updatePostProcessModel,
-    setPostProcessProvider,
     postProcessModelOptions,
   } = useSettings();
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [customModelInput, setCustomModelInput] = useState("");
-  const [isFetching, setIsFetching] = useState(false);
 
   const providers = settings?.post_process_providers || [];
-  const selectedProviderId = settings?.post_process_provider_id || "";
-  const selectedProvider = providers.find((p) => p.id === selectedProviderId);
-  const selectedModel =
-    settings?.post_process_models?.[selectedProviderId] || "";
-  const currentApiKey =
-    settings?.post_process_api_keys?.[selectedProviderId] || "";
+  const savedModels = settings?.llm_models || [];
+  const apiKeys = settings?.post_process_api_keys || {};
 
   const providerOptions = useMemo(
     () => providers.map((p) => ({ value: p.id, label: p.label })),
     [providers],
   );
 
-  const availableModels = postProcessModelOptions[selectedProviderId] || [];
-  const modelOptions = useMemo(
-    () => availableModels.map((m) => ({ value: m, label: m })),
-    [availableModels],
+  const [isAdding, setIsAdding] = useState(false);
+  const [providerId, setProviderId] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
+  const [model, setModel] = useState("");
+  const [label, setLabel] = useState("");
+  const [isFetching, setIsFetching] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const isAppleIntelligence = providerId === "apple_intelligence";
+  const currentApiKey = apiKeys[providerId] || "";
+  const fetchedModels = postProcessModelOptions[providerId] || [];
+  const modelSelectOptions = useMemo(
+    () => fetchedModels.map((m) => ({ value: m, label: m })),
+    [fetchedModels],
   );
 
-  useEffect(() => {
-    setApiKeyInput(currentApiKey);
-  }, [currentApiKey, selectedProviderId]);
+  const providerLabel = useCallback(
+    (id: string) => providers.find((p) => p.id === id)?.label || id,
+    [providers],
+  );
 
-  useEffect(() => {
-    setCustomModelInput(selectedModel);
-  }, [selectedModel, selectedProviderId]);
+  const resetForm = useCallback(() => {
+    setIsAdding(false);
+    setProviderId("");
+    setApiKeyInput("");
+    setModel("");
+    setLabel("");
+    setError(null);
+  }, []);
+
+  const startAdding = useCallback(() => {
+    const first =
+      providerOptions.find((p) => p.value !== "apple_intelligence")?.value ||
+      providerOptions[0]?.value ||
+      "";
+    setProviderId(first);
+    setApiKeyInput(apiKeys[first] || "");
+    setModel("");
+    setLabel("");
+    setError(null);
+    setIsAdding(true);
+  }, [providerOptions, apiKeys]);
 
   const handleProviderChange = useCallback(
-    async (providerId: string) => {
-      await setPostProcessProvider(providerId);
+    (id: string) => {
+      setProviderId(id);
+      setApiKeyInput(apiKeys[id] || "");
+      setModel("");
     },
-    [setPostProcessProvider],
+    [apiKeys],
   );
 
   const handleApiKeyBlur = useCallback(async () => {
-    if (!selectedProviderId || apiKeyInput === currentApiKey) return;
-    await updatePostProcessApiKey(selectedProviderId, apiKeyInput.trim());
-  }, [apiKeyInput, currentApiKey, selectedProviderId, updatePostProcessApiKey]);
+    if (!providerId || apiKeyInput === currentApiKey) return;
+    await updatePostProcessApiKey(providerId, apiKeyInput.trim());
+  }, [apiKeyInput, currentApiKey, providerId, updatePostProcessApiKey]);
 
   const handleFetchModels = useCallback(async () => {
-    if (!selectedProviderId) return;
+    if (!providerId) return;
     if (apiKeyInput.trim() && apiKeyInput !== currentApiKey) {
-      await updatePostProcessApiKey(selectedProviderId, apiKeyInput.trim());
+      await updatePostProcessApiKey(providerId, apiKeyInput.trim());
     }
     setIsFetching(true);
+    setError(null);
     try {
-      await fetchPostProcessModels(selectedProviderId);
+      await fetchPostProcessModels(providerId);
     } finally {
       setIsFetching(false);
     }
   }, [
-    selectedProviderId,
+    providerId,
     apiKeyInput,
     currentApiKey,
     fetchPostProcessModels,
     updatePostProcessApiKey,
   ]);
 
-  const handleModelSelect = useCallback(
-    async (value: string) => {
-      if (!selectedProviderId) return;
-      await updatePostProcessModel(selectedProviderId, value);
-    },
-    [selectedProviderId, updatePostProcessModel],
-  );
-
-  const handleCustomModelBlur = useCallback(async () => {
-    if (!selectedProviderId || customModelInput === selectedModel) return;
-    await updatePostProcessModel(selectedProviderId, customModelInput.trim());
+  const handleSave = useCallback(async () => {
+    if (!providerId || !model.trim()) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      if (apiKeyInput.trim() && apiKeyInput !== currentApiKey) {
+        await updatePostProcessApiKey(providerId, apiKeyInput.trim());
+      }
+      const result = await commands.addLlmModel(
+        providerId,
+        model.trim(),
+        label.trim(),
+      );
+      if (result.status === "ok") {
+        await refreshSettings();
+        resetForm();
+      } else {
+        setError(String(result.error));
+      }
+    } finally {
+      setIsSaving(false);
+    }
   }, [
-    customModelInput,
-    selectedModel,
-    selectedProviderId,
-    updatePostProcessModel,
+    providerId,
+    model,
+    label,
+    apiKeyInput,
+    currentApiKey,
+    updatePostProcessApiKey,
+    refreshSettings,
+    resetForm,
   ]);
 
-  const isAppleIntelligence = selectedProviderId === "apple_intelligence";
-  const canEditBaseUrl = selectedProvider?.allow_base_url_edit ?? false;
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const result = await commands.deleteLlmModel(id);
+      if (result.status === "ok") {
+        await refreshSettings();
+      }
+    },
+    [refreshSettings],
+  );
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <p className="text-sm text-text/60">
-        {t("settings.models.processingModels.description")}
+        {t("settings.models.languageModels.description")}
       </p>
 
-      <div className="space-y-3 p-3 rounded-lg border border-mid-gray/20 bg-mid-gray/5">
-        <div className="space-y-1">
-          <label className="text-sm font-semibold">
-            {t("settings.models.processingModels.provider")}
-          </label>
-          <Dropdown
-            selectedValue={selectedProviderId || null}
-            options={providerOptions}
-            onSelect={handleProviderChange}
-            placeholder={t("settings.models.processingModels.provider")}
-          />
-        </div>
-
-        {selectedProvider && (
-          <>
-            {!isAppleIntelligence && (
-              <div className="space-y-1">
-                <label className="text-sm font-semibold">
-                  {t("settings.models.processingModels.apiKey")}
-                </label>
-                <Input
-                  type="password"
-                  value={apiKeyInput}
-                  onChange={(e) => setApiKeyInput(e.target.value)}
-                  onBlur={handleApiKeyBlur}
-                  placeholder={t(
-                    "settings.models.processingModels.apiKeyPlaceholder",
-                  )}
-                  variant="compact"
-                />
+      {savedModels.length > 0 && (
+        <div className="space-y-2">
+          {savedModels.map((m) => (
+            <div
+              key={m.id}
+              className="flex items-center justify-between p-3 rounded-lg border border-mid-gray/20 bg-mid-gray/5"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{m.label}</p>
+                <p className="text-xs text-text/50 truncate">
+                  {providerLabel(m.provider_id)} · {m.model}
+                </p>
               </div>
-            )}
+              <button
+                onClick={() => handleDelete(m.id)}
+                className="p-1.5 rounded-md text-text/50 hover:text-red-500 transition-colors shrink-0"
+                title={t("common.delete")}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
+      {!isAdding ? (
+        <Button
+          onClick={startAdding}
+          variant="secondary"
+          size="md"
+          className="flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" />
+          {t("settings.models.languageModels.addModel")}
+        </Button>
+      ) : (
+        <div className="space-y-3 p-3 rounded-lg border border-logo-primary/40 bg-mid-gray/5">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">
+              {t("settings.models.languageModels.addModel")}
+            </h3>
+            <button
+              onClick={resetForm}
+              className="p-1 rounded-md text-text/50 hover:text-text"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold">
+              {t("settings.models.languageModels.provider")}
+            </label>
+            <Dropdown
+              selectedValue={providerId || null}
+              options={providerOptions}
+              onSelect={handleProviderChange}
+              placeholder={t("settings.models.languageModels.provider")}
+            />
+          </div>
+
+          {!isAppleIntelligence && (
             <div className="space-y-1">
               <label className="text-sm font-semibold">
-                {t("settings.models.processingModels.model")}
+                {t("settings.models.languageModels.apiKey")}
               </label>
-              <div className="flex items-center gap-2">
-                {modelOptions.length > 0 ? (
-                  <Dropdown
-                    selectedValue={selectedModel || null}
-                    options={modelOptions}
-                    onSelect={handleModelSelect}
-                    placeholder={t(
-                      "settings.models.processingModels.modelPlaceholder",
-                    )}
-                    className="flex-1"
-                  />
-                ) : (
-                  <Input
-                    type="text"
-                    value={customModelInput}
-                    onChange={(e) => setCustomModelInput(e.target.value)}
-                    onBlur={handleCustomModelBlur}
-                    placeholder={t(
-                      "settings.models.processingModels.modelPlaceholder",
-                    )}
-                    variant="compact"
-                    className="flex-1"
-                  />
+              <Input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                onBlur={handleApiKeyBlur}
+                placeholder={t(
+                  "settings.models.languageModels.apiKeyPlaceholder",
                 )}
-                {!isAppleIntelligence && !canEditBaseUrl && (
-                  <button
-                    onClick={handleFetchModels}
-                    disabled={isFetching || !selectedProviderId}
-                    className="flex items-center justify-center h-8 w-8 rounded-md bg-mid-gray/10 hover:bg-mid-gray/20 transition-colors disabled:opacity-40"
-                    title={t("settings.models.processingModels.fetchModels")}
-                  >
-                    <RefreshCcw
-                      className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`}
-                    />
-                  </button>
-                )}
-              </div>
+                variant="compact"
+              />
             </div>
-          </>
-        )}
-      </div>
+          )}
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold">
+              {t("settings.models.languageModels.model")}
+            </label>
+            <div className="flex items-center gap-2">
+              <Select
+                className="flex-1"
+                value={model || null}
+                options={modelSelectOptions}
+                isCreatable
+                isLoading={isFetching}
+                onChange={(value) => setModel(value ?? "")}
+                onCreateOption={(value) => setModel(value)}
+                placeholder={t(
+                  "settings.models.languageModels.modelPlaceholder",
+                )}
+                formatCreateLabel={(input) =>
+                  t("settings.models.languageModels.useModel", { model: input })
+                }
+              />
+              {!isAppleIntelligence && (
+                <button
+                  onClick={handleFetchModels}
+                  disabled={isFetching || !providerId}
+                  className="flex items-center justify-center h-8 w-8 rounded-md bg-mid-gray/10 hover:bg-mid-gray/20 transition-colors disabled:opacity-40 shrink-0"
+                  title={t("settings.models.languageModels.fetchModels")}
+                >
+                  <RefreshCcw
+                    className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`}
+                  />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-semibold">
+              {t("settings.models.languageModels.label")}
+            </label>
+            <Input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder={t("settings.models.languageModels.labelPlaceholder")}
+              variant="compact"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-500">{error}</p>}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSave}
+              variant="primary"
+              size="md"
+              disabled={!model.trim() || isSaving}
+            >
+              {t("common.save")}
+            </Button>
+            <Button onClick={resetForm} variant="secondary" size="md">
+              {t("common.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -215,20 +329,18 @@ export const ModelsSettings: React.FC = () => {
   const [languageSearch, setLanguageSearch] = useState("");
   const languageDropdownRef = useRef<HTMLDivElement>(null);
   const languageSearchInputRef = useRef<HTMLInputElement>(null);
-  const {
-    models,
-    currentModel,
-    downloadingModels,
-    downloadProgress,
-    downloadStats,
-    verifyingModels,
-    extractingModels,
-    loading,
-    downloadModel,
-    cancelDownload,
-    selectModel,
-    deleteModel,
-  } = useModelStore();
+  const models = useModelStore((state) => state.models);
+  const currentModel = useModelStore((state) => state.currentModel);
+  const downloadingModels = useModelStore((state) => state.downloadingModels);
+  const downloadProgress = useModelStore((state) => state.downloadProgress);
+  const downloadStats = useModelStore((state) => state.downloadStats);
+  const verifyingModels = useModelStore((state) => state.verifyingModels);
+  const extractingModels = useModelStore((state) => state.extractingModels);
+  const loading = useModelStore((state) => state.loading);
+  const downloadModel = useModelStore((state) => state.downloadModel);
+  const cancelDownload = useModelStore((state) => state.cancelDownload);
+  const selectModel = useModelStore((state) => state.selectModel);
+  const deleteModel = useModelStore((state) => state.deleteModel);
 
   // click outside handler for language dropdown
   useEffect(() => {
@@ -422,7 +534,7 @@ export const ModelsSettings: React.FC = () => {
         </div>
       </div>
 
-      {activeTab === "processing" && <ProcessingModelsSection />}
+      {activeTab === "processing" && <LanguageModelsSection />}
 
       {activeTab === "transcription" && filteredModels.length > 0 ? (
         <div className="space-y-6">

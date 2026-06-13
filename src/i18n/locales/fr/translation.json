@@ -168,7 +168,20 @@
       },
       "noModelsMatch": "Aucun modèle ne correspond à ce filtre.",
       "yourModels": "Modèles téléchargés",
-      "availableModels": "Disponibles au téléchargement"
+      "availableModels": "Disponibles au téléchargement",
+      "languageModels": {
+        "description": "Ajoutez les modèles de langage à utiliser pour le post-traitement. Renseignez la clé API du fournisseur une fois, puis choisissez un modèle.",
+        "addModel": "Ajouter un modèle",
+        "provider": "Fournisseur",
+        "apiKey": "Clé API",
+        "apiKeyPlaceholder": "Saisir la clé API",
+        "model": "Modèle",
+        "modelPlaceholder": "Rechercher ou saisir un modèle",
+        "useModel": "Utiliser « {{model}} »",
+        "fetchModels": "Actualiser les modèles",
+        "label": "Libellé (optionnel)",
+        "labelPlaceholder": "Nom d’affichage de ce modèle"
+      }
     },
     "general": {
       "title": "Général",
@@ -422,6 +435,34 @@
         "cancel": "Annuler",
         "selectToEdit": "Sélectionnez un prompt ci-dessus pour voir et modifier ses détails.",
         "createFirst": "Cliquez sur 'Créer un nouveau prompt' ci-dessus pour créer votre premier prompt de post-traitement."
+      },
+      "description": "Créez des actions de post-traitement qui réécrivent votre transcription avec un modèle d’IA. Déclenchez-les via un raccourci global ou en appuyant sur une touche numérique pendant l’enregistrement.",
+      "actions": {
+        "newAction": "Nouvelle action",
+        "newTitle": "Nouvelle action",
+        "editTitle": "Modifier l’action",
+        "name": "Nom",
+        "namePlaceholder": "ex. Nettoyer",
+        "icon": "Icône",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Décrivez comment la transcription doit être traitée...",
+        "promptHint": "Utilisez ${output} pour insérer la transcription. Sinon, elle est ajoutée automatiquement.",
+        "model": "Modèle",
+        "modelPlaceholder": "Sélectionner un modèle",
+        "noModels": "Aucun modèle de langage enregistré. Ajoutez-en un dans Modèles › Traitement.",
+        "triggerKey": "Touche rapide (pendant l’enregistrement)",
+        "triggerKeyHint": "Appuyez sur cette touche numérique pendant un enregistrement pour appliquer cette action.",
+        "noKey": "Aucune",
+        "keyTaken": "{{key}} (utilisée)",
+        "keyLabel": "Touche {{key}}",
+        "shortcutAfterSave": "Enregistrez l’action pour lui attribuer un raccourci global.",
+        "empty": "Aucune action pour l’instant. Créez-en une pour post-traiter vos transcriptions.",
+        "noModelShort": "Aucun modèle"
+      },
+      "defaultShortcut": {
+        "title": "Raccourci par défaut",
+        "toggleLabel": "Activer le raccourci de post-traitement par défaut",
+        "toggleDescription": "Ajoute un raccourci global qui transcrit et applique votre première action."
       }
     },
     "history": {
@@ -437,7 +478,10 @@
       "retranscribe": "Re-transcrire",
       "retranscribeError": "Impossible de re-transcrire. Veuillez réessayer.",
       "transcribing": "Transcription en cours...",
-      "transcriptionFailed": "La transcription a échoué. Vous pouvez re-transcrire en utilisant l'icône de réessai."
+      "transcriptionFailed": "La transcription a échoué. Vous pouvez re-transcrire en utilisant l'icône de réessai.",
+      "processWith": "Traiter avec…",
+      "processed": "Traité",
+      "processError": "Échec du traitement de cette transcription."
     },
     "debug": {
       "title": "Débogage",

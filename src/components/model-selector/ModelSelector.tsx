@@ -26,15 +26,13 @@ interface ModelSelectorProps {
 
 const ModelSelector: React.FC<ModelSelectorProps> = ({ onError }) => {
   const { t } = useTranslation();
-  const {
-    models,
-    currentModel,
-    downloadProgress,
-    downloadStats,
-    verifyingModels,
-    extractingModels,
-    selectModel,
-  } = useModelStore();
+  const models = useModelStore((state) => state.models);
+  const currentModel = useModelStore((state) => state.currentModel);
+  const downloadProgress = useModelStore((state) => state.downloadProgress);
+  const downloadStats = useModelStore((state) => state.downloadStats);
+  const verifyingModels = useModelStore((state) => state.verifyingModels);
+  const extractingModels = useModelStore((state) => state.extractingModels);
+  const selectModel = useModelStore((state) => state.selectModel);
 
   const [modelStatus, setModelStatus] = useState<ModelStatus>("unloaded");
   const [modelError, setModelError] = useState<string | null>(null);

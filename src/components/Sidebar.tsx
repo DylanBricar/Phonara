@@ -1,18 +1,43 @@
-import React from "react";
+import React, { lazy } from "react";
 import { useTranslation } from "react-i18next";
 import { Cog, FlaskConical, History, Info, Sparkles, Cpu } from "lucide-react";
 import ParlerTextLogo from "./icons/ParlerTextLogo";
 import HandyHand from "./icons/HandyHand";
 import { useSettings } from "../hooks/useSettings";
-import {
-  GeneralSettings,
-  AdvancedSettings,
-  HistorySettings,
-  DebugSettings,
-  AboutSettings,
-  PostProcessingSettings,
-  ModelsSettings,
-} from "./settings";
+import { GeneralSettings } from "./settings";
+
+// GeneralSettings stays eager since it is the section shown on launch; the
+// rest load on demand so their code is not parsed at startup.
+const AdvancedSettings = lazy(() =>
+  import("./settings/advanced/AdvancedSettings").then((m) => ({
+    default: m.AdvancedSettings,
+  })),
+);
+const HistorySettings = lazy(() =>
+  import("./settings/history/HistorySettings").then((m) => ({
+    default: m.HistorySettings,
+  })),
+);
+const DebugSettings = lazy(() =>
+  import("./settings/debug/DebugSettings").then((m) => ({
+    default: m.DebugSettings,
+  })),
+);
+const AboutSettings = lazy(() =>
+  import("./settings/about/AboutSettings").then((m) => ({
+    default: m.AboutSettings,
+  })),
+);
+const PostProcessingSettings = lazy(() =>
+  import("./settings/post-processing/PostProcessingSettings").then((m) => ({
+    default: m.PostProcessingSettings,
+  })),
+);
+const ModelsSettings = lazy(() =>
+  import("./settings/models/ModelsSettings").then((m) => ({
+    default: m.ModelsSettings,
+  })),
+);
 
 export type SidebarSection = keyof typeof SECTIONS_CONFIG;
 
@@ -60,7 +85,7 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.postProcessing",
     icon: Sparkles,
     component: PostProcessingSettings,
-    enabled: (settings) => settings?.post_process_enabled ?? false,
+    enabled: () => true,
   },
   debug: {
     labelKey: "sidebar.debug",

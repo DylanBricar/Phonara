@@ -1,11 +1,12 @@
 use crate::actions::{ActiveActionState, ACTION_MAP};
 use crate::managers::audio::AudioRecordingManager;
+use crate::settings::{get_settings, PostProcessAction, ACTION_BINDING_PREFIX};
 use log::{debug, error, warn};
 use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 const DEBOUNCE: Duration = Duration::from_millis(30);
 
@@ -31,7 +32,8 @@ enum Stage {
     Idle,
     Recording {
         binding_id: String,
-        selected_action: Option<u8>,
+        /// Id of the post-process action selected for this recording.
+        selected_action: Option<String>,
     },
     Processing,
 }
@@ -44,7 +46,9 @@ pub struct TranscriptionCoordinator {
 }
 
 pub fn is_transcribe_binding(id: &str) -> bool {
-    id == "transcribe" || id == "transcribe_with_post_process"
+    id == "transcribe"
+        || id == "transcribe_with_post_process"
+        || id.starts_with(ACTION_BINDING_PREFIX)
 }
 
 pub fn is_action_binding(id: &str) -> bool {
@@ -134,12 +138,21 @@ impl TranscriptionCoordinator {
                                 ..
                             } = stage
                             {
-                                if *selected_action == Some(key) {
-                                    *selected_action = None;
-                                    debug!("Action {} deselected during recording", key);
+                                let settings = get_settings(&app);
+                                if let Some(action) =
+                                    settings.post_process_action_by_trigger_key(key)
+                                {
+                                    if selected_action.as_deref() == Some(action.id.as_str()) {
+                                        *selected_action = None;
+                                        emit_action_deselected(&app);
+                                        debug!("Action {} deselected during recording", key);
+                                    } else {
+                                        *selected_action = Some(action.id.clone());
+                                        emit_action_selected(&app, action);
+                                        debug!("Action {} selected during recording", key);
+                                    }
                                 } else {
-                                    *selected_action = Some(key);
-                                    debug!("Action {} selected during recording", key);
+                                    debug!("No post-process action bound to key {}", key);
                                 }
                             } else {
                                 debug!("Action selection ignored: not in recording state");
@@ -205,8 +218,34 @@ impl TranscriptionCoordinator {
     }
 }
 
+/// Map a binding id to its ACTION_MAP key. Per-action shortcut bindings
+/// (`ppa_<actionId>`) reuse the plain transcribe action; the post-processing
+/// itself is driven by the selected action stored on the stage.
+fn action_map_key(binding_id: &str) -> &str {
+    if binding_id.starts_with(ACTION_BINDING_PREFIX) {
+        "transcribe"
+    } else {
+        binding_id
+    }
+}
+
+fn emit_action_selected(app: &AppHandle, action: &PostProcessAction) {
+    let _ = app.emit(
+        "action-selected",
+        serde_json::json!({
+            "key": action.trigger_key,
+            "name": action.name,
+            "icon": action.icon,
+        }),
+    );
+}
+
+fn emit_action_deselected(app: &AppHandle) {
+    let _ = app.emit("action-deselected", ());
+}
+
 fn start(app: &AppHandle, stage: &mut Stage, binding_id: &str, hotkey_string: &str) {
-    let Some(action) = ACTION_MAP.get(binding_id) else {
+    let Some(action) = ACTION_MAP.get(action_map_key(binding_id)) else {
         warn!("No action in ACTION_MAP for '{binding_id}'");
         return;
     };
@@ -215,9 +254,21 @@ fn start(app: &AppHandle, stage: &mut Stage, binding_id: &str, hotkey_string: &s
         .try_state::<Arc<AudioRecordingManager>>()
         .map_or(false, |a| a.is_recording())
     {
+        // Per-action shortcuts preselect their post-process action.
+        let selected_action = binding_id
+            .strip_prefix(ACTION_BINDING_PREFIX)
+            .map(|action_id| action_id.to_string());
+
+        if let Some(action_id) = &selected_action {
+            let settings = get_settings(app);
+            if let Some(pp_action) = settings.post_process_action(action_id) {
+                emit_action_selected(app, pp_action);
+            }
+        }
+
         *stage = Stage::Recording {
             binding_id: binding_id.to_string(),
-            selected_action: None,
+            selected_action,
         };
     } else {
         debug!("Start for '{binding_id}' did not begin recording; staying idle");
@@ -231,11 +282,11 @@ fn stop(app: &AppHandle, stage: &mut Stage, binding_id: &str, hotkey_string: &st
     } = &stage
     {
         if let Some(state) = app.try_state::<ActiveActionState>() {
-            *state.0.lock().unwrap() = *selected_action;
+            *state.0.lock().unwrap() = selected_action.clone();
         }
     }
 
-    let Some(action) = ACTION_MAP.get(binding_id) else {
+    let Some(action) = ACTION_MAP.get(action_map_key(binding_id)) else {
         warn!("No action in ACTION_MAP for '{binding_id}'");
         return;
     };

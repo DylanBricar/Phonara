@@ -18,6 +18,7 @@ pub fn cancel_current_operation(app: &AppHandle) {
     info!("Initiating operation cancellation...");
 
     shortcut::unregister_cancel_shortcut(app);
+    shortcut::unregister_recording_action_shortcuts(app);
 
     // Cancel any ongoing recording
     let audio_manager = app.state::<Arc<AudioRecordingManager>>();

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { Suspense, useEffect, useState, useRef } from "react";
 import { toast, Toaster } from "sonner";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
@@ -22,7 +22,11 @@ type OnboardingStep = "accessibility" | "model" | "done";
 const renderSettingsContent = (section: SidebarSection) => {
   const ActiveComponent =
     SECTIONS_CONFIG[section]?.component || SECTIONS_CONFIG.general.component;
-  return <ActiveComponent />;
+  return (
+    <Suspense fallback={null}>
+      <ActiveComponent />
+    </Suspense>
+  );
 };
 
 const isSidebarSection = (section: string): section is SidebarSection => {

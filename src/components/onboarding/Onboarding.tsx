@@ -13,16 +13,14 @@ interface OnboardingProps {
 
 const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
   const { t } = useTranslation();
-  const {
-    models,
-    downloadModel,
-    selectModel,
-    downloadingModels,
-    verifyingModels,
-    extractingModels,
-    downloadProgress,
-    downloadStats,
-  } = useModelStore();
+  const models = useModelStore((state) => state.models);
+  const downloadModel = useModelStore((state) => state.downloadModel);
+  const selectModel = useModelStore((state) => state.selectModel);
+  const downloadingModels = useModelStore((state) => state.downloadingModels);
+  const verifyingModels = useModelStore((state) => state.verifyingModels);
+  const extractingModels = useModelStore((state) => state.extractingModels);
+  const downloadProgress = useModelStore((state) => state.downloadProgress);
+  const downloadStats = useModelStore((state) => state.downloadStats);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
 
   const isDownloading = selectedModelId !== null;

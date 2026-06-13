@@ -5,12 +5,14 @@ import "./RecordingOverlay.css";
 import { commands } from "@/bindings";
 import i18n, { syncLanguageFromSettings } from "@/i18n";
 import { getLanguageDirection } from "@/lib/utils/rtl";
+import { getActionIcon } from "@/lib/constants/actionIcons";
 
 type OverlayState = "recording" | "transcribing" | "processing";
 
 interface ActionInfo {
-  key: number;
+  key: number | null;
   name: string;
+  icon?: string;
 }
 
 const MicIcon: React.FC = () => (
@@ -29,6 +31,18 @@ const MicIcon: React.FC = () => (
     <line x1="12" x2="12" y1="19" y2="22" />
   </svg>
 );
+
+const ActionIcon: React.FC<{ icon?: string }> = ({ icon }) => {
+  const Icon = getActionIcon(icon);
+  return (
+    <Icon
+      width={14}
+      height={14}
+      strokeWidth={2}
+      stroke="rgba(255,255,255,0.85)"
+    />
+  );
+};
 
 const DotsIcon: React.FC = () => (
   <svg
@@ -277,10 +291,18 @@ const RecordingOverlay: React.FC = () => {
       className={`recording-overlay state-${state} ${isVisible ? "is-visible" : "is-hidden"}`}
     >
       <div className="overlay-left">
-        {state === "recording" ? <MicIcon /> : <DotsIcon />}
+        {state === "recording" ? (
+          selectedAction ? (
+            <ActionIcon icon={selectedAction.icon} />
+          ) : (
+            <MicIcon />
+          )
+        ) : (
+          <DotsIcon />
+        )}
       </div>
 
-      {selectedAction && state === "recording" && (
+      {selectedAction && selectedAction.key != null && state === "recording" && (
         <div className="action-badge">{selectedAction.key}</div>
       )}
 

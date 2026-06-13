@@ -233,7 +233,20 @@
         "translation": "번역",
         "allLanguages": "모든 언어"
       },
-      "noModelsMatch": "이 필터에 맞는 모델이 없습니다."
+      "noModelsMatch": "이 필터에 맞는 모델이 없습니다.",
+      "languageModels": {
+        "description": "Add the language models you want to use for post-processing. Provide your provider API key once, then pick a model.",
+        "addModel": "Add model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Search or type a model",
+        "useModel": "Use \"{{model}}\"",
+        "fetchModels": "Refresh models",
+        "label": "Label (optional)",
+        "labelPlaceholder": "Display name for this model"
+      }
     },
     "advanced": {
       "title": "고급",
@@ -413,6 +426,34 @@
         "cancel": "취소",
         "selectToEdit": "세부 정보를 보고 편집하려면 위에서 프롬프트를 선택하세요.",
         "createFirst": "첫 번째 후처리 프롬프트를 만들려면 위의 '새 프롬프트 만들기'를 클릭하세요."
+      },
+      "description": "Create post-processing actions that rewrite your transcription with an AI model. Trigger them with a global shortcut or by pressing a number key while recording.",
+      "actions": {
+        "newAction": "New action",
+        "newTitle": "New action",
+        "editTitle": "Edit action",
+        "name": "Name",
+        "namePlaceholder": "e.g. Clean up",
+        "icon": "Icon",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Describe how the transcription should be processed...",
+        "promptHint": "Use ${output} to insert the transcription. If omitted, it is appended automatically.",
+        "model": "Model",
+        "modelPlaceholder": "Select a model",
+        "noModels": "No language models saved yet. Add one in Models › Processing first.",
+        "triggerKey": "Quick key (while recording)",
+        "triggerKeyHint": "Press this number key during a recording to apply this action.",
+        "noKey": "None",
+        "keyTaken": "{{key}} (in use)",
+        "keyLabel": "Key {{key}}",
+        "shortcutAfterSave": "Save the action to assign a global shortcut.",
+        "empty": "No actions yet. Create one to start post-processing your transcriptions.",
+        "noModelShort": "No model"
+      },
+      "defaultShortcut": {
+        "title": "Default shortcut",
+        "toggleLabel": "Enable default post-processing shortcut",
+        "toggleDescription": "Adds a global shortcut that transcribes and applies your first action."
       }
     },
     "history": {
@@ -428,7 +469,10 @@
       "retranscribe": "다시 전사",
       "retranscribeError": "다시 전사에 실패했습니다. 다시 시도해주세요.",
       "transcribing": "전사 중...",
-      "transcriptionFailed": "전사에 실패했습니다. 재시도 아이콘을 사용하여 다시 전사할 수 있습니다."
+      "transcriptionFailed": "전사에 실패했습니다. 재시도 아이콘을 사용하여 다시 전사할 수 있습니다.",
+      "processWith": "Process with…",
+      "processed": "Processed",
+      "processError": "Failed to process this transcription."
     },
     "debug": {
       "title": "디버그",

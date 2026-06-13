@@ -168,7 +168,20 @@
       },
       "noModelsMatch": "Không có mô hình nào khớp với bộ lọc này.",
       "yourModels": "Mô hình đã tải",
-      "availableModels": "Có sẵn để tải xuống"
+      "availableModels": "Có sẵn để tải xuống",
+      "languageModels": {
+        "description": "Thêm các mô hình ngôn ngữ bạn muốn dùng để xử lý sau. Nhập khóa API của nhà cung cấp một lần, rồi chọn mô hình.",
+        "addModel": "Thêm mô hình",
+        "provider": "Nhà cung cấp",
+        "apiKey": "Khóa API",
+        "apiKeyPlaceholder": "Nhập khóa API",
+        "model": "Mô hình",
+        "modelPlaceholder": "Tìm hoặc nhập mô hình",
+        "useModel": "Dùng \"{{model}}\"",
+        "fetchModels": "Làm mới mô hình",
+        "label": "Nhãn (tùy chọn)",
+        "labelPlaceholder": "Tên hiển thị cho mô hình này"
+      }
     },
     "general": {
       "title": "Chung",
@@ -422,6 +435,34 @@
         "cancel": "Hủy",
         "selectToEdit": "Chọn một prompt ở trên để xem và chỉnh sửa chi tiết.",
         "createFirst": "Nhấn 'Tạo Prompt mới' ở trên để tạo prompt xử lý sau đầu tiên của bạn."
+      },
+      "description": "Tạo các hành động xử lý sau để viết lại bản ghi bằng mô hình AI. Kích hoạt bằng phím tắt toàn cục hoặc nhấn phím số khi đang ghi.",
+      "actions": {
+        "newAction": "Hành động mới",
+        "newTitle": "Hành động mới",
+        "editTitle": "Sửa hành động",
+        "name": "Tên",
+        "namePlaceholder": "vd. Dọn dẹp",
+        "icon": "Biểu tượng",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Mô tả cách xử lý bản ghi...",
+        "promptHint": "Dùng ${output} để chèn bản ghi. Nếu bỏ qua, nó sẽ được tự động thêm vào.",
+        "model": "Mô hình",
+        "modelPlaceholder": "Chọn mô hình",
+        "noModels": "Chưa có mô hình ngôn ngữ nào. Hãy thêm một mô hình trong Mô hình › Xử lý.",
+        "triggerKey": "Phím nhanh (khi đang ghi)",
+        "triggerKeyHint": "Nhấn phím số này trong khi ghi để áp dụng hành động này.",
+        "noKey": "Không",
+        "keyTaken": "{{key}} (đang dùng)",
+        "keyLabel": "Phím {{key}}",
+        "shortcutAfterSave": "Lưu hành động để gán phím tắt toàn cục.",
+        "empty": "Chưa có hành động nào. Tạo một hành động để xử lý bản ghi của bạn.",
+        "noModelShort": "Không có mô hình"
+      },
+      "defaultShortcut": {
+        "title": "Phím tắt mặc định",
+        "toggleLabel": "Bật phím tắt xử lý sau mặc định",
+        "toggleDescription": "Thêm phím tắt toàn cục để ghi và áp dụng hành động đầu tiên của bạn."
       }
     },
     "history": {
@@ -437,7 +478,10 @@
       "retranscribe": "Phiên âm lại",
       "retranscribeError": "Không thể phiên âm lại. Vui lòng thử lại.",
       "transcribing": "Đang phiên âm...",
-      "transcriptionFailed": "Phiên âm thất bại. Bạn có thể phiên âm lại bằng biểu tượng thử lại."
+      "transcriptionFailed": "Phiên âm thất bại. Bạn có thể phiên âm lại bằng biểu tượng thử lại.",
+      "processWith": "Xử lý bằng…",
+      "processed": "Đã xử lý",
+      "processError": "Không thể xử lý bản ghi này."
     },
     "debug": {
       "title": "Gỡ lỗi",

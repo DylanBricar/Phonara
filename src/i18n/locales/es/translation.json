@@ -168,7 +168,20 @@
       },
       "noModelsMatch": "Ningún modelo coincide con este filtro.",
       "yourModels": "Modelos descargados",
-      "availableModels": "Disponibles para descargar"
+      "availableModels": "Disponibles para descargar",
+      "languageModels": {
+        "description": "Añade los modelos de lenguaje que quieras usar para el posprocesamiento. Introduce la clave API del proveedor una vez y elige un modelo.",
+        "addModel": "Añadir modelo",
+        "provider": "Proveedor",
+        "apiKey": "Clave API",
+        "apiKeyPlaceholder": "Introduce la clave API",
+        "model": "Modelo",
+        "modelPlaceholder": "Busca o escribe un modelo",
+        "useModel": "Usar «{{model}}»",
+        "fetchModels": "Actualizar modelos",
+        "label": "Etiqueta (opcional)",
+        "labelPlaceholder": "Nombre para mostrar de este modelo"
+      }
     },
     "general": {
       "title": "General",
@@ -422,6 +435,34 @@
         "cancel": "Cancelar",
         "selectToEdit": "Selecciona un prompt arriba para ver y editar sus detalles.",
         "createFirst": "Haz clic en 'Crear Nuevo Prompt' arriba para crear tu primer prompt de post procesamiento."
+      },
+      "description": "Crea acciones de posprocesamiento que reescriben tu transcripción con un modelo de IA. Actívalas con un atajo global o pulsando una tecla numérica mientras grabas.",
+      "actions": {
+        "newAction": "Nueva acción",
+        "newTitle": "Nueva acción",
+        "editTitle": "Editar acción",
+        "name": "Nombre",
+        "namePlaceholder": "p. ej. Limpiar",
+        "icon": "Icono",
+        "prompt": "Prompt",
+        "promptPlaceholder": "Describe cómo debe procesarse la transcripción...",
+        "promptHint": "Usa ${output} para insertar la transcripción. Si se omite, se añade automáticamente.",
+        "model": "Modelo",
+        "modelPlaceholder": "Selecciona un modelo",
+        "noModels": "Aún no hay modelos de lenguaje guardados. Añade uno en Modelos › Procesamiento.",
+        "triggerKey": "Tecla rápida (durante la grabación)",
+        "triggerKeyHint": "Pulsa esta tecla numérica durante una grabación para aplicar esta acción.",
+        "noKey": "Ninguna",
+        "keyTaken": "{{key}} (en uso)",
+        "keyLabel": "Tecla {{key}}",
+        "shortcutAfterSave": "Guarda la acción para asignarle un atajo global.",
+        "empty": "Aún no hay acciones. Crea una para posprocesar tus transcripciones.",
+        "noModelShort": "Sin modelo"
+      },
+      "defaultShortcut": {
+        "title": "Atajo predeterminado",
+        "toggleLabel": "Activar el atajo de posprocesamiento predeterminado",
+        "toggleDescription": "Añade un atajo global que transcribe y aplica tu primera acción."
       }
     },
     "history": {
@@ -437,7 +478,10 @@
       "retranscribe": "Re-transcribir",
       "retranscribeError": "No se pudo re-transcribir. Por favor, inténtalo de nuevo.",
       "transcribing": "Transcribiendo...",
-      "transcriptionFailed": "La transcripción falló. Puedes re-transcribir usando el ícono de reintentar."
+      "transcriptionFailed": "La transcripción falló. Puedes re-transcribir usando el ícono de reintentar.",
+      "processWith": "Procesar con…",
+      "processed": "Procesado",
+      "processError": "No se pudo procesar esta transcripción."
     },
     "debug": {
       "title": "Depuración",
