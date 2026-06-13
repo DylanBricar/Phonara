@@ -1,0 +1,132 @@
+---
+title: "List Organization Members API"
+description: "List organization members with an API key."
+keywords: ["api", "members", "organizations", "api-keys"]
+tags: ["api", "developer"]
+order: 4
+subcategory: "API"
+method: "GET"
+endpoint: "/api/v1/members"
+examples:
+  bash: |
+    curl -H "x-api-key: YOUR_API_KEY" \
+      https://nowstack.melvynx.dev/api/v1/members
+  javascript: |
+    const response = await fetch("https://nowstack.melvynx.dev/api/v1/members", {
+      headers: {
+        "x-api-key": "YOUR_API_KEY",
+      },
+    });
+    const data = await response.json();
+  python: |
+    import requests
+
+    response = requests.get(
+        "https://nowstack.melvynx.dev/api/v1/members",
+        headers={"x-api-key": "YOUR_API_KEY"},
+    )
+    data = response.json()
+results:
+  success: |
+    {
+      "members": [
+        {
+          "id": "member_123",
+          "role": "owner",
+          "createdAt": 1767225600000,
+          "user": {
+            "id": "user_123",
+            "name": "Ada Lovelace",
+            "email": "ada@example.com",
+            "image": null
+          }
+        }
+      ]
+    }
+  error: |
+    {
+      "message": "Invalid API key"
+    }
+---
+
+List members for the organization that owns the API key. API keys are scoped to one organization, so callers do not pass an organization id.
+
+Use `GET /api/v1/me` when an integration needs the organization id, name, or slug for the API key.
+Use `GET /api/v1/members/:memberId` when an integration needs one specific member.
+
+## Endpoint
+
+```http
+GET /api/v1/members
+```
+
+## Authentication
+
+Create an organization API key from the organization settings page:
+
+```txt
+/orgs/{orgSlug}/settings/api-keys
+```
+
+Send the key with `x-api-key`:
+
+```http
+x-api-key: YOUR_API_KEY
+```
+
+Bearer authentication is also accepted:
+
+```http
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Response
+
+| Field          | Type   | Description                               |
+| -------------- | ------ | ----------------------------------------- |
+| `members`      | array  | Members in the API key's organization     |
+
+## Member Object
+
+| Field             | Type           | Description                         |
+| ----------------- | -------------- | ----------------------------------- |
+| `id`              | string         | Organization membership id          |
+| `role`            | string         | Member role, such as `owner`        |
+| `createdAt`       | number         | Membership creation timestamp in ms |
+| `user.id`         | string         | User id                             |
+| `user.name`       | string         | User display name                   |
+| `user.email`      | string         | User email address                  |
+| `user.image`      | string \| null | User avatar URL                     |
+
+## Examples
+
+### cURL
+
+```bash
+curl -H "x-api-key: YOUR_API_KEY" \
+  https://nowstack.melvynx.dev/api/v1/members
+```
+
+### JavaScript
+
+```ts
+const response = await fetch("https://nowstack.melvynx.dev/api/v1/members", {
+  headers: {
+    "x-api-key": process.env.NOWSTACK_API_KEY!,
+  },
+});
+
+if (!response.ok) {
+  throw new Error(`Members API failed: ${response.status}`);
+}
+
+const data = await response.json();
+```
+
+## Errors
+
+| Status | Description                              |
+| ------ | ---------------------------------------- |
+| `401`  | Missing, invalid, expired, or limited key |
+| `404`  | The key's organization or requested member no longer exists |
+| `500`  | Internal server error                    |

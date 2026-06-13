@@ -1,0 +1,81 @@
+---
+title: Building a SaaS with Stripe Payments
+description: A complete guide to integrating Stripe payments into your SaaS application for subscriptions and one-time payments.
+keywords:
+  - stripe
+  - saas
+  - payments
+  - subscriptions
+tags:
+  - SaaS
+  - Payments
+coverUrl: https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?q=80&w=2970&auto=format&fit=crop
+status: published
+date: 2025-01-10
+---
+
+Building a successful SaaS requires a robust payment system. Stripe makes it easy to accept payments, manage subscriptions, and handle billing.
+
+## Setting Up Stripe
+
+First, install the Stripe SDK:
+
+```bash
+npm install stripe @stripe/stripe-js
+```
+
+Create a Stripe instance on the server:
+
+```ts
+import Stripe from "stripe";
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-12-18.acacia",
+});
+```
+
+## Creating a Subscription
+
+To create a subscription, you need to:
+
+1. Create a customer
+2. Attach a payment method
+3. Create the subscription
+
+```ts
+const subscription = await stripe.subscriptions.create({
+  customer: customerId,
+  items: [{ price: priceId }],
+  payment_behavior: "default_incomplete",
+  expand: ["latest_invoice.payment_intent"],
+});
+```
+
+## Handling Webhooks
+
+Webhooks are essential for keeping your database in sync:
+
+```ts
+export async function POST(req: Request) {
+  const body = await req.text();
+  const sig = req.headers.get("stripe-signature")!;
+
+  const event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
+
+  switch (event.type) {
+    case "customer.subscription.created":
+      // Handle new subscription
+      break;
+    case "invoice.paid":
+      // Handle successful payment
+      break;
+  }
+}
+```
+
+## Best Practices
+
+- Always use webhooks for critical business logic
+- Store Stripe IDs in your database
+- Implement proper error handling
+- Test with Stripe CLI locally

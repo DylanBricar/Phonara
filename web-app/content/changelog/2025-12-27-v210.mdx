@@ -1,0 +1,37 @@
+---
+date: 2025-12-27
+version: "2.1.0"
+title: "Public Changelog & Content System"
+image: /images/changelog/v210.png
+status: published
+---
+
+This release introduces a complete public changelog system with CardStack animations, modernized content pages, and comprehensive test coverage.
+
+### Features
+
+- **Public changelog system** - Full timeline UI with MDX-based content and draft/published support
+- **Typed detail routes** - Click changelog items to open their detail page, direct URLs still work
+- **CardStack widget** - Animated changelog cards in organization sidebar with dismiss functionality
+- **Local dismissal state** - Per-browser changelog dismissal persistence with localStorage
+- **Debug Panel** - Development-only panel with "Reset Changelog" and other debug actions
+- **Active navigation highlighting** - Header navigation now shows which section you're in
+- **Blog posts section** - Sample blog content with authentication, Stripe, Prisma, Next.js, and TailwindCSS guides
+
+### Refactoring
+
+- **Modernized changelog timeline** - Clean vertical line design with dot markers and compact cards
+- **Content header component** - Reusable header with title, description, and navigation tabs
+- **Docs moved to (layout) route group** - Better organization of public content routes
+- **Post card variants** - Multiple display variants for blog post cards
+
+### Bug Fixes
+
+- **Changelog reset** - Debug panel action clears local changelog dismissals during development
+- **E2E test stability** - Handle session invalidation and correct selectors for sign out flow
+
+### Testing
+
+- **Focused unit tests** - changelog-manager coverage for parsing, sorting, draft filtering, and slug lookup
+- **3 new E2E tests** - Timeline rendering, item navigation, and direct URL access
+- All tests passing with zero skipped

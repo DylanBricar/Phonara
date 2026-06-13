@@ -1,0 +1,37 @@
+---
+date: 2025-08-13
+version: "1.0.0"
+title: "Initial Release"
+image: /images/changelog/v100.png
+status: published
+---
+
+## What's New
+
+Complete admin dashboard with comprehensive management interfaces.
+
+### Features
+
+- **Complete admin dashboard** with sidebar layout and routing
+- **Admin-only authentication guards** with role checking
+- **User management interface** with search, pagination, and role filtering
+- **User detail pages** with session management and impersonation
+- **Organization management interface** with member management
+- **Subscription management** with plan changes and billing controls
+- **Payment history** with Stripe integration for admin oversight
+- **AutomaticPagination** reusable component
+
+### Refactoring
+
+- Move billing ownership from User to Organization level
+- Migrate stripeCustomerId from User model to Organization model
+- Update webhook handlers for organization-based billing
+- Replace Better-Auth subscription methods with custom server actions
+- Billing page with Card components and Typography
+
+### Bug Fixes
+
+- Remove all `any` type usage in Stripe webhook handlers
+- Type compatibility issues across billing system
+- Card hover effects replaced with clean styling
+- Organization/user names now clickable instead of separate View buttons

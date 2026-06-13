@@ -1,0 +1,23 @@
+{
+  "API Route GET": {
+    "prefix": "napig",
+    "description": "Create a GET API Route with TanStack Start.",
+    "scope": "javascript,typescript",
+    "body": [
+      "import { createAPIFileRoute } from \"@tanstack/react-start/api\";",
+      "import { handleApiError } from \"@/lib/api-middleware\";",
+      "",
+      "export const APIRoute = createAPIFileRoute(\"/api/$0\")({",
+      "  GET: async ({ request }) => {",
+      "    try {",
+      "      $1",
+      "",
+      "      return Response.json({ message: \"Hello, world!\" });",
+      "    } catch (e) {",
+      "      return handleApiError(e);",
+      "    }",
+      "  },",
+      "});",
+    ],
+  },
+}

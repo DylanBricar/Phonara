@@ -1,0 +1,110 @@
+---
+title: "Auth Components"
+description: "Ready-to-use authentication components for sign-in, user menus, and session management"
+keywords: ["authentication", "components", "sign-in", "user menu"]
+tags: ["developer", "components"]
+order: 3
+subcategory: "Components"
+---
+
+NowStack comes with all the components you need to easily manage authentication. They are located in `src/features/auth/`.
+
+## SignInButton
+
+Client component that displays a button to sign in. It automatically redirects to `/auth/signin` with the correct `callbackUrl` (the current page).
+
+**Props:** `VariantProps<typeof buttonVariants>` (accepts button variants like `size`, `variant`, etc.)
+
+```tsx
+import { SignInButton } from "@/features/auth/sign-in-button";
+
+export default function Home() {
+  return (
+    <div>
+      <SignInButton size="lg" variant="default" />
+    </div>
+  );
+}
+```
+
+## LoggedInButton
+
+Client component that displays the user's avatar with a dropdown menu. When the user clicks on it, they see a menu with actions (Dashboard, Account Settings, Admin, Theme, Logout).
+
+**Props:**
+
+```tsx
+{
+  user: {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  }
+}
+```
+
+```tsx
+import { LoggedInButton } from "@/features/auth/sign-in-button";
+
+export default function Home() {
+  const user = await getUser();
+  if (!user) return null;
+
+  return (
+    <div>
+      <LoggedInButton user={user} />
+    </div>
+  );
+}
+```
+
+## AuthButton (Server Side)
+
+Server component that automatically displays `LoggedInButton` or `SignInButton` based on user authentication status.
+
+**Props:** None
+
+**Features:**
+
+- Uses `Suspense` with `Skeleton` fallback
+- Fetches user server-side
+- Ideal for layouts and server pages
+
+```tsx
+import { AuthButton } from "@/features/auth/auth-button";
+
+export default function Header() {
+  return (
+    <div>
+      <AuthButton />
+    </div>
+  );
+}
+```
+
+## AuthButtonClient (Client Side)
+
+Client component with the same behavior as `AuthButton`. It automatically displays `LoggedInButton` or `SignInButton` based on the user session.
+
+**Props:** None
+
+**Features:**
+
+- Uses the `useSession` hook client-side
+- Use when you need a client component
+
+```tsx
+import { AuthButtonClient } from "@/features/auth/auth-button-client";
+
+export default function ClientHeader() {
+  return (
+    <div>
+      <AuthButtonClient />
+    </div>
+  );
+}
+```
+
+## Logout
+
+Logout is handled via the dropdown menu in `LoggedInButton`. The `UserDropdownLogout` component handles the logout action and automatically redirects to `/auth/signin` after logout.

@@ -1,0 +1,195 @@
+---
+title: "Dialog Manager"
+description: "Global dialog system for confirmation, input, and custom modals with automatic loading states"
+keywords: ["dialog", "modal", "confirmation", "components"]
+tags: ["developer", "components"]
+order: 5
+subcategory: "Components"
+---
+
+The Dialog Manager allows you to easily display confirmation, input, or custom dialogs in your application.
+
+## Installation
+
+The Dialog Manager is already integrated in NowStack. Make sure the `DialogManagerRenderer` component is present in your main layout.
+
+## Import
+
+```tsx
+import { dialogManager } from "@/features/dialog-manager/dialog-manager";
+```
+
+## Confirm Dialog
+
+To display a confirmation dialog with Action/Cancel buttons:
+
+```tsx
+<Button
+  variant="destructive"
+  onClick={() => {
+    dialogManager.confirm({
+      title: "Delete Profile",
+      description: "Are you sure you want to delete your profile?",
+      action: {
+        label: "Delete",
+        variant: "destructive",
+        onClick: async () => {
+          await deleteAccountAction(null);
+          toast.success("Your profile has been deleted.");
+        },
+      },
+    });
+  }}
+>
+  Delete
+</Button>
+```
+
+### Confirm Dialog Options
+
+| Option        | Type                                      | Description                        |
+| ------------- | ----------------------------------------- | ---------------------------------- |
+| `title`       | `string`                                  | Dialog title                       |
+| `description` | `ReactNode`                               | Description or custom content      |
+| `icon`        | `LucideIcon`                              | Icon displayed in a circle         |
+| `variant`     | `"default" \| "destructive" \| "warning"` | Visual style of the dialog         |
+| `size`        | `"sm" \| "md" \| "lg"`                    | Dialog size                        |
+| `style`       | `"default" \| "centered"`                 | Content alignment                  |
+| `confirmText` | `string`                                  | Text the user must type to confirm |
+| `action`      | `DialogAction`                            | Action button configuration        |
+| `cancel`      | `DialogCancel`                            | Cancel button configuration        |
+
+### Text Confirmation
+
+For critical actions, you can ask the user to type text to confirm:
+
+```tsx
+dialogManager.confirm({
+  title: "Delete Organization",
+  description: "This action is irreversible.",
+  confirmText: "DELETE",
+  action: {
+    label: "Delete",
+    variant: "destructive",
+    onClick: async () => {
+      await deleteOrganization();
+    },
+  },
+});
+```
+
+The user will need to type exactly "DELETE" to enable the confirm button.
+
+## Input Dialog
+
+To request user input:
+
+```tsx
+dialogManager.input({
+  title: "Rename Item",
+  description: "Enter a new name for this item.",
+  input: {
+    label: "Name",
+    defaultValue: currentName,
+    placeholder: "Enter a name...",
+  },
+  action: {
+    label: "Save",
+    onClick: async (inputValue) => {
+      await renameItem(id, inputValue);
+      toast.success("Item renamed.");
+    },
+  },
+});
+```
+
+### Input Dialog Options
+
+| Option  | Type          | Description               |
+| ------- | ------------- | ------------------------- |
+| `input` | `InputConfig` | Input field configuration |
+
+**InputConfig:**
+
+| Option         | Type     | Description       |
+| -------------- | -------- | ----------------- |
+| `label`        | `string` | Field label       |
+| `defaultValue` | `string` | Default value     |
+| `placeholder`  | `string` | Field placeholder |
+
+## Custom Dialog
+
+For dialogs with fully custom content:
+
+```tsx
+import { AlertDialogCancel } from "@/components/ui/alert-dialog";
+
+dialogManager.custom({
+  title: "Custom Dialog",
+  size: "lg",
+  children: (
+    <div className="flex flex-col gap-4">
+      <p>Custom content here</p>
+      <AlertDialogCancel>Close</AlertDialogCancel>
+    </div>
+  ),
+});
+```
+
+**Important:** Add the `AlertDialogCancel` component or use `dialogManager.closeAll()` to allow the user to close the dialog.
+
+## Closing Dialogs
+
+```tsx
+// Close a specific dialog by its ID
+const dialogId = dialogManager.confirm({ ... });
+dialogManager.close(dialogId);
+
+// Close all dialogs
+dialogManager.closeAll();
+```
+
+## Automatic Loading Management
+
+Action buttons automatically display a loading state while the `onClick` promise is executing. No manual loading state management is needed.
+
+```tsx
+dialogManager.confirm({
+  title: "Save",
+  action: {
+    label: "Save",
+    onClick: async () => {
+      // The button displays a spinner during this operation
+      await saveData();
+      // The dialog closes automatically after success
+    },
+  },
+});
+```
+
+If an error is thrown in `onClick`, the dialog stays open and an error toast is displayed.
+
+## Complete Example with Icon and Centered Style
+
+```tsx
+import { Trash2 } from "lucide-react";
+
+dialogManager.confirm({
+  title: "Delete File",
+  description: "This action will permanently delete the file.",
+  icon: Trash2,
+  variant: "destructive",
+  style: "centered",
+  action: {
+    label: "Delete",
+    variant: "destructive",
+    onClick: async () => {
+      await deleteFile(fileId);
+      toast.success("File deleted.");
+    },
+  },
+  cancel: {
+    label: "Cancel",
+  },
+});
+```

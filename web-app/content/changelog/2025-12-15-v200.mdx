@@ -1,0 +1,43 @@
+---
+date: 2025-12-15
+version: "2.0.0"
+title: "Major Performance Release"
+image: /images/changelog/v200.png
+status: published
+---
+
+## What's New
+
+This release brings significant performance improvements and a complete migration to TanStack Form.
+
+### Features
+
+- **Major performance improvements** with refactored application architecture
+- **TanStack Form migration** replacing React Hook Form across all forms
+- **Redis caching** for improved response times
+- **OTP-based password reset** flow for enhanced security
+- **Complete OTP sign-in** flow implementation
+- **Responsive provider buttons** - full width when single provider
+- **Global PageProps type** for standardized page component typing
+
+### Bug Fixes
+
+- Remove insecure trusted origins wildcard configuration in auth
+- Use hard redirects for impersonation to update profile button immediately
+- Breadcrumb path selection slice issue
+- Typo in prisma:generate script
+- ESLint and TypeScript errors across codebase
+- Vitest config ESM conversion
+- generateStaticParams for posts in production (Next.js 16 compatibility)
+
+### Refactoring
+
+- Middleware utilities extraction with admin route protection
+
+### Maintenance
+
+- Update Better-Auth to version 1.3.27
+- Update VSCode snippets and workflow configuration
+- Add environment variables guide
+- Improve type safety in chart and tooltip components
+- Remove unused shadcn-prose dependency

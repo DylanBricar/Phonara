@@ -1,0 +1,98 @@
+---
+title: Database Patterns with Prisma ORM
+description: Learn effective database patterns and best practices using Prisma ORM for scalable applications.
+keywords:
+  - prisma
+  - database
+  - orm
+  - postgresql
+tags:
+  - Database
+  - Backend
+coverUrl: https://images.unsplash.com/photo-1544383835-bda2bc66a55d?q=80&w=2970&auto=format&fit=crop
+status: published
+date: 2024-12-20
+---
+
+Prisma has become the go-to ORM for TypeScript applications. Let's explore patterns that will make your database layer rock solid.
+
+## Setting Up Prisma
+
+Initialize Prisma in your project:
+
+```bash
+npx prisma init
+```
+
+Define your schema:
+
+```prisma
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  posts     Post[]
+  createdAt DateTime @default(now())
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  author    User     @relation(fields: [authorId], references: [id])
+  authorId  String
+}
+```
+
+## Efficient Queries
+
+Use `select` to fetch only needed fields:
+
+```ts
+const users = await prisma.user.findMany({
+  select: {
+    id: true,
+    name: true,
+    email: true,
+  },
+});
+```
+
+## Transactions
+
+Handle complex operations atomically:
+
+```ts
+const result = await prisma.$transaction(async (tx) => {
+  const user = await tx.user.create({
+    data: { email, name },
+  });
+
+  await tx.post.create({
+    data: { title: "Welcome!", authorId: user.id },
+  });
+
+  return user;
+});
+```
+
+## Soft Deletes
+
+Implement soft deletes with a middleware:
+
+```ts
+prisma.$use(async (params, next) => {
+  if (params.action === "delete") {
+    params.action = "update";
+    params.args.data = { deletedAt: new Date() };
+  }
+  return next(params);
+});
+```
+
+## Performance Tips
+
+- Use connection pooling in production
+- Index frequently queried fields
+- Batch operations when possible
+- Use `findFirst` instead of `findMany` when expecting one result

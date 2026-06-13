@@ -1,0 +1,111 @@
+---
+title: "Layout Components"
+description: "Page layout components for consistent page structure with header, actions, and content areas"
+keywords: ["layout", "page", "components", "structure"]
+tags: ["developer", "components"]
+order: 6
+subcategory: "Components"
+---
+
+The `Layout` components allow you to easily create pages with a consistent rendering in Nowts.
+
+## Components
+
+There are 6 components:
+
+- **`Layout`**: main container that defines the page layout
+  - Props: `size?: "sm" | "default" | "lg" | "xl"`
+  - `default` (max-width: 1024px) - 1024px width
+  - `sm` (max-width: 768px) - compact width
+  - `lg` (max-width: 1792px) - large width
+  - `xl` (max-width: 1400px) - extra-large width
+
+- **`LayoutHeader`**: page header containing the title and description
+  - Responsive: full width on mobile, flex-1 on desktop
+
+- **`LayoutTitle`**: page title (uses Typography h2 variant)
+  - Used inside `LayoutHeader`
+
+- **`LayoutDescription`**: page description (uses default Typography)
+  - Used inside `LayoutHeader`
+
+- **`LayoutActions`**: container for action buttons
+  - Positions elements in flex with centered vertical alignment
+
+- **`LayoutContent`**: main content area of the page
+  - Takes all available width
+
+## Usage
+
+```tsx
+import {
+  Layout,
+  LayoutActions,
+  LayoutContent,
+  LayoutDescription,
+  LayoutHeader,
+  LayoutTitle,
+} from "@/features/page/layout";
+
+export default function RoutePage(props: PageProps<"/route/path">) {
+  return (
+    <Layout size="lg">
+      <LayoutHeader>
+        <LayoutTitle>Page Title</LayoutTitle>
+        <LayoutDescription>Page description</LayoutDescription>
+      </LayoutHeader>
+      <LayoutActions className="gap-2">
+        <Button variant="outline">Delete</Button>
+        <Button>Create</Button>
+      </LayoutActions>
+      <LayoutContent className="flex flex-col gap-4">
+        <Typography variant="large">
+          Here is the page content with cards, text, etc.
+        </Typography>
+        <Card>
+          <CardHeader>
+            <CardTitle>Page Content</CardTitle>
+            <CardDescription>Additional content description.</CardDescription>
+          </CardHeader>
+        </Card>
+      </LayoutContent>
+    </Layout>
+  );
+}
+```
+
+## Properties
+
+All components accept standard HTML element properties (`className`, `style`, etc.) via `ComponentPropsWithoutRef`.
+
+### Layout
+
+```tsx
+type LayoutProps = ComponentPropsWithoutRef<"div"> & {
+  size?: "sm" | "default" | "lg" | "xl";
+};
+```
+
+### LayoutHeader, LayoutActions, LayoutContent
+
+```tsx
+type Props = ComponentPropsWithoutRef<"div">;
+```
+
+### LayoutTitle
+
+```tsx
+type LayoutTitleProps = ComponentPropsWithoutRef<"h1">;
+```
+
+### LayoutDescription
+
+```tsx
+type LayoutDescriptionProps = ComponentPropsWithoutRef<"p">;
+```
+
+## Notes
+
+- This is a simple approach to create consistent layouts without complicating the structure
+- You can use these components inside Next.js layouts
+- The advantage over Next.js layouts is that you can customize the title, description, and actions for each page individually

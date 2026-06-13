@@ -1,0 +1,74 @@
+---
+title: Authentication Best Practices in 2025
+description: Modern authentication strategies for web applications including OAuth, magic links, and passwordless authentication.
+keywords:
+  - authentication
+  - security
+  - oauth
+  - magic links
+tags:
+  - Security
+  - Auth
+coverUrl: https://images.unsplash.com/photo-1633265486064-086b219458ec?q=80&w=2970&auto=format&fit=crop
+status: published
+date: 2025-01-05
+---
+
+Authentication is critical for any web application. Let's explore the best practices for implementing secure authentication in 2025.
+
+## The Evolution of Auth
+
+Authentication has evolved significantly:
+
+- **Passwords** - Still common but increasingly problematic
+- **OAuth/Social Login** - Delegating auth to trusted providers
+- **Magic Links** - Passwordless email-based authentication
+- **Passkeys** - The future of authentication
+
+## Implementing OAuth
+
+OAuth allows users to sign in with existing accounts:
+
+```ts
+// Using Better Auth
+import { betterAuth } from "better-auth";
+
+export const auth = betterAuth({
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+    },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    },
+  },
+});
+```
+
+## Magic Links
+
+Magic links provide a seamless passwordless experience:
+
+1. User enters their email
+2. Server generates a secure token
+3. Email is sent with a login link
+4. User clicks link and is authenticated
+
+## Session Management
+
+Secure session handling is crucial:
+
+- Use HTTP-only cookies
+- Implement proper session expiration
+- Support session revocation
+- Consider refresh token rotation
+
+## Security Checklist
+
+- [ ] Rate limit authentication endpoints
+- [ ] Implement CSRF protection
+- [ ] Use secure cookie settings
+- [ ] Log authentication events
+- [ ] Implement account lockout

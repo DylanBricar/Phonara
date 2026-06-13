@@ -1,0 +1,292 @@
+---
+title: "File Upload Adapters"
+description: "Configure file uploads with Vercel Blob, Cloudflare R2, AWS S3, or UploadThing"
+keywords:
+  [
+    "file upload",
+    "vercel blob",
+    "cloudflare r2",
+    "aws s3",
+    "uploadthing",
+    "storage",
+  ]
+tags: ["guide", "storage", "configuration"]
+order: 10
+subcategory: "Configuration"
+---
+
+NowStack comes with a flexible file upload system using adapters. You can easily switch between different storage providers without changing your application code.
+
+## How It Works
+
+The upload system uses an adapter pattern defined in `src/lib/files/upload-file.ts`:
+
+```typescript
+export type UploadFileAdapter = {
+  uploadFile: (params: {
+    file: File;
+    path: string;
+  }) => Promise<
+    { error: null; data: { url: string } } | { error: Error; data: null }
+  >;
+  uploadFiles: (
+    params: { file: File; path: string }[],
+  ) => Promise<{ error: Error | null; data: { url: string } | null }[]>;
+};
+```
+
+The active upload implementation lives in `convex/files/actions.ts`.
+
+## Available Adapters
+
+### Vercel Blob (Default)
+
+Vercel Blob is the default and recommended option. It's automatically configured when deploying to Vercel.
+
+**Setup:**
+
+1. Go to your Vercel Dashboard > Storage > Create Database > Blob
+2. Connect it to your project
+3. The `BLOB_READ_WRITE_TOKEN` is automatically added to your environment
+
+**For local development:**
+
+1. Go to Vercel Dashboard > Storage > Blob > Tokens
+2. Copy the token to your `.env` file:
+
+```bash
+BLOB_READ_WRITE_TOKEN="vercel_blob_..."
+```
+
+**Adapter code** (already included at `src/lib/files/vercel-blob-adapter.ts`):
+
+```typescript
+import { put } from "@vercel/blob";
+import type { UploadFileAdapter } from "./upload-file";
+
+export const fileAdapter: UploadFileAdapter = {
+  uploadFile: async (params) => {
+    try {
+      const blob = await put(params.file.name, params.file, {
+        access: "public",
+      });
+      return { error: null, data: { url: blob.url } };
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error ? error : new Error("Failed to upload file"),
+        data: null,
+      };
+    }
+  },
+  uploadFiles: async (params) => {
+    const promises = params.map(async (param) => {
+      try {
+        const blob = await put(param.file.name, param.file, {
+          access: "public",
+        });
+        return { error: null, data: { url: blob.url } };
+      } catch (error) {
+        return {
+          error:
+            error instanceof Error ? error : new Error("Failed to upload file"),
+          data: null,
+        };
+      }
+    });
+    return Promise.all(promises);
+  },
+};
+```
+
+---
+
+### Cloudflare R2 / AWS S3
+
+Use Cloudflare R2 or AWS S3 for more control over your storage or to avoid vendor lock-in.
+
+**Setup:**
+
+1. Install dependencies:
+
+```bash
+pnpm add @aws-sdk/client-s3 mime-types
+pnpm add -D @types/mime-types
+```
+
+2. Add environment variables to `.env`:
+
+```bash
+AWS_ENDPOINT="https://your-account-id.r2.cloudflarestorage.com"
+AWS_ACCESS_KEY_ID="your-access-key"
+AWS_SECRET_ACCESS_KEY="your-secret-key"
+AWS_S3_BUCKET_NAME="your-bucket-name"
+R2_URL="https://your-public-bucket-url.com"
+```
+
+3. Create the adapter at `src/lib/files/r2-adapter.ts`:
+
+```typescript
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import type { UploadFileAdapter } from "./upload-file";
+
+const s3 = new S3Client({
+  region: "auto",
+  endpoint: process.env.AWS_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+
+export const fileAdapter: UploadFileAdapter = {
+  uploadFile: async (params) => {
+    try {
+      const fileBuffer = await params.file.arrayBuffer();
+      const buffer = Buffer.from(fileBuffer);
+      const uniqueFileName = `${params.path}/${Date.now()}-${params.file.name}`;
+
+      const command = new PutObjectCommand({
+        Bucket: process.env.AWS_S3_BUCKET_NAME,
+        Key: uniqueFileName,
+        Body: buffer,
+        ContentType: params.file.type,
+      });
+
+      await s3.send(command);
+
+      const url = `${process.env.R2_URL}/${uniqueFileName}`;
+      return { error: null, data: { url } };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error : new Error("Upload failed"),
+        data: null,
+      };
+    }
+  },
+
+  uploadFiles: async (params) => {
+    const results = await Promise.allSettled(
+      params.map((param) => fileAdapter.uploadFile(param)),
+    );
+
+    return results.map((result) => {
+      if (result.status === "fulfilled") {
+        return result.value;
+      }
+      return {
+        error: new Error(result.reason?.message || "Upload failed"),
+        data: null,
+      };
+    });
+  },
+};
+```
+
+4. Update the upload implementation in `convex/files/actions.ts`:
+
+```typescript
+// Change this:
+import { fileAdapter } from "@/lib/files/vercel-blob-adapter";
+
+// To this:
+import { fileAdapter } from "@/lib/files/r2-adapter";
+```
+
+**Video tutorials:**
+
+- [Cloudflare R2 Setup](https://youtu.be/6xaeUAcMyrQ)
+- [AWS S3 Setup](https://youtu.be/uSCmPzLWIm8)
+
+---
+
+### UploadThing
+
+UploadThing is a developer-friendly file upload service with a generous free tier.
+
+**Setup:**
+
+1. Install the package:
+
+```bash
+pnpm add uploadthing
+```
+
+2. Add your token to `.env`:
+
+```bash
+UPLOADTHING_TOKEN="your-uploadthing-token"
+```
+
+3. Create the adapter at `src/lib/files/uploadthing-adapter.ts`:
+
+```typescript
+import { UTApi } from "uploadthing/server";
+import type { UploadFileAdapter } from "./upload-file";
+
+export const utapi = new UTApi({});
+
+export const fileAdapter: UploadFileAdapter = {
+  uploadFile: async (params) => {
+    const response = await utapi.uploadFiles([params.file]);
+
+    if (response[0].error) {
+      return { error: new Error(response[0].error.message), data: null };
+    }
+
+    return { error: null, data: { url: response[0].data.ufsUrl } };
+  },
+  uploadFiles: async (params) => {
+    const response = await utapi.uploadFiles(params.map((param) => param.file));
+
+    return response.map((res) => {
+      if (res.error) {
+        return { error: new Error(res.error.message), data: null };
+      }
+      return { error: null, data: { url: res.data.ufsUrl } };
+    });
+  },
+};
+```
+
+4. Update the upload implementation in `convex/files/actions.ts`:
+
+```typescript
+import { fileAdapter } from "@/lib/files/uploadthing-adapter";
+```
+
+---
+
+## Switching Adapters
+
+To switch between adapters, change the upload implementation in `convex/files/actions.ts`:
+
+```typescript
+// Vercel Blob (default)
+import { fileAdapter } from "@/lib/files/vercel-blob-adapter";
+
+// Cloudflare R2 / AWS S3
+import { fileAdapter } from "@/lib/files/r2-adapter";
+
+// UploadThing
+import { fileAdapter } from "@/lib/files/uploadthing-adapter";
+```
+
+## Enabling Image Upload
+
+By default, image upload is disabled. To enable it:
+
+1. Open `src/site-config.ts`
+2. Set `enableImageUpload` to `true`:
+
+```typescript
+export const SiteConfig = {
+  // ...
+  features: {
+    enableImageUpload: true,
+    // ...
+  },
+};
+```
+
+This enables drag-and-drop and click-to-upload functionality throughout the app.

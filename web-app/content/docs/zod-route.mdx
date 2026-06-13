@@ -1,0 +1,107 @@
+---
+title: "API Routes"
+description: "Type-safe API route handlers with TanStack Start and error handling"
+keywords: ["api routes", "tanstack start", "error handling"]
+tags: ["developer", "internal"]
+order: 2
+subcategory: "Developer"
+---
+
+API routes use TanStack Router server handlers and `handleApiError`.
+Authenticate inline in the handler, then call Convex through the typed helpers
+when route work needs app data.
+
+## API Route Pattern
+
+```ts
+import { handleApiError } from "@/lib/api-middleware";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/api/example")({
+  server: {
+    handlers: {
+      GET: async ({ request }) => {
+        try {
+          return Response.json({ success: true });
+        } catch (e) {
+          return handleApiError(e);
+        }
+      },
+    },
+  },
+});
+```
+
+## Authentication
+
+```ts
+import { handleApiError } from "@/lib/api-middleware";
+import { getRequiredUser } from "@/lib/auth/auth-user";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/api/protected")({
+  server: {
+    handlers: {
+      GET: async () => {
+        try {
+          const user = await getRequiredUser();
+          return Response.json({ userId: user.id });
+        } catch (e) {
+          return handleApiError(e);
+        }
+      },
+    },
+  },
+});
+```
+
+## Convex Calls
+
+```ts
+import { handleApiError } from "@/lib/api-middleware";
+import { getRequiredUser, isAdmin } from "@/lib/auth/auth-user";
+import { fetchAuthQuery } from "@/lib/auth-server";
+import { HttpError } from "@/lib/errors/http-error";
+import { api } from "@convex/_generated/api";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/api/admin/users")({
+  server: {
+    handlers: {
+      GET: async () => {
+        try {
+          const user = await getRequiredUser();
+          if (!isAdmin(user)) throw new HttpError("Forbidden", 403);
+
+          const users = await fetchAuthQuery(api.admin.queries.listUsers, {
+            page: 1,
+            pageSize: 20,
+          });
+          return Response.json(users);
+        } catch (e) {
+          return handleApiError(e);
+        }
+      },
+    },
+  },
+});
+```
+
+## Error Handling
+
+| Error Type           | Status | Behavior                                    |
+| -------------------- | ------ | ------------------------------------------- |
+| `HttpError`          | Custom | Returns error message with specified status |
+| `ApplicationError`   | 400    | Returns error message                       |
+| `ZodError`           | 422    | Returns validation error details            |
+| Unknown Error (dev)  | 500    | Returns full error message                  |
+| Unknown Error (prod) | 500    | Returns "Internal server error"             |
+
+```ts
+import { HttpError } from "@/lib/errors/http-error";
+import { ApplicationError } from "@/lib/errors/application-error";
+
+throw new HttpError("Not found", 404);
+throw new HttpError("Forbidden", 403);
+throw new ApplicationError("Invalid operation");
+```

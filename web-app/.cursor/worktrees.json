@@ -1,0 +1,4 @@
+{
+  "setup-worktree-unix": "../scripts/worktree-setup.sh",
+  "cleanup-worktree-unix": "../scripts/worktree-cleanup.sh"
+}

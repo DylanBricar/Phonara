@@ -1,0 +1,111 @@
+---
+title: "Current Organization API"
+description: "Retrieve the organization attached to an API key."
+keywords: ["api", "organization", "api-keys", "me"]
+tags: ["api", "developer"]
+order: 3
+subcategory: "API"
+method: "GET"
+endpoint: "/api/v1/me"
+examples:
+  bash: |
+    curl -H "x-api-key: YOUR_API_KEY" \
+      https://nowstack.melvynx.dev/api/v1/me
+  javascript: |
+    const response = await fetch("https://nowstack.melvynx.dev/api/v1/me", {
+      headers: {
+        "x-api-key": "YOUR_API_KEY",
+      },
+    });
+    const data = await response.json();
+  python: |
+    import requests
+
+    response = requests.get(
+        "https://nowstack.melvynx.dev/api/v1/me",
+        headers={"x-api-key": "YOUR_API_KEY"},
+    )
+    data = response.json()
+results:
+  success: |
+    {
+      "organization": {
+        "id": "org_123",
+        "name": "Acme",
+        "slug": "acme"
+      }
+    }
+  error: |
+    {
+      "message": "Invalid API key"
+    }
+---
+
+Retrieve the organization that owns the API key. Use this endpoint when an integration needs to identify the key's workspace.
+
+## Endpoint
+
+```http
+GET /api/v1/me
+```
+
+## Authentication
+
+Create an organization API key from the organization settings page:
+
+```txt
+/orgs/{orgSlug}/settings/api-keys
+```
+
+Send the key with `x-api-key`:
+
+```http
+x-api-key: YOUR_API_KEY
+```
+
+Bearer authentication is also accepted:
+
+```http
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Response
+
+| Field               | Type           | Description                         |
+| ------------------- | -------------- | ----------------------------------- |
+| `organization.id`   | string         | Organization id                     |
+| `organization.name` | string         | Organization display name           |
+| `organization.slug` | string \| null | Organization slug used in app URLs  |
+
+## Examples
+
+### cURL
+
+```bash
+curl -H "x-api-key: YOUR_API_KEY" \
+  https://nowstack.melvynx.dev/api/v1/me
+```
+
+### JavaScript
+
+```ts
+const response = await fetch("https://nowstack.melvynx.dev/api/v1/me", {
+  headers: {
+    "x-api-key": process.env.NOWSTACK_API_KEY!,
+  },
+});
+
+if (!response.ok) {
+  throw new Error(`Current organization API failed: ${response.status}`);
+}
+
+const data = await response.json();
+```
+
+## Errors
+
+| Status | Description                              |
+| ------ | ---------------------------------------- |
+| `401`  | Missing, invalid, expired, or limited key |
+| `404`  | The key's organization no longer exists  |
+| `500`  | Internal server error                    |

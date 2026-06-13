@@ -1,0 +1,111 @@
+---
+title: "Markdown Components"
+description: "Client and server markdown rendering components with MDX support"
+keywords: ["markdown", "mdx", "rendering", "components"]
+tags: ["developer", "components"]
+order: 7
+subcategory: "Components"
+---
+
+If you need to render Markdown in our React application, you can easily do so with the two components provided.
+
+## ClientMarkdown
+
+This component allows you to display Markdown **client-side**, meaning it is not rendered server-side. It uses the `markdown-to-jsx` library to parse and render Markdown.
+
+```tsx
+import { ClientMarkdown } from "@/features/markdown/client-markdown";
+
+const markdown = `
+# Hello World
+
+This is a paragraph
+
+- Item 1
+- Item 2
+- Item 3
+`;
+
+export default function App() {
+  return <ClientMarkdown>{markdown}</ClientMarkdown>;
+}
+```
+
+### Props
+
+- `children: string` - The Markdown content to render
+- `className?: string` - Custom CSS classes (replaces the default `typography` class)
+- All other `markdown-to-jsx` props are supported
+
+### Default Styling
+
+By default, this component applies the `typography` class. You can replace it by passing a `className` prop to the component.
+
+## ServerMdx
+
+This component allows you to display Markdown **server-side**, meaning the HTML is generated server-side and the client only receives the final render.
+
+Why `Mdx`? Because this component supports `mdx` syntax, which is a markdown extension allowing you to add React components in Markdown.
+
+```tsx
+import { ServerMdx } from "@/features/markdown/server-mdx";
+
+const markdown = `
+# Hello World
+
+This is a paragraph
+
+<Alert type="info">
+  This is an information message
+</Alert>
+`;
+
+export default async function Page() {
+  return <ServerMdx source={markdown} />;
+}
+```
+
+### Props
+
+- `source: string` - The MDX content to render
+- `className?: string` - Custom CSS classes (applied to the wrapper div, added to the default `typography` class)
+
+### Adding Custom React Components
+
+**By default**, no React components are supported. To add them, you need to modify the `src/features/markdown/server-mdx.tsx` file:
+
+```tsx
+import { Alert } from "@/components/nowts/alert";
+
+const MdxComponent = {
+  Alert: Alert,
+  // Add other components here
+} satisfies Record<string, React.ComponentType>;
+```
+
+Complete example with an `Alert` component:
+
+```mdx
+# My Document
+
+This is a normal paragraph.
+
+<Alert type="info">This is an information message</Alert>
+```
+
+## FAQ
+
+### When should I use ServerMdx vs ClientMarkdown?
+
+- **Use ServerMdx when:**
+  - You need to integrate custom React components in your Markdown
+  - You want rendering to be done server-side (better for performance)
+  - You need MDX
+
+- **Use ClientMarkdown when:**
+  - You have basic Markdown without React components
+  - You're rendering Markdown content dynamically client-side
+
+### Can I use React components in ClientMarkdown?
+
+No, `ClientMarkdown` only supports basic Markdown. To integrate React components, you must use `ServerMdx`.

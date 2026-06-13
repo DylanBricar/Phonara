@@ -1,0 +1,108 @@
+---
+title: 10 Tailwind CSS Tips for Better UI
+description: Improve your Tailwind CSS workflow with these practical tips and techniques for building beautiful user interfaces.
+keywords:
+  - tailwind
+  - css
+  - ui
+  - design
+tags:
+  - CSS
+  - Design
+coverUrl: https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=2970&auto=format&fit=crop
+status: published
+date: 2024-12-28
+---
+
+Tailwind CSS has revolutionized how we style web applications. Here are 10 tips to level up your Tailwind game.
+
+## 1. Use the `cn` Helper
+
+Combine class names conditionally with the `cn` utility:
+
+```ts
+import { clsx } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+## 2. Create Consistent Spacing
+
+Use consistent spacing scales:
+
+```tsx
+<div className="flex flex-col gap-4">
+  <Card />
+  <Card />
+</div>
+```
+
+## 3. Responsive Design First
+
+Always design mobile-first:
+
+```tsx
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+  {/* Content */}
+</div>
+```
+
+## 4. Use CSS Variables for Theming
+
+Tailwind v4 makes theming easier:
+
+```css
+@theme {
+  --color-primary: #3b82f6;
+  --color-background: #ffffff;
+}
+```
+
+## 5. Group Hover States
+
+Use the `group` class for parent-child hover effects:
+
+```tsx
+<div className="group">
+  <span className="group-hover:text-primary">Hover me</span>
+</div>
+```
+
+## 6. Animation Utilities
+
+Create smooth animations:
+
+```tsx
+<button className="transition-all duration-200 hover:scale-105">
+  Click me
+</button>
+```
+
+## 7. Focus States for Accessibility
+
+Always include focus states:
+
+```tsx
+<button className="focus:ring-primary focus:ring-2 focus:outline-none">
+  Accessible button
+</button>
+```
+
+## 8. Use `@apply` Sparingly
+
+Prefer component composition over `@apply`.
+
+## 9. Dark Mode Support
+
+Implement dark mode easily:
+
+```tsx
+<div className="bg-white dark:bg-gray-900">{/* Content */}</div>
+```
+
+## 10. Custom Plugins
+
+Extend Tailwind with plugins for reusable patterns.

@@ -1,0 +1,69 @@
+---
+title: Getting Started with Next.js 15
+description: Learn how to build modern web applications with Next.js 15, the React framework for production.
+keywords:
+  - nextjs
+  - react
+  - web development
+  - tutorial
+tags:
+  - Tutorial
+  - Next.js
+coverUrl: https://images.unsplash.com/photo-1555066931-4365d14bab8c?q=80&w=2970&auto=format&fit=crop
+status: published
+date: 2025-01-15
+---
+
+Next.js 15 brings exciting new features that make building web applications easier than ever. In this guide, we'll explore the key concepts you need to know.
+
+## Why Next.js?
+
+Next.js provides a great developer experience with features like:
+
+- **Server Components** - Render components on the server for better performance
+- **App Router** - A new routing system based on React Server Components
+- **Built-in Optimizations** - Automatic image, font, and script optimization
+
+## Getting Started
+
+First, create a new Next.js project:
+
+```bash
+npx create-next-app@latest my-app
+cd my-app
+npm run dev
+```
+
+## Creating Your First Page
+
+In Next.js 15, pages are created in the `app` directory:
+
+```tsx
+// app/page.tsx
+export default function HomePage() {
+  return (
+    <main>
+      <h1>Welcome to my app!</h1>
+    </main>
+  );
+}
+```
+
+## Server vs Client Components
+
+By default, all components in the `app` directory are Server Components. To use client-side features, add the `"use client"` directive:
+
+```tsx
+"use client";
+
+import { useState } from "react";
+
+export function Counter() {
+  const [count, setCount] = useState(0);
+  return <button onClick={() => setCount(count + 1)}>Count: {count}</button>;
+}
+```
+
+## What's Next?
+
+Now that you understand the basics, explore more advanced topics like data fetching, authentication, and deployment.

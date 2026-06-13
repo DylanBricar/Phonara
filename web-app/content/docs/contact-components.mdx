@@ -1,0 +1,93 @@
+---
+title: "Contact Components"
+description: "Support dialog and feedback popover components for user communication"
+keywords: ["contact", "support", "feedback", "components"]
+tags: ["developer", "components"]
+order: 4
+subcategory: "Components"
+---
+
+Our application comes with two components that allow users to contact you.
+
+## ContactSupportDialog
+
+This component displays a modal with a form to contact support.
+
+### Form Fields
+
+- **email** - Only displayed if the user is not logged in
+- **subject** - The message subject
+- **message** - The message content
+
+### Basic Usage
+
+```tsx
+<ContactSupportDialog />
+```
+
+By default, a button with the text "Contact support" is displayed.
+
+### Custom Usage
+
+You can customize the button or trigger area by passing child content:
+
+```tsx
+<ContactSupportDialog>
+  <button>Need help?</button>
+</ContactSupportDialog>
+```
+
+### Behavior
+
+- When the form is submitted, an email is sent to the address defined in the `NEXT_PUBLIC_EMAIL_CONTACT` environment variable
+- A toast "Your message has been sent." is displayed on success
+- An error toast is displayed on failure
+- The modal closes automatically after a successful submission
+
+## ContactFeedbackPopover
+
+This component displays a button that opens a popover allowing users to quickly give feedback on the application.
+
+### Form Fields
+
+- **email** - Only displayed if the user is not logged in
+- **message** - The feedback content
+- **review** - A rating system with 4 emojis:
+  - (1) - Extremely dissatisfied
+  - (2) - Rather dissatisfied
+  - (3) - Neutral
+  - (4) - Satisfied
+
+### Basic Usage
+
+```tsx
+<ContactFeedbackPopover />
+```
+
+By default, a button with the text "Feedback" is displayed.
+
+### Custom Usage
+
+You can customize the button or trigger area by passing child content:
+
+```tsx
+<ContactFeedbackPopover>
+  <button>Give us your feedback</button>
+</ContactFeedbackPopover>
+```
+
+### Behavior
+
+- The popover closes automatically after a successful submission
+- A toast "Your feedback has been sent! Thank you." is displayed on success
+- An error toast is displayed on failure
+
+## FAQ
+
+### When should I use ContactSupportDialog?
+
+ContactSupportDialog is useful when you want to allow users to report issues or ask questions. It is already used several times in error pages to allow users to quickly report a problem.
+
+### When should I use ContactFeedbackPopover?
+
+ContactFeedbackPopover is ideal for quickly collecting general feedback on the user experience. It's less intrusive than a full modal and allows quick rating with emojis.

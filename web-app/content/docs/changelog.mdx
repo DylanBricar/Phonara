@@ -1,0 +1,131 @@
+---
+title: "Changelog System"
+description: "Public changelog with MDX content, timeline UI, and sidebar widget for keeping users informed"
+keywords: ["changelog", "release notes", "updates", "mdx", "timeline"]
+tags: ["developer", "components"]
+order: 35
+subcategory: "Components"
+---
+
+The Changelog System provides a complete solution for publishing release notes and updates. It features MDX-based content, a timeline UI, individual detail pages, and a sidebar widget that notifies users of new updates.
+
+## File Structure
+
+```
+content/changelog/          # Changelog MDX files
+├── 2026-01-15-v220.mdx
+├── 2026-02-10-v230.mdx
+└── 2026-03-05-v240.mdx
+
+src/routes/(layout)/changelog/  # Public routes
+├── index.tsx                   # Timeline list page
+└── $slug/index.tsx             # Detail page
+
+src/features/changelog/     # Feature code
+├── changelog-manager.ts    # Data fetching
+├── changelog-timeline.tsx  # Timeline component
+├── changelog-sidebar-stack.tsx  # Sidebar widget and local dismiss state
+└── changelog-debug-actions.tsx  # Debug panel reset action
+```
+
+## Creating a Changelog Entry
+
+Create a new `.mdx` file in `content/changelog/` with the naming convention `YYYY-MM-DD-vXXX.mdx`:
+
+```mdx
+---
+date: 2025-01-15
+version: "2.2.0"
+title: "New Dashboard Features"
+image: /images/changelog/v220.png
+status: published
+---
+
+Brief introduction paragraph describing the release.
+
+### Features
+
+- **Feature name** - Description of the feature
+- **Another feature** - What it does
+
+### Bug Fixes
+
+- **Fix description** - What was fixed
+
+### Refactoring
+
+- **Refactor name** - What was improved
+```
+
+## Frontmatter Options
+
+| Field     | Type                     | Required | Description                                |
+| --------- | ------------------------ | -------- | ------------------------------------------ |
+| `date`    | `date`                   | Yes      | Release date (YYYY-MM-DD)                  |
+| `version` | `string`                 | No       | Version number (e.g., "2.1.0")             |
+| `title`   | `string`                 | No       | Display title (defaults to formatted date) |
+| `image`   | `string`                 | No       | Cover image path                           |
+| `status`  | `"draft" \| "published"` | No       | Draft entries hidden in production         |
+
+## Public Routes
+
+The changelog is accessible at:
+
+- `/changelog` - Timeline showing all published entries
+- `/changelog/$slug` - Individual changelog detail page
+
+## Sidebar Widget
+
+The `ChangelogSidebarStack` component shows recent changelogs in a stacked card UI with dismiss functionality:
+
+```tsx
+import { ChangelogSidebarStack } from "@/features/changelog/changelog-sidebar-stack";
+import { getChangelogs } from "@/features/changelog/changelog-manager";
+
+export async function Sidebar() {
+  const changelogs = await getChangelogs();
+
+  return <ChangelogSidebarStack changelogs={changelogs} />;
+}
+```
+
+## Data Fetching
+
+```tsx
+import {
+  getChangelogs,
+  getCurrentChangelog,
+} from "@/features/changelog/changelog-manager";
+
+// Get all published changelogs (sorted by date, newest first)
+const changelogs = await getChangelogs();
+
+// Get a specific changelog by slug
+const changelog = await getCurrentChangelog("2025-12-27-v210");
+```
+
+## Dismiss State
+
+The sidebar widget stores dismissed changelog slugs in `localStorage`. This keeps the template backend-free for changelog notifications while still letting each browser hide updates it has already seen.
+
+Use the Debug Panel action named `Reset Changelog` to clear the local dismiss state during development.
+
+## Draft Mode
+
+Set `status: draft` in frontmatter to hide entries in production while keeping them visible in development:
+
+```mdx
+---
+date: 2025-01-20
+title: "Upcoming Features"
+status: draft
+---
+```
+
+## Best Practices
+
+- Use descriptive version numbers following semver (e.g., "2.1.0")
+- Include a cover image for visual appeal in the timeline
+- Group changes by category: Features, Bug Fixes, Refactoring
+- Write concise but informative descriptions
+- Use draft status to preview entries before publishing

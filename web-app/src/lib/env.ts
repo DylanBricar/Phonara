@@ -1,0 +1,42 @@
+import { createEnv } from "@t3-oss/env-core";
+import { z } from "zod";
+
+export const env = createEnv({
+  skipValidation: typeof window !== "undefined",
+  server: {
+    GITHUB_CLIENT_ID: z.string().optional(),
+    GITHUB_CLIENT_SECRET: z.string().optional(),
+    GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_CLIENT_SECRET: z.string().optional(),
+    RESEND_API_KEY: z.string().optional(),
+    EMAIL_FROM: z.string().optional(),
+    STRIPE_SECRET_KEY: z.string().optional(),
+    NODE_ENV: z.enum(["development", "production", "test"]),
+    STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    CI: z.coerce.boolean().optional(),
+    R2_S3_URL: z.string().optional(),
+    R2_S3_ACCESS_KEY_ID: z.string().optional(),
+    R2_S3_SECRET_ACCESS_KEY: z.string().optional(),
+    R2_S3_BUCKET_NAME: z.string().optional(),
+    R2_URL: z.string().optional(),
+  },
+  clientPrefix: "VITE_",
+  client: {},
+  runtimeEnv: {
+    GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
+    GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
+    GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
+    EMAIL_FROM: process.env.EMAIL_FROM,
+    STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
+    NODE_ENV: process.env.NODE_ENV,
+    STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
+    CI: process.env.CI,
+    R2_S3_URL: process.env.R2_S3_URL,
+    R2_S3_ACCESS_KEY_ID: process.env.R2_S3_ACCESS_KEY_ID,
+    R2_S3_SECRET_ACCESS_KEY: process.env.R2_S3_SECRET_ACCESS_KEY,
+    R2_S3_BUCKET_NAME: process.env.R2_S3_BUCKET_NAME,
+    R2_URL: process.env.R2_URL,
+  },
+});
