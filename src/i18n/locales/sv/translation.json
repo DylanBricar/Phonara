@@ -447,7 +447,9 @@
         "keyLabel": "Key {{key}}",
         "shortcutAfterSave": "Save the action to assign a global shortcut.",
         "empty": "No actions yet. Create one to start post-processing your transcriptions.",
-        "noModelShort": "No model"
+        "noModelShort": "No model",
+        "dialogSubtitle": "Configure how this action rewrites your transcription.",
+        "emptyTitle": "No actions yet"
       },
       "defaultShortcut": {
         "title": "Default shortcut",

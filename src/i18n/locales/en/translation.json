@@ -486,7 +486,9 @@
         "keyLabel": "Key {{key}}",
         "shortcutAfterSave": "Save the action to assign a global shortcut.",
         "empty": "No actions yet. Create one to start post-processing your transcriptions.",
-        "noModelShort": "No model"
+        "noModelShort": "No model",
+        "dialogSubtitle": "Configure how this action rewrites your transcription.",
+        "emptyTitle": "No actions yet"
       },
       "description": "Create post-processing actions that rewrite your transcription with an AI model. Trigger them with a global shortcut or by pressing a number key while recording.",
       "defaultShortcut": {

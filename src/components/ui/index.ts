@@ -1,3 +1,4 @@
+export { Dialog } from "./Dialog";
 export { Dropdown } from "./Dropdown";
 export { Select } from "./Select";
 export { Slider } from "./Slider";

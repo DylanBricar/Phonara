@@ -457,7 +457,9 @@
         "keyLabel": "Phím {{key}}",
         "shortcutAfterSave": "Lưu hành động để gán phím tắt toàn cục.",
         "empty": "Chưa có hành động nào. Tạo một hành động để xử lý bản ghi của bạn.",
-        "noModelShort": "Không có mô hình"
+        "noModelShort": "Không có mô hình",
+        "dialogSubtitle": "Cấu hình cách hành động này viết lại bản ghi của bạn.",
+        "emptyTitle": "Chưa có hành động nào"
       },
       "defaultShortcut": {
         "title": "Phím tắt mặc định",

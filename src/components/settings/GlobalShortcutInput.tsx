@@ -17,6 +17,7 @@ interface GlobalShortcutInputProps {
   grouped?: boolean;
   shortcutId: string;
   disabled?: boolean;
+  bare?: boolean;
 }
 
 export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
@@ -24,6 +25,7 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
   grouped = false,
   shortcutId,
   disabled = false,
+  bare = false,
 }) => {
   const { t } = useTranslation();
   const { getSetting, updateBinding, resetBinding, isUpdating, isLoading } =
@@ -203,6 +205,40 @@ export const GlobalShortcutInput: React.FC<GlobalShortcutInputProps> = ({
   const setShortcutRef = (id: string, ref: HTMLDivElement | null) => {
     shortcutRefs.current.set(id, ref);
   };
+
+  // Bare mode: render only the recording button + reset (for embedding in dialogs)
+  if (bare) {
+    const bareBinding = bindings[shortcutId];
+    const isRecording = editingShortcutId === shortcutId;
+    const display = bareBinding?.current_binding?.trim()
+      ? formatKeyCombination(bareBinding.current_binding, osType)
+      : t("settings.general.shortcut.clickToSet");
+    return (
+      <div className="flex items-center gap-1.5">
+        {isRecording ? (
+          <div
+            ref={(ref) => setShortcutRef(shortcutId, ref)}
+            className="px-3 py-1.5 text-sm font-semibold border border-logo-primary bg-logo-primary/20 rounded-lg"
+          >
+            {formatCurrentKeys()}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => startRecording(shortcutId)}
+            disabled={disabled || isLoading || !bareBinding}
+            className="px-3 py-1.5 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/40 hover:bg-logo-primary/10 hover:border-logo-primary rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {display}
+          </button>
+        )}
+        <ResetButton
+          onClick={() => resetBinding(shortcutId)}
+          disabled={isUpdating(`binding_${shortcutId}`)}
+        />
+      </div>
+    );
+  }
 
   // If still loading, show loading state
   if (isLoading) {

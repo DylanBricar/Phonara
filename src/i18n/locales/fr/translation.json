@@ -457,7 +457,9 @@
         "keyLabel": "Touche {{key}}",
         "shortcutAfterSave": "Enregistrez l’action pour lui attribuer un raccourci global.",
         "empty": "Aucune action pour l’instant. Créez-en une pour post-traiter vos transcriptions.",
-        "noModelShort": "Aucun modèle"
+        "noModelShort": "Aucun modèle",
+        "dialogSubtitle": "Configurez la façon dont cette action réécrit votre transcription.",
+        "emptyTitle": "Aucune action"
       },
       "defaultShortcut": {
         "title": "Raccourci par défaut",

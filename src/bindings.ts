@@ -844,6 +844,10 @@ async retryHistoryEntryTranscription(id: number) : Promise<Result<null, string>>
     else return { status: "error", error: e  as any };
 }
 },
+/**
+ * Re-run a post-process action over an existing history entry and persist
+ * the processed text. Returns the updated entry.
+ */
 async applyActionToHistoryEntry(id: number, actionId: string) : Promise<Result<HistoryEntry, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("apply_action_to_history_entry", { id, actionId }) };
@@ -919,9 +923,12 @@ export type ImplementationChangeResult = { success: boolean;
  */
 reset_bindings: string[] }
 export type KeyboardImplementation = "tauri" | "handy_keys"
+/**
+ * A saved language model: a (provider, model) pair the user added in the
+ * Models > Language Models tab. Referenced by post-process actions.
+ */
 export type LLMModel = { id: string; provider_id: string; model: string; label: string }
 export type LLMPrompt = { id: string; name: string; prompt: string }
-export type PostProcessAction = { id: string; name: string; prompt: string; llm_model_id?: string | null; icon?: string; trigger_key?: number | null }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 export type ModelInfo = { id: string; name: string; description: string; filename: string; url: string | null; sha256: string | null; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
@@ -931,6 +938,13 @@ export type OverlayPosition = "none" | "top" | "bottom"
 export type PaginatedHistory = { entries: HistoryEntry[]; has_more: boolean }
 export type PasteMethod = "ctrl_v" | "direct" | "none" | "shift_insert" | "ctrl_shift_v" | "external_script"
 export type PermissionAccess = "allowed" | "denied" | "unknown"
+/**
+ * A post-processing action: a prompt applied to the transcription through a
+ * saved language model. Can be triggered by a dedicated global shortcut
+ * (stored in `bindings` under `ppa_<id>`) or by pressing `trigger_key`
+ * while a recording is in progress.
+ */
+export type PostProcessAction = { id: string; name: string; prompt: string; llm_model_id?: string | null; icon?: string; trigger_key?: number | null }
 export type PostProcessProvider = { id: string; label: string; base_url: string; allow_base_url_edit?: boolean; models_endpoint?: string | null; supports_structured_output?: boolean }
 export type RecordingRetentionPeriod = "never" | "preserve_limit" | "days_3" | "weeks_2" | "months_3"
 export type SecretMap = Partial<{ [key in string]: string }>

@@ -457,7 +457,9 @@
         "keyLabel": "Tecla {{key}}",
         "shortcutAfterSave": "Guarda la acción para asignarle un atajo global.",
         "empty": "Aún no hay acciones. Crea una para posprocesar tus transcripciones.",
-        "noModelShort": "Sin modelo"
+        "noModelShort": "Sin modelo",
+        "dialogSubtitle": "Configura cómo esta acción reescribe tu transcripción.",
+        "emptyTitle": "Aún no hay acciones"
       },
       "defaultShortcut": {
         "title": "Atajo predeterminado",

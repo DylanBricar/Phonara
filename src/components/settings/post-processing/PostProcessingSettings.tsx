@@ -1,14 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import React, { useCallback, useMemo, useState } from "react";
+import { ChevronRight, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { commands, type PostProcessAction } from "@/bindings";
 import { useSettings } from "@/hooks/useSettings";
+import { useOsType } from "@/hooks/useOsType";
+import { formatKeyCombination } from "@/lib/utils/keyboard";
 import {
   ACTION_ICON_NAMES,
   DEFAULT_ACTION_ICON,
   getActionIcon,
 } from "@/lib/constants/actionIcons";
 import {
+  Dialog,
   Dropdown,
   SettingsGroup,
   Textarea,
@@ -17,6 +20,12 @@ import {
 import { Input } from "../../ui/Input";
 import { Button } from "../../ui/Button";
 import { ShortcutInput } from "../ShortcutInput";
+
+const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <span className="inline-flex items-center px-1.5 h-5 rounded-md border border-mid-gray/30 bg-mid-gray/10 text-[11px] font-semibold text-text/70 leading-none">
+    {children}
+  </span>
+);
 
 interface IconPickerProps {
   value: string;
@@ -33,10 +42,10 @@ const IconPicker: React.FC<IconPickerProps> = ({ value, onChange }) => (
           key={name}
           type="button"
           onClick={() => onChange(name)}
-          className={`flex items-center justify-center aspect-square rounded-md border transition-colors ${
+          className={`flex items-center justify-center aspect-square rounded-lg border transition-colors ${
             isActive
               ? "border-logo-primary bg-logo-primary/20 text-logo-primary"
-              : "border-mid-gray/30 hover:border-logo-primary/60 text-text/70"
+              : "border-mid-gray/20 hover:border-logo-primary/50 hover:bg-mid-gray/10 text-text/60"
           }`}
         >
           <Icon className="w-4 h-4" />
@@ -46,13 +55,15 @@ const IconPicker: React.FC<IconPickerProps> = ({ value, onChange }) => (
   </div>
 );
 
-interface ActionEditorProps {
+interface ActionDialogProps {
+  open: boolean;
   action: PostProcessAction | null; // null = creating
   onClose: () => void;
   onSaved: (id: string) => void;
 }
 
-const ActionEditor: React.FC<ActionEditorProps> = ({
+const ActionDialog: React.FC<ActionDialogProps> = ({
+  open,
   action,
   onClose,
   onSaved,
@@ -76,11 +87,7 @@ const ActionEditor: React.FC<ActionEditorProps> = ({
   const [isSaving, setIsSaving] = useState(false);
 
   const modelOptions = useMemo(
-    () =>
-      savedModels.map((m) => ({
-        value: m.id,
-        label: m.label,
-      })),
+    () => savedModels.map((m) => ({ value: m.id, label: m.label })),
     [savedModels],
   );
 
@@ -91,7 +98,7 @@ const ActionEditor: React.FC<ActionEditorProps> = ({
         .map((a) => a.trigger_key)
         .filter((k): k is number => k != null),
     );
-    const options = [
+    const options: { value: string; label: string; disabled?: boolean }[] = [
       { value: "none", label: t("settings.postProcessing.actions.noKey") },
     ];
     for (let k = 1; k <= 9; k++) {
@@ -101,24 +108,23 @@ const ActionEditor: React.FC<ActionEditorProps> = ({
           ? t("settings.postProcessing.actions.keyTaken", { key: k })
           : String(k),
         disabled: usedKeys.has(k),
-      } as { value: string; label: string; disabled?: boolean });
+      });
     }
     return options;
   }, [actions, action?.id, t]);
 
-  const handleSave = useCallback(async () => {
-    const trimmedName = name.trim();
-    const trimmedPrompt = prompt.trim();
-    if (!trimmedName || !trimmedPrompt) return;
+  const canSave = name.trim().length > 0 && prompt.trim().length > 0;
 
+  const handleSave = useCallback(async () => {
+    if (!canSave) return;
     setIsSaving(true);
     setError(null);
     try {
       if (action) {
         const result = await commands.updatePostProcessAction(
           action.id,
-          trimmedName,
-          trimmedPrompt,
+          name.trim(),
+          prompt.trim(),
           llmModelId,
           icon,
           triggerKey,
@@ -131,8 +137,8 @@ const ActionEditor: React.FC<ActionEditorProps> = ({
         }
       } else {
         const result = await commands.addPostProcessAction(
-          trimmedName,
-          trimmedPrompt,
+          name.trim(),
+          prompt.trim(),
           llmModelId,
           icon,
           triggerKey,
@@ -149,6 +155,7 @@ const ActionEditor: React.FC<ActionEditorProps> = ({
     }
   }, [
     action,
+    canSave,
     name,
     prompt,
     llmModelId,
@@ -167,230 +174,279 @@ const ActionEditor: React.FC<ActionEditorProps> = ({
     }
   }, [action, refreshSettings, onClose]);
 
-  return (
-    <div className="space-y-4 p-4 rounded-lg border border-logo-primary/40 bg-mid-gray/5">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">
-          {action
-            ? t("settings.postProcessing.actions.editTitle")
-            : t("settings.postProcessing.actions.newTitle")}
-        </h3>
-        <button
-          onClick={onClose}
-          className="p-1 rounded-md text-text/50 hover:text-text"
+  const footer = (
+    <>
+      {action && (
+        <Button
+          variant="danger-ghost"
+          size="md"
+          onClick={handleDelete}
+          className="mr-auto flex items-center gap-1.5"
         >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
+          <Trash2 className="w-4 h-4" />
+          {t("common.delete")}
+        </Button>
+      )}
+      <Button variant="secondary" size="md" onClick={onClose}>
+        {t("common.cancel")}
+      </Button>
+      <Button
+        variant="primary"
+        size="md"
+        onClick={handleSave}
+        disabled={!canSave || isSaving}
+      >
+        {action ? t("common.save") : t("common.create")}
+      </Button>
+    </>
+  );
 
-      <div className="space-y-1">
-        <label className="text-sm font-semibold">
-          {t("settings.postProcessing.actions.name")}
-        </label>
-        <Input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("settings.postProcessing.actions.namePlaceholder")}
-          variant="compact"
-        />
-      </div>
-
-      <div className="space-y-1.5">
-        <label className="text-sm font-semibold">
-          {t("settings.postProcessing.actions.icon")}
-        </label>
-        <IconPicker value={icon} onChange={setIcon} />
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-semibold">
-          {t("settings.postProcessing.actions.prompt")}
-        </label>
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={t("settings.postProcessing.actions.promptPlaceholder")}
-        />
-        <p className="text-xs text-text/50">
-          {t("settings.postProcessing.actions.promptHint")}
-        </p>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-semibold">
-          {t("settings.postProcessing.actions.model")}
-        </label>
-        {modelOptions.length > 0 ? (
-          <Dropdown
-            selectedValue={llmModelId}
-            options={modelOptions}
-            onSelect={(value) => setLlmModelId(value)}
-            placeholder={t("settings.postProcessing.actions.modelPlaceholder")}
-          />
-        ) : (
-          <p className="text-xs text-amber-500">
-            {t("settings.postProcessing.actions.noModels")}
-          </p>
-        )}
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-sm font-semibold">
-          {t("settings.postProcessing.actions.triggerKey")}
-        </label>
-        <Dropdown
-          selectedValue={triggerKey != null ? String(triggerKey) : "none"}
-          options={triggerKeyOptions}
-          onSelect={(value) =>
-            setTriggerKey(value === "none" ? null : Number(value))
-          }
-          placeholder={t("settings.postProcessing.actions.noKey")}
-        />
-        <p className="text-xs text-text/50">
-          {t("settings.postProcessing.actions.triggerKeyHint")}
-        </p>
-      </div>
-
-      {action ? (
-        <div className="space-y-1">
-          <ShortcutInput
-            shortcutId={`ppa_${action.id}`}
-            grouped={false}
-            descriptionMode="inline"
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={
+        action
+          ? t("settings.postProcessing.actions.editTitle")
+          : t("settings.postProcessing.actions.newTitle")
+      }
+      description={t("settings.postProcessing.actions.dialogSubtitle")}
+      footer={footer}
+    >
+      <div className="space-y-5">
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-text/80">
+            {t("settings.postProcessing.actions.name")}
+          </label>
+          <Input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("settings.postProcessing.actions.namePlaceholder")}
+            variant="compact"
+            className="w-full"
           />
         </div>
-      ) : (
-        <p className="text-xs text-text/50">
-          {t("settings.postProcessing.actions.shortcutAfterSave")}
-        </p>
-      )}
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-text/80">
+            {t("settings.postProcessing.actions.icon")}
+          </label>
+          <IconPicker value={icon} onChange={setIcon} />
+        </div>
 
-      <div className="flex gap-2">
-        <Button
-          onClick={handleSave}
-          variant="primary"
-          size="md"
-          disabled={!name.trim() || !prompt.trim() || isSaving}
-        >
-          {action ? t("common.save") : t("common.create")}
-        </Button>
-        <Button onClick={onClose} variant="secondary" size="md">
-          {t("common.cancel")}
-        </Button>
-        {action && (
-          <Button onClick={handleDelete} variant="secondary" size="md">
-            <Trash2 className="w-4 h-4" />
-          </Button>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-text/80">
+            {t("settings.postProcessing.actions.prompt")}
+          </label>
+          <Textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder={t("settings.postProcessing.actions.promptPlaceholder")}
+            className="w-full block min-h-[120px] font-normal"
+          />
+          <p className="text-xs text-text/45">
+            {t("settings.postProcessing.actions.promptHint")}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium text-text/80">
+            {t("settings.postProcessing.actions.model")}
+          </label>
+          {modelOptions.length > 0 ? (
+            <Dropdown
+              selectedValue={llmModelId}
+              options={modelOptions}
+              onSelect={(value) => setLlmModelId(value)}
+              placeholder={t("settings.postProcessing.actions.modelPlaceholder")}
+              className="w-full"
+            />
+          ) : (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2">
+              <p className="text-xs text-amber-500">
+                {t("settings.postProcessing.actions.noModels")}
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-text/80">
+              {t("settings.postProcessing.actions.triggerKey")}
+            </label>
+            <Dropdown
+              selectedValue={triggerKey != null ? String(triggerKey) : "none"}
+              options={triggerKeyOptions}
+              onSelect={(value) =>
+                setTriggerKey(value === "none" ? null : Number(value))
+              }
+              placeholder={t("settings.postProcessing.actions.noKey")}
+              className="w-full"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-text/80">
+              {t("settings.postProcessing.actions.shortcut")}
+            </label>
+            {action ? (
+              <ShortcutInput shortcutId={`ppa_${action.id}`} bare />
+            ) : (
+              <p className="text-xs text-text/45 pt-1.5">
+                {t("settings.postProcessing.actions.shortcutAfterSave")}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2">
+            <p className="text-xs text-red-500">{error}</p>
+          </div>
         )}
       </div>
-    </div>
+    </Dialog>
+  );
+};
+
+interface ActionCardProps {
+  action: PostProcessAction;
+  modelLabel?: string;
+  shortcut?: string;
+  onClick: () => void;
+}
+
+const ActionCard: React.FC<ActionCardProps> = ({
+  action,
+  modelLabel,
+  shortcut,
+  onClick,
+}) => {
+  const { t } = useTranslation();
+  const Icon = getActionIcon(action.icon);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group w-full flex items-center gap-3.5 p-3 rounded-xl border border-mid-gray/15 bg-mid-gray/[0.03] hover:border-logo-primary/40 hover:bg-logo-primary/[0.05] transition-colors text-start"
+    >
+      <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-logo-primary/15 text-logo-primary shrink-0">
+        <Icon className="w-5 h-5" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold truncate">{action.name}</p>
+        <p className="text-xs text-text/50 truncate mt-0.5">
+          {modelLabel ?? t("settings.postProcessing.actions.noModelShort")}
+        </p>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {action.trigger_key != null && <Kbd>{action.trigger_key}</Kbd>}
+        {shortcut && <Kbd>{shortcut}</Kbd>}
+      </div>
+      <ChevronRight className="w-4 h-4 text-text/25 group-hover:text-logo-primary shrink-0 transition-colors" />
+    </button>
   );
 };
 
 export const PostProcessingSettings: React.FC = () => {
   const { t } = useTranslation();
   const { settings, updateSetting, isUpdating } = useSettings();
+  const osType = useOsType();
 
   const actions = settings?.post_process_actions || [];
   const models = settings?.llm_models || [];
+  const bindings = settings?.bindings || {};
   const defaultShortcutEnabled = settings?.post_process_enabled ?? false;
 
-  // editingId: null = list view, "new" = creating, else action id being edited
+  // editingId: null = closed, "new" = creating, else action id being edited
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const editingAction =
     editingId && editingId !== "new"
       ? (actions.find((a) => a.id === editingId) ?? null)
       : null;
-
-  // Close the editor if the action being edited disappears.
-  useEffect(() => {
-    if (editingId && editingId !== "new" && !editingAction) {
-      setEditingId(null);
-    }
-  }, [editingId, editingAction]);
+  const dialogOpen = editingId !== null;
 
   const modelLabel = (id: string | null | undefined) =>
     models.find((m) => m.id === id)?.label;
 
+  const actionShortcut = (id: string) => {
+    const raw = bindings[`ppa_${id}`]?.current_binding;
+    return raw && raw.trim() ? formatKeyCombination(raw, osType) : undefined;
+  };
+
   return (
-    <div className="max-w-3xl w-full mx-auto space-y-6">
-      <SettingsGroup title={t("settings.postProcessing.title")}>
-        <p className="px-1 text-sm text-text/60">
-          {t("settings.postProcessing.description")}
-        </p>
-
-        <div className="space-y-2">
-          {actions.map((action) => {
-            const Icon = getActionIcon(action.icon);
-            const label = modelLabel(action.llm_model_id);
-            return (
-              <div
-                key={action.id}
-                className="flex items-center gap-3 p-3 rounded-lg border border-mid-gray/20 bg-mid-gray/5"
-              >
-                <div className="flex items-center justify-center w-9 h-9 rounded-md bg-logo-primary/15 text-logo-primary shrink-0">
-                  <Icon className="w-5 h-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold truncate">
-                    {action.name}
-                  </p>
-                  <p className="text-xs text-text/50 truncate">
-                    {label ?? t("settings.postProcessing.actions.noModelShort")}
-                    {action.trigger_key != null &&
-                      ` · ${t("settings.postProcessing.actions.keyLabel", {
-                        key: action.trigger_key,
-                      })}`}
-                  </p>
-                </div>
-                <button
-                  onClick={() => setEditingId(action.id)}
-                  className="p-1.5 rounded-md text-text/50 hover:text-logo-primary transition-colors shrink-0"
-                  title={t("common.edit")}
-                >
-                  <Pencil className="w-4 h-4" />
-                </button>
-              </div>
-            );
-          })}
-
-          {actions.length === 0 && !editingId && (
-            <p className="text-sm text-text/50 py-2">
-              {t("settings.postProcessing.actions.empty")}
-            </p>
-          )}
+    <div className="max-w-3xl w-full mx-auto space-y-8 py-1">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold">
+            {t("settings.postProcessing.title")}
+          </h1>
+          <p className="text-sm text-text/55 mt-1.5 leading-relaxed max-w-xl">
+            {t("settings.postProcessing.description")}
+          </p>
         </div>
+        <Button
+          variant="primary"
+          size="md"
+          onClick={() => setEditingId("new")}
+          className="flex items-center gap-1.5 shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          {t("settings.postProcessing.actions.newAction")}
+        </Button>
+      </div>
 
-        {editingId ? (
-          <ActionEditor
-            action={editingAction}
-            onClose={() => setEditingId(null)}
-            onSaved={(id) => setEditingId(id)}
-          />
-        ) : (
+      {/* Actions list */}
+      {actions.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-center py-14 px-6 rounded-2xl border border-dashed border-mid-gray/25">
+          <div className="w-12 h-12 rounded-xl bg-logo-primary/15 text-logo-primary flex items-center justify-center mb-3">
+            <Sparkles className="w-6 h-6" />
+          </div>
+          <p className="text-sm font-medium">
+            {t("settings.postProcessing.actions.emptyTitle")}
+          </p>
+          <p className="text-xs text-text/50 mt-1 max-w-xs">
+            {t("settings.postProcessing.actions.empty")}
+          </p>
           <Button
-            onClick={() => setEditingId("new")}
-            variant="secondary"
+            variant="primary"
             size="md"
-            className="flex items-center gap-2"
+            onClick={() => setEditingId("new")}
+            className="mt-4 flex items-center gap-1.5"
           >
             <Plus className="w-4 h-4" />
             {t("settings.postProcessing.actions.newAction")}
           </Button>
-        )}
-      </SettingsGroup>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {actions.map((action) => (
+            <ActionCard
+              key={action.id}
+              action={action}
+              modelLabel={modelLabel(action.llm_model_id)}
+              shortcut={actionShortcut(action.id)}
+              onClick={() => setEditingId(action.id)}
+            />
+          ))}
+        </div>
+      )}
 
+      {/* Default post-processing shortcut */}
       <SettingsGroup title={t("settings.postProcessing.defaultShortcut.title")}>
         <ToggleSwitch
           checked={defaultShortcutEnabled}
           onChange={(checked) => updateSetting("post_process_enabled", checked)}
           isUpdating={isUpdating("post_process_enabled")}
           label={t("settings.postProcessing.defaultShortcut.toggleLabel")}
-          description={t("settings.postProcessing.defaultShortcut.toggleDescription")}
+          description={t(
+            "settings.postProcessing.defaultShortcut.toggleDescription",
+          )}
           grouped={true}
         />
         {defaultShortcutEnabled && (
@@ -400,6 +456,16 @@ export const PostProcessingSettings: React.FC = () => {
           />
         )}
       </SettingsGroup>
+
+      {dialogOpen && (
+        <ActionDialog
+          key={editingId ?? "new"}
+          open={dialogOpen}
+          action={editingAction}
+          onClose={() => setEditingId(null)}
+          onSaved={(id) => setEditingId(id)}
+        />
+      )}
     </div>
   );
 };

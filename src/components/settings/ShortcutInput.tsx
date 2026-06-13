@@ -8,6 +8,8 @@ interface ShortcutInputProps {
   grouped?: boolean;
   shortcutId: string;
   disabled?: boolean;
+  /** Render only the recording button + reset, without the SettingContainer chrome. */
+  bare?: boolean;
 }
 
 /**

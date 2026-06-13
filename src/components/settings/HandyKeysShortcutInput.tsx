@@ -14,6 +14,7 @@ interface HandyKeysShortcutInputProps {
   grouped?: boolean;
   shortcutId: string;
   disabled?: boolean;
+  bare?: boolean;
 }
 
 interface HandyKeysEvent {
@@ -28,6 +29,7 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
   grouped = false,
   shortcutId,
   disabled = false,
+  bare = false,
 }) => {
   const { t } = useTranslation();
   const { getSetting, updateBinding, resetBinding, isUpdating, isLoading } =
@@ -195,6 +197,38 @@ export const HandyKeysShortcutInput: React.FC<HandyKeysShortcutInputProps> = ({
     if (!currentKeys) return t("settings.general.shortcut.pressKeys");
     return formatKeyCombination(currentKeys, osType);
   };
+
+  // Bare mode: render only the recording button + reset (for embedding in dialogs)
+  if (bare) {
+    const bareBinding = bindings[shortcutId];
+    return (
+      <div className="flex items-center gap-1.5">
+        {isRecording ? (
+          <div
+            ref={shortcutRef}
+            className="px-3 py-1.5 text-sm font-semibold border border-logo-primary bg-logo-primary/20 rounded-lg"
+          >
+            {formatCurrentKeys()}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={startRecording}
+            disabled={disabled || isLoading || !bareBinding}
+            className="px-3 py-1.5 text-sm font-semibold bg-mid-gray/10 border border-mid-gray/40 hover:bg-logo-primary/10 hover:border-logo-primary rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {bareBinding?.current_binding?.trim()
+              ? formatKeyCombination(bareBinding.current_binding, osType)
+              : t("settings.general.shortcut.clickToSet")}
+          </button>
+        )}
+        <ResetButton
+          onClick={() => resetBinding(shortcutId)}
+          disabled={isUpdating(`binding_${shortcutId}`)}
+        />
+      </div>
+    );
+  }
 
   // If still loading, show loading state
   if (isLoading) {

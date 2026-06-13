@@ -808,6 +808,55 @@ fn ensure_post_process_actions(settings: &mut AppSettings) -> bool {
     true
 }
 
+/// Ensure every post-process action has a matching `ppa_<id>` shortcut binding
+/// (created empty so the binding UI can manage it) and prune any orphan
+/// `ppa_` bindings whose action no longer exists. Returns true when settings
+/// were modified. Runs on every load so migrated actions stay consistent.
+fn ensure_action_bindings(settings: &mut AppSettings) -> bool {
+    let mut changed = false;
+
+    // Create a binding for any action that lacks one. Collect first to avoid
+    // borrowing post_process_actions while mutating bindings.
+    let to_create: Vec<(String, String)> = settings
+        .post_process_actions
+        .iter()
+        .map(|action| (action_binding_id(&action.id), action.name.clone()))
+        .filter(|(binding_id, _)| !settings.bindings.contains_key(binding_id))
+        .collect();
+    for (binding_id, name) in to_create {
+        settings.bindings.insert(
+            binding_id.clone(),
+            ShortcutBinding {
+                id: binding_id,
+                name,
+                description: "Starts a transcription processed with this action.".to_string(),
+                default_binding: String::new(),
+                current_binding: String::new(),
+            },
+        );
+        changed = true;
+    }
+
+    // Prune orphan ppa_ bindings (action deleted out of band).
+    let valid_ids: std::collections::HashSet<String> = settings
+        .post_process_actions
+        .iter()
+        .map(|action| action_binding_id(&action.id))
+        .collect();
+    let orphans: Vec<String> = settings
+        .bindings
+        .keys()
+        .filter(|key| key.starts_with(ACTION_BINDING_PREFIX) && !valid_ids.contains(*key))
+        .cloned()
+        .collect();
+    for key in orphans {
+        settings.bindings.remove(&key);
+        changed = true;
+    }
+
+    changed
+}
+
 pub const SETTINGS_STORE_PATH: &str = "settings_store.json";
 
 pub fn get_default_settings() -> AppSettings {
@@ -1041,6 +1090,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 
     let mut changed = ensure_post_process_defaults(&mut settings);
     changed |= ensure_post_process_actions(&mut settings);
+    changed |= ensure_action_bindings(&mut settings);
     if changed {
         store.set("settings", serde_json::to_value(&settings).unwrap());
     }
@@ -1084,6 +1134,10 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     }
 
     if ensure_post_process_actions(&mut settings) {
+        updated = true;
+    }
+
+    if ensure_action_bindings(&mut settings) {
         updated = true;
     }
 
