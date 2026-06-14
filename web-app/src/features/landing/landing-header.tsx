@@ -33,12 +33,14 @@ export function LandingHeader() {
             >
               FAQ
             </Link>
-            <Link
-              to="/posts"
+            <a
+              href={SiteConfig.github}
+              target="_blank"
+              rel="noreferrer"
               className="transition-colors hover:text-[#fafafa]"
             >
-              Blog
-            </Link>
+              GitHub
+            </a>
           </div>
           <AuthButtonClient contentClassName="dark" hideTheme />
         </nav>

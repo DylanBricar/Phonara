@@ -1,6 +1,6 @@
 const siteTitle = "Parler";
 const siteDescription =
-  "Private audio links with synced transcripts from the Parler desktop app";
+  "Free, open-source, offline speech-to-text for your desktop. Press a shortcut, speak, and your words appear in any app — with optional AI clean-up. Nothing leaves your computer.";
 
 export const SiteConfig = {
   title: siteTitle,
@@ -10,14 +10,17 @@ export const SiteConfig = {
   domain: "parler.melvynx.dev",
   appIcon: "/icon.png",
   locale: "en_US",
+  /** External links used by the landing page CTAs. */
+  github: "https://github.com/Melvynx/Parler",
+  downloadUrl: "https://github.com/Melvynx/Parler/releases/latest",
   seo: {
     titleTemplate: `%s | ${siteTitle}`,
-    defaultTitle: `${siteTitle} - Audio links with live transcripts`,
+    defaultTitle: `${siteTitle} - Offline speech-to-text for your desktop`,
     defaultImage: {
       url: "/images/screenshot.png",
       width: 1280,
       height: 720,
-      alt: `${siteTitle} audio transcript player`,
+      alt: `${siteTitle} desktop speech-to-text app`,
     },
   },
   company: {

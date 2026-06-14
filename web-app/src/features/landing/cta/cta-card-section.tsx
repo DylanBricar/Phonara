@@ -1,5 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { ArrowRight } from "lucide-react";
+import { SiteConfig } from "@/site-config";
+import { Download } from "lucide-react";
 
 export function CTASectionCard() {
   return (
@@ -17,30 +17,30 @@ export function CTASectionCard() {
 
         <div className="relative z-[2] px-8 py-16 text-center sm:px-12 sm:py-20 lg:px-16 lg:py-24">
           <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-xs font-medium tracking-wider text-[#c9d1d9] uppercase">
-            Keep support close
+            Your words, your machine
           </span>
 
           <h2 className="font-elegant mx-auto mt-8 max-w-lg text-4xl tracking-tight text-white sm:text-5xl">
-            Answer visitors without
+            Dictate anywhere without
             <br />
-            losing the <em>human path.</em>
+            sending a <em>single byte.</em>
           </h2>
 
           <p className="mx-auto mt-6 max-w-md text-base leading-relaxed text-[#8eafc8]">
-            Let the AI agent handle website questions first, then keep the same
-            conversation ready for a human when the visitor needs one.
+            Download {SiteConfig.title}, set a shortcut, and start talking.
+            Free, offline, and open source.
           </p>
 
           <div className="mt-10">
-            <Link
-              to="."
-              search={(prev) => ({ ...prev, modal: "signin" })}
-              mask={{ to: "/auth/signin", unmaskOnReload: true }}
+            <a
+              href={SiteConfig.downloadUrl}
+              target="_blank"
+              rel="noreferrer"
               className="inline-flex h-11 items-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 text-sm font-medium text-white transition-colors hover:bg-white/10"
             >
-              Open the app
-              <ArrowRight className="size-4" />
-            </Link>
+              <Download className="size-4" />
+              Download {SiteConfig.title}
+            </a>
           </div>
         </div>
       </div>

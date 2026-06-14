@@ -1,6 +1,6 @@
 import { buttonVariants } from "@/components/ui/button";
+import { GithubIcon } from "@/features/landing/github-icon";
 import { SiteConfig } from "@/site-config";
-import { Link } from "@tanstack/react-router";
 
 export function CtaSection() {
   return (
@@ -8,21 +8,22 @@ export function CtaSection() {
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h2 className="font-elegant text-4xl tracking-tight text-[#fafafa]">
-            Ready to build on {SiteConfig.title}?
+            Open source and yours to extend
           </h2>
           <p className="mt-2 text-[#888]">
-            Start from one production-ready workspace for auth, organizations,
-            billing, docs, admin, and app foundations.
+            {SiteConfig.title} is built to be the most forkable speech-to-text
+            app. Read the code, file an issue, or make it your own.
           </p>
         </div>
-        <Link
+        <a
           className={buttonVariants({ size: "lg" })}
-          to="."
-          search={(prev) => ({ ...prev, modal: "signin" })}
-          mask={{ to: "/auth/signin", unmaskOnReload: true }}
+          href={SiteConfig.github}
+          target="_blank"
+          rel="noreferrer"
         >
-          Get started
-        </Link>
+          <GithubIcon className="size-4" />
+          Star on GitHub
+        </a>
       </div>
     </section>
   );

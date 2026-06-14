@@ -1,15 +1,17 @@
 const stats = [
   {
-    value: "Bubble",
-    label: "Bottom-right chat entry point for each customer website.",
+    value: "100%",
+    label:
+      "Runs offline. Your audio is transcribed on-device and never uploaded.",
   },
   {
-    value: "AI + human",
-    label: "Conversation ownership can move from the agent to a teammate.",
+    value: "~5x",
+    label:
+      "Real-time transcription speed on mid-range CPUs with the Parakeet model.",
   },
   {
-    value: "Multi-site",
-    label: "Customers can manage prompts and widgets across websites.",
+    value: "$0",
+    label: "Free and open source under the MIT license — forever.",
   },
 ];
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-06-14
+
+FEATURE: Rewrite the landing page content for the Parler desktop app (offline speech-to-text + optional AI post-processing)
+CHORE: Point landing CTAs to the GitHub release/download and repo, add github/downloadUrl to site-config
+CHORE: Remove placeholder testimonials and SaaS pricing section from the landing page
+
 ## 2026-05-15
 
 REFACTOR: Inline legacy route page components into TanStack index route files

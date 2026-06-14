@@ -1,9 +1,7 @@
 import { AspectRatio } from "@/components/ui/aspect-ratio";
+import { GithubIcon } from "@/features/landing/github-icon";
 import { SiteConfig } from "@/site-config";
-import { Link } from "@tanstack/react-router";
-
-const HERO_DEMO_SRC =
-  "https://www.tella.tv/video/cmfm9a9dl00hd0biediza24kv/embed?b=0&title=0&a=1&loop=1&t=0&muted=1&wt=0";
+import { Download } from "lucide-react";
 
 export const Hero = () => {
   return (
@@ -22,45 +20,47 @@ export const Hero = () => {
         <div className="relative z-[2] px-6 pt-20 pb-16 sm:px-12 sm:pt-28 sm:pb-20 lg:px-16 lg:pt-32 lg:pb-24">
           <div className="flex flex-col items-center text-center">
             <span className="text-[13px] tracking-wide text-[#8eafc8]">
-              TanStack Start, Convex, Expo
+              Free - Open source - 100% offline
             </span>
 
             <h1 className="font-elegant mt-6 text-5xl tracking-tight text-white sm:text-6xl lg:text-[5.5rem] lg:leading-[1]">
-              Launch your app in 1 week
+              Speak. It types.
               <br />
-              with <em>senior-dev code.</em>
+              <em>Nothing leaves your Mac.</em>
             </h1>
 
-            <p className="mx-auto mt-6 max-w-lg text-base leading-relaxed text-[#8eafc8]">
-              Start from a professional, secure codebase to publish your SaaS or
-              mobile app without rebuilding auth, billing, organizations, docs,
-              admin, and product plumbing.
+            <p className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-[#8eafc8]">
+              {SiteConfig.title} is a desktop speech-to-text app. Press a
+              shortcut, talk, and your words appear in any text field —
+              transcribed locally with Whisper or Parakeet, with optional AI
+              clean-up. Your voice never leaves your computer.
             </p>
 
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link
-                to="."
-                search={(prev) => ({ ...prev, modal: "signin" })}
-                mask={{ to: "/auth/signin", unmaskOnReload: true }}
-                className="inline-flex h-10 items-center rounded-full border border-white/10 bg-white/10 px-6 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/20"
+              <a
+                href={SiteConfig.downloadUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/10 px-6 text-sm font-medium text-white backdrop-blur-sm transition-colors hover:bg-white/20"
               >
-                Start building
-              </Link>
-              <Link
-                to="."
-                hash="features"
-                className="inline-flex h-10 items-center rounded-full border border-white/10 bg-transparent px-6 text-sm font-medium text-[#8eafc8] transition-colors hover:bg-white/5 hover:text-white"
+                <Download className="size-4" />
+                Download for free
+              </a>
+              <a
+                href={SiteConfig.github}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center gap-2 rounded-full border border-white/10 bg-transparent px-6 text-sm font-medium text-[#8eafc8] transition-colors hover:bg-white/5 hover:text-white"
               >
-                See the demos
-              </Link>
+                <GithubIcon className="size-4" />
+                View on GitHub
+              </a>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-[13px] text-[#5a7d99]">
-              <span>SaaS + mobile foundations</span>
+              <span>macOS, Windows & Linux</span>
               <span className="hidden sm:inline">-</span>
-              <span className="hidden sm:inline">
-                Built for AI-assisted shipping
-              </span>
+              <span className="hidden sm:inline">No account, no cloud</span>
             </div>
           </div>
 
@@ -76,11 +76,11 @@ export const Hero = () => {
               </span>
             </div>
             <AspectRatio ratio={16 / 9}>
-              <iframe
-                src={HERO_DEMO_SRC}
-                title={`${SiteConfig.title} SaaS and mobile demo`}
-                allow="autoplay; fullscreen; picture-in-picture"
-                className="absolute inset-0 size-full border-0"
+              <img
+                src="/images/screenshot.png"
+                alt={`${SiteConfig.title} desktop speech-to-text app`}
+                loading="lazy"
+                className="absolute inset-0 size-full object-cover"
               />
             </AspectRatio>
           </div>

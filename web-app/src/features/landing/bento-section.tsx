@@ -1,55 +1,55 @@
 import {
-  BarChart3,
-  BrainCircuit,
-  Calendar,
-  CalendarCheck,
+  ClipboardPaste,
+  Cpu,
+  Keyboard,
+  MonitorSmartphone,
+  ShieldCheck,
   Sparkles,
-  Zap,
 } from "lucide-react";
 import { SiteConfig } from "@/site-config";
 
 const benefits = [
   {
-    id: "ai-generation",
-    title: "AI Review Assist",
+    id: "shortcut",
+    title: "Press to talk",
     description:
-      "Turn raw customer responses into polished testimonial drafts faster.",
+      "Trigger recording from anywhere with a global shortcut or push-to-talk. No window to focus first.",
+    icon: <Keyboard className="size-4" />,
+  },
+  {
+    id: "local-models",
+    title: "On-device models",
+    description:
+      "Whisper and Parakeet run locally, with GPU acceleration when your machine has it.",
+    icon: <Cpu className="size-4" />,
+  },
+  {
+    id: "ai-cleanup",
+    title: "Optional AI clean-up",
+    description:
+      "Fix grammar, reformat, or translate transcripts with your own prompts and provider.",
     icon: <Sparkles className="size-4" />,
   },
   {
-    id: "scheduling",
-    title: "Collection Campaigns",
+    id: "paste-anywhere",
+    title: "Pastes anywhere",
     description:
-      "Create branded request flows for video and text testimonials.",
-    icon: <Calendar className="size-4" />,
+      "The result drops straight into the focused text field of whatever app you're using.",
+    icon: <ClipboardPaste className="size-4" />,
   },
   {
-    id: "calendar",
-    title: "Review Pipeline",
+    id: "private",
+    title: "Private by design",
     description:
-      "Track collected, reviewed, approved, and published testimonials clearly.",
-    icon: <CalendarCheck className="size-4" />,
+      "No account, no telemetry, no cloud round-trips. Voice data stays on your computer.",
+    icon: <ShieldCheck className="size-4" />,
   },
   {
-    id: "analytics",
-    title: "Proof Analytics",
+    id: "cross-platform",
+    title: "Cross-platform",
     description:
-      "Understand which testimonials convert and where they perform.",
-    icon: <BarChart3 className="size-4" />,
-  },
-  {
-    id: "smart-repost",
-    title: "Showcase Reuse",
-    description:
-      "Reuse the strongest proof across landing pages and customer journeys.",
-    icon: <Zap className="size-4" />,
-  },
-  {
-    id: "insights",
-    title: "AI Insights",
-    description:
-      "Identify strong quotes, common objections, and proof worth publishing.",
-    icon: <BrainCircuit className="size-4" />,
+      "macOS, Windows, and Linux from one open codebase you can read and extend.",
+    icon: <MonitorSmartphone className="size-4" />,
   },
 ];
 
@@ -58,13 +58,13 @@ export function BentoGridSection() {
     <section className="mx-auto max-w-5xl px-4 py-20 lg:py-28">
       <p className="text-sm text-[#666]">Why {SiteConfig.title}</p>
       <h2 className="font-elegant mt-3 text-4xl tracking-tight text-[#fafafa] md:text-5xl">
-        Everything you need to grow
+        Everything you need to dictate
         <br />
-        your audience - <em className="text-[#666]">nothing you don't.</em>
+        anywhere - <em className="text-[#666]">nothing you don't.</em>
       </h2>
       <p className="mt-4 max-w-xl text-base text-[#888]">
-        Stop rebuilding the same SaaS foundations. {SiteConfig.title} gives you
-        the product surface, billing, content, and admin workflows in one place.
+        {SiteConfig.title} does one job well: turn what you say into text in any
+        app, locally and instantly, with optional AI polish.
       </p>
 
       <div className="mt-12 grid gap-x-8 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
