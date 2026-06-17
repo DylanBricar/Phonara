@@ -218,7 +218,7 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                     <input
                       type="range"
                       min={30}
-                      max={60}
+                      max={80}
                       step={2}
                       value={customHeight}
                       onChange={(e) =>
@@ -230,9 +230,9 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                       className="flex-grow h-2 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-logo-primary"
                       style={{
                         background: `linear-gradient(to right, var(--color-background-ui) ${
-                          ((customHeight - 30) / (60 - 30)) * 100
+                          ((customHeight - 30) / (80 - 30)) * 100
                         }%, rgba(128, 128, 128, 0.2) ${
-                          ((customHeight - 30) / (60 - 30)) * 100
+                          ((customHeight - 30) / (80 - 30)) * 100
                         }%)`,
                       }}
                     />

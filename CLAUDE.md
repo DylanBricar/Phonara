@@ -48,7 +48,7 @@ Phonara is a cross-platform desktop speech-to-text app built with Tauri 2.x (Rus
   - `audio/` - Device enumeration, recording, resampling
   - `vad/` - Voice Activity Detection (Silero VAD)
 - `commands/` - Tauri command handlers for frontend communication
-- `shortcut.rs` - Global keyboard shortcut handling
+- `shortcut/` - Global keyboard shortcut handling (mod.rs, handler.rs, phonara_keys.rs, tauri_impl.rs, setting_commands.rs)
 - `settings.rs` - Application settings management
 
 ### Frontend Structure (src/)
@@ -57,7 +57,7 @@ Phonara is a cross-platform desktop speech-to-text app built with Tauri 2.x (Rus
 - `components/settings/` - Settings UI (35+ files)
 - `components/model-selector/` - Model management interface
 - `components/onboarding/` - First-run experience
-- `hooks/useSettings.ts`, `useModels.ts` - State management hooks
+- `hooks/useSettings.ts` - Settings hook; model state lives in `stores/modelStore.ts`
 - `stores/settingsStore.ts` - Zustand store for settings
 - `bindings.ts` - Auto-generated Tauri type bindings (via tauri-specta)
 - `overlay/` - Recording overlay window code
@@ -107,8 +107,9 @@ Access debug features: `Cmd+Shift+D` (macOS) or `Ctrl+Shift+D` (Windows/Linux)
 
 ## Windows Build Requirements
 
-- LLVM 18.1.8 (NOT 22+), set `LIBCLANG_PATH="C:/Program Files/LLVM/bin"`
+- LLVM/Clang for bindgen, set `LIBCLANG_PATH="C:/Program Files/LLVM/bin"` (builds fine with LLVM 18 or 22)
 - Vulkan SDK, set `VULKAN_SDK` env var
 - CMake in PATH
 - Rust/Cargo in PATH
-- `transcribe-rs` pinned to `=0.2.8` (0.2.9 has compatibility issues)
+- `transcribe-rs` is on the 0.3.x line (Cargo.lock resolves 0.3.11); per-platform feature flags differ (whisper-cpp+onnx base, whisper-vulkan+ort-directml on Windows, whisper-metal on macOS)
+- If the native `whisper-rs-sys`/`vulkan-shaders-gen` build fails with a `FileTracker FTK1011 ... path not found` error, it's the Windows MAX_PATH (260) limit: build with a short `CARGO_TARGET_DIR` (e.g. `D:\pt`) and `CMAKE_POLICY_VERSION_MINIMUM=3.5`

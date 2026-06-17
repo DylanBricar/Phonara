@@ -360,10 +360,27 @@ fn normalize_word(w: &str) -> String {
 }
 
 fn collapse_repeated_phrases(text: &str) -> String {
+    let mut current = text.to_string();
+    // A single Whisper output can contain several independent repeated-phrase
+    // loops; collapse to a fixed point instead of stopping after the first.
+    // Each pass strictly shrinks the text, so the word count is a safe bound.
+    let max_passes = text.split_whitespace().count();
+    for _ in 0..max_passes {
+        match collapse_repeated_phrases_once(&current) {
+            Some(collapsed) => current = collapsed,
+            None => break,
+        }
+    }
+    current
+}
+
+/// Collapses the first qualifying repeated phrase (>= 3 reps). Returns `Some` with
+/// the collapsed text when a run was removed, or `None` when nothing changed.
+fn collapse_repeated_phrases_once(text: &str) -> Option<String> {
     let words: Vec<&str> = text.split_whitespace().collect();
     let n = words.len();
     if n < 6 {
-        return text.to_string();
+        return None;
     }
 
     let normalized: Vec<String> = words.iter().map(|w| normalize_word(w)).collect();
@@ -387,12 +404,12 @@ fn collapse_repeated_phrases(text: &str) -> String {
             if reps >= 3 {
                 let mut result: Vec<&str> = words[..start + phrase_len].to_vec();
                 result.extend_from_slice(&words[pos..]);
-                return result.join(" ");
+                return Some(result.join(" "));
             }
         }
     }
 
-    text.to_string()
+    None
 }
 
 fn collapse_repeated_chars(text: &str) -> String {
@@ -692,5 +709,79 @@ mod tests {
             "got double-counted result: {}",
             result
         );
+    }
+
+    // ---- collapse_repeated_phrases -------------------------------------- //
+
+    #[test]
+    fn test_collapse_phrases_three_reps_collapses() {
+        // "the cat" repeated 3x then a tail -> one occurrence + tail
+        assert_eq!(
+            collapse_repeated_phrases("the cat the cat the cat ran"),
+            "the cat ran"
+        );
+    }
+
+    #[test]
+    fn test_collapse_phrases_two_reps_preserved() {
+        // Only 2 repetitions -> below the >=3 threshold, left untouched
+        let input = "the cat the cat ran here";
+        assert_eq!(collapse_repeated_phrases(input), input);
+    }
+
+    #[test]
+    fn test_collapse_phrases_short_input_noop() {
+        // Fewer than 6 words -> never engages
+        let input = "the cat sat";
+        assert_eq!(collapse_repeated_phrases(input), input);
+    }
+
+    #[test]
+    fn test_collapse_phrases_fixed_point_is_stable() {
+        // Running the collapser on its own output must be a no-op (idempotent).
+        let once = collapse_repeated_phrases("go now go now go now then home");
+        assert_eq!(collapse_repeated_phrases(&once), once);
+    }
+
+    // ---- collapse_repeated_chars --------------------------------------- //
+
+    #[test]
+    fn test_collapse_chars_boundary_three_vs_four() {
+        // 3 repeats kept, 4+ collapsed to a single char
+        assert_eq!(collapse_repeated_chars("wow!!!"), "wow!!!");
+        assert_eq!(collapse_repeated_chars("wow!!!!"), "wow!");
+        assert_eq!(collapse_repeated_chars("stop......"), "stop.");
+    }
+
+    #[test]
+    fn test_collapse_chars_leaves_alphanumeric_runs() {
+        // Letters/digits are never collapsed, only punctuation runs
+        assert_eq!(collapse_repeated_chars("aaaa"), "aaaa");
+        assert_eq!(collapse_repeated_chars("hello world"), "hello world");
+    }
+
+    // ---- collapse_spaced_repeated_punctuation -------------------------- //
+
+    #[test]
+    fn test_collapse_spaced_punctuation() {
+        assert_eq!(collapse_spaced_repeated_punctuation(". . ."), ".");
+        assert_eq!(collapse_spaced_repeated_punctuation("? ?"), "?");
+        // A normal sentence with single punctuation is unchanged
+        assert_eq!(
+            collapse_spaced_repeated_punctuation("hello world."),
+            "hello world."
+        );
+    }
+
+    // ---- is_punctuation_only ------------------------------------------- //
+
+    #[test]
+    fn test_is_punctuation_only() {
+        assert!(is_punctuation_only("..."));
+        assert!(is_punctuation_only("!?"));
+        assert!(is_punctuation_only("  .  "));
+        assert!(!is_punctuation_only(""));
+        assert!(!is_punctuation_only("a"));
+        assert!(!is_punctuation_only("a."));
     }
 }

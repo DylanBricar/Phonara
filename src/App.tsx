@@ -26,6 +26,10 @@ const renderSettingsContent = (section: SidebarSection) => {
   return <ActiveComponent />;
 };
 
+const isSidebarSection = (section: string): section is SidebarSection => {
+  return section in SECTIONS_CONFIG;
+};
+
 function App() {
   const { t, i18n } = useTranslation();
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep | null>(
@@ -87,6 +91,21 @@ function App() {
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [settings?.debug_mode, updateSetting]);
+
+  // Let backend shortcuts (e.g. the "show history" hotkey) open a settings
+  // section. The backend emits "navigate-to-section"; without this listener the
+  // event had no consumer and the shortcut silently did nothing.
+  useEffect(() => {
+    const unlisten = listen<string>("navigate-to-section", (event) => {
+      if (isSidebarSection(event.payload)) {
+        setCurrentSection(event.payload);
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // Listen for recording errors from the backend and show a toast
   useEffect(() => {

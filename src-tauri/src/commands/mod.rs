@@ -121,6 +121,10 @@ pub fn export_settings(app: AppHandle, path: String) -> Result<(), String> {
     for value in settings.post_process_api_keys.values_mut() {
         *value = String::new();
     }
+    // Top-level transcription provider secrets must be stripped too, otherwise the
+    // exported file leaks them despite the "API keys stripped" claim below.
+    settings.openai_api_key = None;
+    settings.gemini_api_key = None;
     let json = serde_json::to_string_pretty(&settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
     std::fs::write(&path, json).map_err(|e| format!("Failed to write file: {}", e))?;

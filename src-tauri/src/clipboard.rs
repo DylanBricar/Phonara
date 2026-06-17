@@ -136,12 +136,17 @@ fn paste_via_clipboard(
     let max_wait = paste_delay_ms.max(50);
     let clipboard = app_handle.clipboard();
 
+    // Authoritative pre-paste gate: only paste once the clipboard actually holds
+    // our transcription. On a contended clipboard (Issue #502) the write can fail
+    // to land; without this check we would paste whatever stale content is there.
+    let mut clipboard_ready = false;
     while elapsed < max_wait {
         std::thread::sleep(Duration::from_millis(5));
         elapsed += 5;
 
         if let Ok(current_content) = clipboard.read_text() {
             if current_content == text {
+                clipboard_ready = true;
                 break;
             }
         }
@@ -149,25 +154,32 @@ fn paste_via_clipboard(
 
     std::thread::sleep(Duration::from_millis(paste_delay_ms));
 
-    #[cfg(target_os = "linux")]
-    let key_combo_sent = try_send_key_combo_linux(paste_method)?;
+    if clipboard_ready {
+        #[cfg(target_os = "linux")]
+        let key_combo_sent = try_send_key_combo_linux(paste_method)?;
 
-    #[cfg(not(target_os = "linux"))]
-    let key_combo_sent = false;
+        #[cfg(not(target_os = "linux"))]
+        let key_combo_sent = false;
 
-    if !key_combo_sent {
-        match paste_method {
-            PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo)?,
-            PasteMethod::CtrlShiftV => input::send_paste_ctrl_shift_v(enigo)?,
-            PasteMethod::ShiftInsert => input::send_paste_shift_insert(enigo)?,
-            _ => return Err("Invalid paste method for clipboard paste".into()),
+        if !key_combo_sent {
+            match paste_method {
+                PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo)?,
+                PasteMethod::CtrlShiftV => input::send_paste_ctrl_shift_v(enigo)?,
+                PasteMethod::ShiftInsert => input::send_paste_shift_insert(enigo)?,
+                _ => return Err("Invalid paste method for clipboard paste".into()),
+            }
         }
-    }
 
-    #[cfg(target_os = "macos")]
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    #[cfg(not(target_os = "macos"))]
-    std::thread::sleep(std::time::Duration::from_millis(100));
+        #[cfg(target_os = "macos")]
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        #[cfg(not(target_os = "macos"))]
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    } else {
+        log::warn!(
+            "Clipboard never contained the transcription after {}ms; skipping paste to avoid pasting stale content",
+            max_wait + paste_delay_ms
+        );
+    }
 
     #[cfg(target_os = "linux")]
     {
@@ -185,7 +197,11 @@ fn paste_via_clipboard(
     #[cfg(not(target_os = "linux"))]
     restore_clipboard_content(saved_content);
 
-    Ok(())
+    if clipboard_ready {
+        Ok(())
+    } else {
+        Err("Clipboard verification failed; paste skipped".into())
+    }
 }
 
 #[cfg(target_os = "linux")]

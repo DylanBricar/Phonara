@@ -170,7 +170,10 @@
       "languageOnly": "Solo {{language}}"
     },
     "cancel": "Annulla",
-    "cancelDownload": "Annulla download"
+    "cancelDownload": "Annulla download",
+    "statusCheckFailed": "Failed to check model status",
+    "loadFailed": "Failed to load model",
+    "switchFailed": "Failed to switch model"
   },
   "settings": {
     "modelSettings": {
@@ -573,29 +576,6 @@
         "cancel": "Annulla",
         "selectToEdit": "Scegli un prompt qui sopra per visualizzare o modificare i dettagli.",
         "createFirst": "Clicca 'Crea un nuovo prompt' qui sopra per creare il tuo primo prompt di post-elaborazione."
-      },
-      "actions": {
-        "title": "Actions",
-        "description": "Bind Ctrl+number keys (1-9) to custom prompts. Press a shortcut during recording to apply the action after transcription.",
-        "noActions": "No actions configured yet.",
-        "createFirst": "Create your first action to process transcriptions with your configured provider.",
-        "addAction": "Add Action",
-        "editAction": "Edit Action",
-        "key": "Key",
-        "keyLabel": "Key (1-9)",
-        "name": "Name",
-        "namePlaceholder": "e.g. Email mode",
-        "prompt": "Prompt",
-        "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
-        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
-        "model": "Model (optional)",
-        "modelPlaceholder": "Select a model",
-        "modelTip": "Select a specific model for this action, or use the default from the API section.",
-        "defaultModel": "Default",
-        "save": "Save",
-        "cancel": "Cancel",
-        "delete": "Delete",
-        "maxActionsReached": "Maximum of 9 actions reached."
       }
     },
     "history": {
@@ -829,7 +809,10 @@
     "checkForUpdates": "Controlla aggiornamenti",
     "portableUpdateTitle": "Aggiornamento manuale necessario",
     "portableUpdateMessage": "Le installazioni portatili non possono essere aggiornate automaticamente. Per aggiornare: scarica l'ultima versione del programma di installazione NSIS da GitHub Releases, installala nella stessa cartella, quindi copia la cartella Data/ (impostazioni, modelli, registrazioni) dalla vecchia versione a quella nuova..",
-    "portableUpdateButton": "Apri i rilasci su GitHub"
+    "portableUpdateButton": "Apri i rilasci su GitHub",
+    "updateCheckFailed": "Failed to check for updates",
+    "restartFailed": "Update installed, but restart failed",
+    "updateInstallFailed": "Failed to install update"
   },
   "common": {
     "loading": "Caricamento...",

@@ -460,9 +460,12 @@ impl HistoryManager {
         let entries_to_delete: Vec<(i64, String)> = {
             let conn = self.get_connection()?;
             let mut stmt = conn.prepare(
+                // Tie-break on the monotonic id so recordings sharing the same
+                // 1-second timestamp are evicted oldest-first deterministically
+                // (plain `timestamp DESC` leaves same-second ties unspecified).
                 "SELECT id, file_name FROM transcription_history
                  WHERE saved = 0
-                 ORDER BY timestamp DESC
+                 ORDER BY timestamp DESC, id DESC
                  LIMIT -1 OFFSET ?1",
             )?;
 

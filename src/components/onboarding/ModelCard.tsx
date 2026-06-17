@@ -4,6 +4,7 @@ import {
   Check,
   Download,
   Globe,
+  HardDrive,
   Languages,
   Loader2,
   Trash2,
@@ -76,6 +77,9 @@ const ModelCard: React.FC<ModelCardProps> = ({
 
   const displayName = getTranslatedModelName(model, t);
   const displayDescription = getTranslatedModelDescription(model, t);
+  const showModelSize =
+    status === "downloadable" || status === "available" || status === "active";
+  const formattedModelSize = formatModelSize(Number(model.size_mb));
 
   const baseClasses =
     "flex flex-col rounded-xl px-4 py-3 gap-2 text-left transition-all duration-200";
@@ -114,7 +118,10 @@ const ModelCard: React.FC<ModelCardProps> = ({
     <div
       onClick={handleClick}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && isClickable) handleClick();
+        if ((e.key === "Enter" || e.key === " ") && isClickable) {
+          e.preventDefault();
+          handleClick();
+        }
       }}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
@@ -213,10 +220,14 @@ const ModelCard: React.FC<ModelCardProps> = ({
             <span>{t("modelSelector.capabilities.translate")}</span>
           </div>
         )}
-        {status === "downloadable" && (
+        {showModelSize && (
           <span className="flex items-center gap-1.5 ms-auto text-xs text-text/50">
-            <Download className="w-3.5 h-3.5" />
-            <span>{formatModelSize(Number(model.size_mb))}</span>
+            {status === "downloadable" ? (
+              <Download className="w-3.5 h-3.5" />
+            ) : (
+              <HardDrive className="w-3.5 h-3.5" />
+            )}
+            <span>{formattedModelSize}</span>
           </span>
         )}
         {onDelete && (status === "available" || status === "active") && (
@@ -225,7 +236,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
             size="sm"
             onClick={handleDelete}
             title={t("modelSelector.deleteModel", { modelName: displayName })}
-            className="flex items-center gap-1.5 ms-auto text-logo-primary/85 hover:text-logo-primary hover:bg-logo-primary/10"
+            className="flex items-center gap-1.5 text-logo-primary/85 hover:text-logo-primary hover:bg-logo-primary/10"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>{t("common.delete")}</span>

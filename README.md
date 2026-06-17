@@ -60,8 +60,7 @@ Press a shortcut, speak, and your words appear in any text field. Everything run
 
 ### Infrastructure & Security
 
-- **Settings cache** - RwLock-based cache eliminates repeated JSON parsing
-- **Log redaction** - API keys are stripped from settings debug logs
+- **Log redaction** - API keys are stripped from settings debug logs (transcription + post-processing keys)
 - **XSS fix** - Removed dangerouslySetInnerHTML in PostProcessingSettings
 - **Clipboard hardening** - Sanitized dotool stdin input to prevent injection
 - **CI improvements** - Separated signed/unsigned builds, Node.js 24 compatibility, proper Vulkan SDK setup

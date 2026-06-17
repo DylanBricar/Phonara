@@ -170,7 +170,10 @@
       "languageOnly": "Nur {{language}}"
     },
     "cancel": "Abbrechen",
-    "cancelDownload": "Download abbrechen"
+    "cancelDownload": "Download abbrechen",
+    "statusCheckFailed": "Failed to check model status",
+    "loadFailed": "Failed to load model",
+    "switchFailed": "Failed to switch model"
   },
   "settings": {
     "modelSettings": {
@@ -573,29 +576,6 @@
         "cancel": "Abbrechen",
         "selectToEdit": "Wähle oben einen Prompt aus, um dessen Details anzuzeigen und zu bearbeiten.",
         "createFirst": "Klicke oben auf 'Neuen Prompt erstellen', um deinen ersten Nachbearbeitungs-Prompt zu erstellen."
-      },
-      "actions": {
-        "title": "Actions",
-        "description": "Bind Ctrl+number keys (1-9) to custom prompts. Press a shortcut during recording to apply the action after transcription.",
-        "noActions": "No actions configured yet.",
-        "createFirst": "Create your first action to process transcriptions with your configured provider.",
-        "addAction": "Add Action",
-        "editAction": "Edit Action",
-        "key": "Key",
-        "keyLabel": "Key (1-9)",
-        "name": "Name",
-        "namePlaceholder": "e.g. Email mode",
-        "prompt": "Prompt",
-        "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
-        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
-        "model": "Model (optional)",
-        "modelPlaceholder": "Select a model",
-        "modelTip": "Select a specific model for this action, or use the default from the API section.",
-        "defaultModel": "Default",
-        "save": "Save",
-        "cancel": "Cancel",
-        "delete": "Delete",
-        "maxActionsReached": "Maximum of 9 actions reached."
       }
     },
     "history": {
@@ -829,7 +809,10 @@
     "checkForUpdates": "Nach Updates suchen",
     "portableUpdateTitle": "Manuelles Update erforderlich",
     "portableUpdateMessage": "Portable Installationen können nicht automatisch aktualisiert werden. Zum Aktualisieren: Lade den neuesten NSIS-Installer von GitHub Releases herunter, installiere ihn im selben Ordner und kopiere dann deinen Data/-Ordner (Einstellungen, Modelle, Aufnahmen) von der alten Version in die neue.",
-    "portableUpdateButton": "GitHub Releases öffnen"
+    "portableUpdateButton": "GitHub Releases öffnen",
+    "updateCheckFailed": "Failed to check for updates",
+    "restartFailed": "Update installed, but restart failed",
+    "updateInstallFailed": "Failed to install update"
   },
   "common": {
     "loading": "Wird geladen...",

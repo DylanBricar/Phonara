@@ -17,6 +17,12 @@ const DEFAULT_AUDIO_DEVICE: AudioDevice = {
   is_default: true,
 };
 
+// Synchronous re-entrancy guard for initialize(). The store's `initialized` flag
+// is only set after several awaits, so dozens of components calling initialize()
+// on first paint would otherwise all pass the guard and each register a duplicate
+// "model-state-changed" listener. Holding the in-flight promise makes it run once.
+let initInFlight: Promise<void> | null = null;
+
 export const useSettingsStore = create<SettingsStore>()(
   subscribeWithSelector((set, get) => ({
     settings: null,
@@ -136,10 +142,15 @@ export const useSettingsStore = create<SettingsStore>()(
         if (updater) {
           await updater(value);
         }
-      } catch {
-        if (settings) {
-          set({ settings: { ...settings, [key]: originalValue } });
-        }
+      } catch (error) {
+        // Roll back only this key off the *current* state, so an unrelated key
+        // that changed successfully in the meantime isn't clobbered.
+        set((state) => ({
+          settings: state.settings
+            ? { ...state.settings, [key]: originalValue }
+            : null,
+        }));
+        console.error(`Failed to update setting "${updateKey}":`, error);
       } finally {
         setUpdating(updateKey, false);
       }
@@ -220,7 +231,8 @@ export const useSettingsStore = create<SettingsStore>()(
       try {
         await commands.resetBinding(id);
         await refreshSettings();
-      } catch {
+      } catch (error) {
+        console.error(`Failed to reset binding "${id}":`, error);
       } finally {
         setUpdating(updateKey, false);
       }
@@ -235,6 +247,7 @@ export const useSettingsStore = create<SettingsStore>()(
       } = get();
       const updateKey = "post_process_provider_id";
       const previousId = settings?.post_process_provider_id ?? null;
+      const previousOptions = get().postProcessModelOptions[providerId];
 
       setUpdating(updateKey, true);
 
@@ -251,7 +264,7 @@ export const useSettingsStore = create<SettingsStore>()(
       try {
         await commands.setPostProcessProvider(providerId);
         await refreshSettings();
-      } catch {
+      } catch (error) {
         if (previousId !== null) {
           set((state) => ({
             settings: state.settings
@@ -259,6 +272,12 @@ export const useSettingsStore = create<SettingsStore>()(
               : null,
           }));
         }
+        // Restore the cleared model list too, otherwise the dropdown for this
+        // provider is left empty even though the active provider reverted.
+        if (previousOptions !== undefined) {
+          setPostProcessModelOptions(providerId, previousOptions);
+        }
+        console.error("Failed to switch post-process provider:", error);
       } finally {
         setUpdating(updateKey, false);
       }
@@ -282,9 +301,12 @@ export const useSettingsStore = create<SettingsStore>()(
         } else if (settingType === "model") {
           await commands.changePostProcessModelSetting(providerId, value);
         }
-        await refreshSettings();
-      } catch {
+      } catch (error) {
+        console.error(`Failed to update post-process ${settingType}:`, error);
       } finally {
+        // Re-sync the UI to backend truth even on failure, otherwise the
+        // component keeps showing the user-typed (unpersisted) value.
+        await refreshSettings();
         setUpdating(updateKey, false);
       }
     },
@@ -316,7 +338,8 @@ export const useSettingsStore = create<SettingsStore>()(
         }));
 
         await refreshSettings();
-      } catch {
+      } catch (error) {
+        console.error("Failed to update post-process base URL:", error);
       } finally {
         setUpdating(updateKey, false);
       }
@@ -375,20 +398,28 @@ export const useSettingsStore = create<SettingsStore>()(
 
     initialize: async () => {
       if (get().initialized) return;
+      // Set the in-flight promise synchronously (before any await) so concurrent
+      // callers on first paint share one run instead of each re-initializing.
+      if (initInFlight) return initInFlight;
 
-      const { refreshSettings, checkCustomSounds, loadDefaultSettings } = get();
-      await Promise.all([
-        loadDefaultSettings(),
-        refreshSettings(),
-        checkCustomSounds(),
-      ]);
+      initInFlight = (async () => {
+        const { refreshSettings, checkCustomSounds, loadDefaultSettings } =
+          get();
+        await Promise.all([
+          loadDefaultSettings(),
+          refreshSettings(),
+          checkCustomSounds(),
+        ]);
 
-      // Re-fetch settings when the backend changes them (e.g. language
-      // reset during model switch). The backend is the source of truth.
-      const unlisten = await listen("model-state-changed", () => {
-        get().refreshSettings();
-      });
-      set({ initialized: true, _unlisten: unlisten });
+        // Re-fetch settings when the backend changes them (e.g. language
+        // reset during model switch). The backend is the source of truth.
+        const unlisten = await listen("model-state-changed", () => {
+          get().refreshSettings();
+        });
+        set({ initialized: true, _unlisten: unlisten });
+      })();
+
+      return initInFlight;
     },
   })),
 );

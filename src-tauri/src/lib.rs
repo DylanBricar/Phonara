@@ -38,10 +38,17 @@ use signal_hook::consts::SIGUSR2;
 use signal_hook::iterator::Signals;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+#[cfg(target_os = "macos")]
 use std::sync::Mutex as StdMutex;
+#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 
+// macOS synthesizes a DoubleClick tray event inconsistently, so we detect double
+// clicks manually from single Click events. Other platforms use the native
+// TrayIconEvent::DoubleClick, so these are unused (and would warn) off macOS.
+#[cfg(target_os = "macos")]
 static LAST_TRAY_CLICK: StdMutex<Option<Instant>> = StdMutex::new(None);
+#[cfg(target_os = "macos")]
 const DOUBLE_CLICK_THRESHOLD_MS: u64 = 350;
 use tauri::image::Image;
 pub use transcription_coordinator::TranscriptionCoordinator;

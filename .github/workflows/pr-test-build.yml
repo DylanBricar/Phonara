@@ -46,7 +46,10 @@ jobs:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
-      sign-binaries: true
+      # This fork has no Apple/Azure signing secrets configured, so signed builds
+      # fail at the cert-import step. Match release.yml / main-build.yml.
+      sign-binaries: false
+      apple_signing: false
       asset-prefix: "phonara-pr-${{ inputs.pr_number }}"
       upload-artifacts: true
       is-debug-build: ${{ contains(matrix.args, '--debug') }}

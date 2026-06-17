@@ -108,7 +108,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
       }
     } catch (error) {
       console.error("Failed to check for updates:", error);
-      toast.error("Failed to check for updates", {
+      toast.error(t("footer.updateCheckFailed"), {
         description: getErrorMessage(error),
       });
     } finally {
@@ -163,7 +163,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
     } catch (error) {
       console.error("Failed to restart after update:", error);
       setUpdatePhase("restart-ready");
-      toast.error("Update installed, but restart failed", {
+      toast.error(t("footer.restartFailed"), {
         description: getErrorMessage(error),
       });
     }
@@ -205,7 +205,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = "" }) => {
       console.error("Failed to install update:", error);
       setUpdatePhase("idle");
       resetInstallState();
-      toast.error("Failed to install update", {
+      toast.error(t("footer.updateInstallFailed"), {
         description: getErrorMessage(error),
       });
     }

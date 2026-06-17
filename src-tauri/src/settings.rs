@@ -1051,6 +1051,22 @@ impl AppSettings {
     }
 }
 
+impl AppSettings {
+    /// Returns a copy safe to write to logs: the top-level transcription API keys
+    /// are masked. (`post_process_api_keys` is already masked by `SecretMap`'s
+    /// `Debug` impl, so it does not need handling here.)
+    fn redacted_for_log(&self) -> AppSettings {
+        let mut redacted = self.clone();
+        if redacted.openai_api_key.is_some() {
+            redacted.openai_api_key = Some("[REDACTED]".to_string());
+        }
+        if redacted.gemini_api_key.is_some() {
+            redacted.gemini_api_key = Some("[REDACTED]".to_string());
+        }
+        redacted
+    }
+}
+
 pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     // Initialize store
     let store = app
@@ -1061,7 +1077,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
         // Parse the entire settings object
         match serde_json::from_value::<AppSettings>(settings_value) {
             Ok(mut settings) => {
-                debug!("Found existing settings: {:?}", settings);
+                debug!("Found existing settings: {:?}", settings.redacted_for_log());
                 let default_settings = get_default_settings();
                 let mut updated = false;
 
@@ -1121,14 +1137,27 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
         .expect("Failed to initialize store");
 
     let mut settings = if let Some(settings_value) = store.get("settings") {
-        serde_json::from_value::<AppSettings>(settings_value).unwrap_or_else(|_| {
-            let default_settings = get_default_settings();
-            store.set(
-                "settings",
-                serde_json::to_value(&default_settings).expect("AppSettings must be serializable"),
-            );
-            default_settings
-        })
+        match serde_json::from_value::<AppSettings>(settings_value.clone()) {
+            Ok(parsed) => parsed,
+            Err(e) => {
+                // Don't silently destroy the user's config on a parse error (e.g. a
+                // field whose type changed across versions, or a partial write).
+                // Log it and preserve the unparseable value under a backup key for
+                // recovery before falling back to defaults.
+                log::error!(
+                    "Failed to parse stored settings ({e}); preserving them under \
+                     'settings_corrupt_backup' and resetting to defaults"
+                );
+                store.set("settings_corrupt_backup", settings_value);
+                let default_settings = get_default_settings();
+                store.set(
+                    "settings",
+                    serde_json::to_value(&default_settings)
+                        .expect("AppSettings must be serializable"),
+                );
+                default_settings
+            }
+        }
     } else {
         let default_settings = get_default_settings();
         store.set(
@@ -1222,11 +1251,16 @@ mod tests {
         settings
             .post_process_api_keys
             .insert("empty_provider".to_string(), "".to_string());
+        // Top-level transcription secrets must be redacted in logs too.
+        settings.openai_api_key = Some("sk-openai-top-level-secret".to_string());
+        settings.gemini_api_key = Some("gemini-top-level-secret".to_string());
 
-        let debug_output = format!("{:?}", settings);
+        let debug_output = format!("{:?}", settings.redacted_for_log());
 
         assert!(!debug_output.contains("sk-proj-secret-key-12345"));
         assert!(!debug_output.contains("sk-ant-secret-key-67890"));
+        assert!(!debug_output.contains("sk-openai-top-level-secret"));
+        assert!(!debug_output.contains("gemini-top-level-secret"));
         assert!(debug_output.contains("[REDACTED]"));
     }
 
@@ -1236,5 +1270,40 @@ mod tests {
         let out = format!("{:?}", map);
         assert!(!out.contains("secret"));
         assert!(out.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn log_level_deserializes_legacy_numeric_and_strings() {
+        use serde_json::json;
+        // New string format, case-insensitive
+        assert!(matches!(
+            serde_json::from_value::<LogLevel>(json!("trace")).unwrap(),
+            LogLevel::Trace
+        ));
+        assert!(matches!(
+            serde_json::from_value::<LogLevel>(json!("DEBUG")).unwrap(),
+            LogLevel::Debug
+        ));
+        assert!(matches!(
+            serde_json::from_value::<LogLevel>(json!("Warn")).unwrap(),
+            LogLevel::Warn
+        ));
+        // Legacy numeric format (1..=5) must still deserialize for upgrading users
+        assert!(matches!(
+            serde_json::from_value::<LogLevel>(json!(1)).unwrap(),
+            LogLevel::Trace
+        ));
+        assert!(matches!(
+            serde_json::from_value::<LogLevel>(json!(3)).unwrap(),
+            LogLevel::Info
+        ));
+        assert!(matches!(
+            serde_json::from_value::<LogLevel>(json!(5)).unwrap(),
+            LogLevel::Error
+        ));
+        // Out-of-range numbers and unknown strings are rejected
+        assert!(serde_json::from_value::<LogLevel>(json!(0)).is_err());
+        assert!(serde_json::from_value::<LogLevel>(json!(6)).is_err());
+        assert!(serde_json::from_value::<LogLevel>(json!("verbose")).is_err());
     }
 }

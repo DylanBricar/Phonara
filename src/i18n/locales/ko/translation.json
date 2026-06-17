@@ -170,7 +170,10 @@
       "languageOnly": "{{language}} 전용",
       "translation": "영어로 번역 가능",
       "translate": "영어로 번역"
-    }
+    },
+    "statusCheckFailed": "Failed to check model status",
+    "loadFailed": "Failed to load model",
+    "switchFailed": "Failed to switch model"
   },
   "settings": {
     "modelSettings": {
@@ -573,29 +576,6 @@
         "cancel": "취소",
         "selectToEdit": "세부 정보를 보고 편집하려면 위에서 프롬프트를 선택하세요.",
         "createFirst": "첫 번째 후처리 프롬프트를 만들려면 위의 '새 프롬프트 만들기'를 클릭하세요."
-      },
-      "actions": {
-        "title": "Actions",
-        "description": "Bind Ctrl+number keys (1-9) to custom prompts. Press a shortcut during recording to apply the action after transcription.",
-        "noActions": "No actions configured yet.",
-        "createFirst": "Create your first action to process transcriptions with your configured provider.",
-        "addAction": "Add Action",
-        "editAction": "Edit Action",
-        "key": "Key",
-        "keyLabel": "Key (1-9)",
-        "name": "Name",
-        "namePlaceholder": "e.g. Email mode",
-        "prompt": "Prompt",
-        "promptPlaceholder": "e.g. Format this as a professional email with greeting and sign-off. Add line breaks between paragraphs.",
-        "promptTip": "Tip: Use ${output} for transcribed text, $time_local for current time, $date for current date, $language for selected language.",
-        "model": "Model (optional)",
-        "modelPlaceholder": "Select a model",
-        "modelTip": "Select a specific model for this action, or use the default from the API section.",
-        "defaultModel": "Default",
-        "save": "Save",
-        "cancel": "Cancel",
-        "delete": "Delete",
-        "maxActionsReached": "Maximum of 9 actions reached."
       }
     },
     "history": {
@@ -829,7 +809,10 @@
     "checkForUpdates": "업데이트 확인",
     "portableUpdateTitle": "Manual update required",
     "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
-    "portableUpdateButton": "Open GitHub Releases"
+    "portableUpdateButton": "Open GitHub Releases",
+    "updateCheckFailed": "Failed to check for updates",
+    "restartFailed": "Update installed, but restart failed",
+    "updateInstallFailed": "Failed to install update"
   },
   "common": {
     "loading": "로딩 중...",

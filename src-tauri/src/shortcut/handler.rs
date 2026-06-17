@@ -20,7 +20,6 @@ pub fn reset_cancel_suppression() {
 const CANCEL_CONFIRM_TIMEOUT_MS: u128 = 1500;
 static CANCEL_PENDING: Mutex<Option<Instant>> = Mutex::new(None);
 
-#[allow(dead_code)]
 pub fn reset_cancel_confirmation() {
     if let Ok(mut pending) = CANCEL_PENDING.lock() {
         *pending = None;

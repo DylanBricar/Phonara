@@ -59,6 +59,11 @@ pub fn init_shortcuts(app: &AppHandle) {
 
 /// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
+    // A confirmed cancel latches CANCEL_SUPPRESSED to true to absorb Escape spam;
+    // clear it (and any stale double-press confirmation) at each new recording so
+    // cancel works again for this recording.
+    handler::reset_cancel_suppression();
+    handler::reset_cancel_confirmation();
     let settings = get_settings(app);
     match settings.keyboard_implementation {
         KeyboardImplementation::Tauri => tauri_impl::register_cancel_shortcut(app),
