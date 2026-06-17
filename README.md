@@ -122,6 +122,8 @@ For text input, install the appropriate tool for your display server:
 
 The recording overlay is disabled by default on Linux. Runtime dependency `libgtk-layer-shell.so.0` may need to be installed separately.
 
+**Overlay & pasting (Linux/X11):** the recording overlay window can interfere with pasting transcribed text into the target application. If you hit this, set **Overlay Position** to **None** in **Settings → Appearance** to disable the overlay, and enable **Audio Feedback** if you still want audible confirmation of the recording state. Users upgrading from an older version or importing settings from another platform may need to apply this manually.
+
 ## Origins & Credits
 
 Phonara is a maintained fork that combines work from two upstream projects:
