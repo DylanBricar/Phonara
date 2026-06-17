@@ -720,6 +720,10 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         .lock()
         .map_err(|e| format!("Failed to lock Enigo: {}", e))?;
 
+    // A clipboard-paste verify failure is deferred (not `?`-propagated) so the
+    // CopyToClipboard fallback below still runs — a user who configured it may
+    // rely on the transcription being left on the clipboard for a manual paste.
+    let mut clipboard_paste_error: Option<String> = None;
     match paste_method {
         PasteMethod::None => {}
         PasteMethod::Direct => {
@@ -731,13 +735,15 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
             )?;
         }
         PasteMethod::CtrlV | PasteMethod::CtrlShiftV | PasteMethod::ShiftInsert => {
-            paste_via_clipboard(
+            if let Err(e) = paste_via_clipboard(
                 &mut enigo,
                 &text,
                 &app_handle,
                 &paste_method,
                 paste_delay_ms,
-            )?
+            ) {
+                clipboard_paste_error = Some(e);
+            }
         }
         PasteMethod::ExternalScript => {
             let script_path = settings
@@ -764,7 +770,8 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         (settings.auto_submit, settings.auto_submit_key)
     };
 
-    if should_send_auto_submit(auto_submit, paste_method) {
+    // Don't submit when the paste itself failed — there is nothing to submit.
+    if clipboard_paste_error.is_none() && should_send_auto_submit(auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
         send_return_key(&mut enigo, submit_key)?;
     }
@@ -774,6 +781,11 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
         clipboard
             .write_text(&text)
             .map_err(|e| format!("Failed to copy to clipboard: {}", e))?;
+    }
+
+    // Surface a deferred clipboard-paste failure now that the fallback has run.
+    if let Some(e) = clipboard_paste_error {
+        return Err(e);
     }
 
     Ok(())

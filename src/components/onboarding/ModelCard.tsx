@@ -118,6 +118,10 @@ const ModelCard: React.FC<ModelCardProps> = ({
     <div
       onClick={handleClick}
       onKeyDown={(e) => {
+        // Only act on keys originating from the card itself, not bubbled up from
+        // a nested interactive child (e.g. the delete button) — otherwise Space
+        // on the focused delete button would also trigger the card selection.
+        if (e.target !== e.currentTarget) return;
         if ((e.key === "Enter" || e.key === " ") && isClickable) {
           e.preventDefault();
           handleClick();

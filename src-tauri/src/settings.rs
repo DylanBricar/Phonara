@@ -1075,7 +1075,7 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 
     let mut settings = if let Some(settings_value) = store.get("settings") {
         // Parse the entire settings object
-        match serde_json::from_value::<AppSettings>(settings_value) {
+        match serde_json::from_value::<AppSettings>(settings_value.clone()) {
             Ok(mut settings) => {
                 debug!("Found existing settings: {:?}", settings.redacted_for_log());
                 let default_settings = get_default_settings();
@@ -1101,8 +1101,14 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
                 settings
             }
             Err(e) => {
-                warn!("Failed to parse settings: {}", e);
-                // Fall back to default settings if parsing fails
+                warn!(
+                    "Failed to parse settings: {}; preserving them under \
+                     'settings_corrupt_backup' and resetting to defaults",
+                    e
+                );
+                // Preserve the unparseable value for recovery before resetting,
+                // mirroring get_settings so neither entry point destroys config.
+                store.set("settings_corrupt_backup", settings_value);
                 let default_settings = get_default_settings();
                 store.set(
                     "settings",

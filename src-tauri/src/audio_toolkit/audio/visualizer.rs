@@ -150,3 +150,52 @@ impl AudioVisualiser {
         self.noise_floor.fill(-40.0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make() -> AudioVisualiser {
+        AudioVisualiser::new(16_000, 512, 16, 400.0, 4000.0)
+    }
+
+    #[test]
+    fn feed_returns_none_until_a_full_window() {
+        let mut v = make();
+        assert!(v.feed(&vec![0.0; 256]).is_none());
+        // crossing window_size yields a result
+        assert!(v.feed(&vec![0.0; 256]).is_some());
+    }
+
+    #[test]
+    fn silence_yields_near_zero_buckets() {
+        let mut v = make();
+        let out = v.feed(&vec![0.0; 512]).expect("a full window returns Some");
+        assert_eq!(out.len(), 16);
+        assert!(
+            out.iter().all(|&b| b <= 0.01),
+            "silence must map to ~0 buckets, got {:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn drains_processed_window() {
+        let mut v = make();
+        // First call processes and drains one full window.
+        assert!(v.feed(&vec![0.0; 512]).is_some());
+        // The buffer is now empty; fewer than a window must return None, which
+        // proves the processed window was drained (not left in the buffer).
+        assert!(v.feed(&vec![0.0; 511]).is_none());
+    }
+
+    #[test]
+    fn retains_remainder_below_window() {
+        let mut v = make();
+        // 600 = one full window (512) + 88 leftover.
+        assert!(v.feed(&vec![0.0; 600]).is_some());
+        // 424 + the retained 88 == 512 -> another full window, proving the
+        // remainder was kept rather than discarded.
+        assert!(v.feed(&vec![0.0; 424]).is_some());
+    }
+}
