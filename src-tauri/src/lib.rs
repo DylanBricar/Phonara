@@ -523,12 +523,19 @@ pub fn run(cli_args: CliArgs) {
             // aborts the whole app (the setup hook runs inside
             // applicationDidFinishLaunching, where panics cannot unwind).
             if app.get_webview_window("main").is_none() {
+                // Dev builds (productName "ParlerDev") get a distinct window
+                // title so the window can't be mistaken for a production Parler.
+                let window_title = if app.package_info().name.ends_with("Dev") {
+                    "Parler Dev"
+                } else {
+                    "Parler"
+                };
                 let mut win_builder = tauri::WebviewWindowBuilder::new(
                     app,
                     "main",
                     tauri::WebviewUrl::App("/".into()),
                 )
-                .title("Parler")
+                .title(window_title)
                 .inner_size(680.0, 570.0)
                 .min_inner_size(680.0, 570.0)
                 .resizable(true)

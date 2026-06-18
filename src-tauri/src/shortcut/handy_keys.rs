@@ -36,9 +36,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::settings::{self, get_settings, ShortcutBinding};
+use crate::transcription_coordinator::is_transcribe_binding;
 
 use super::handler::handle_shortcut_event;
 
@@ -56,6 +58,14 @@ enum ManagerCommand {
     Shutdown,
 }
 
+/// Maximum duration a binding-recording session may suppress global shortcuts.
+///
+/// Safety net: if the frontend never calls `stop_recording` (e.g. the webview
+/// crashes mid-recording), suppression auto-expires after this window instead
+/// of leaving every global shortcut disabled until the app restarts. Recording
+/// a shortcut takes a second or two, so this is far longer than any real use.
+const MAX_RECORDING_DURATION: Duration = Duration::from_secs(30);
+
 /// State for the handy-keys shortcut manager
 pub struct HandyKeysState {
     /// Channel to send commands to the manager thread (wrapped in Mutex for Sync)
@@ -64,8 +74,14 @@ pub struct HandyKeysState {
     thread_handle: Mutex<Option<JoinHandle<()>>>,
     /// Recording listener for UI key capture (only active during recording)
     recording_listener: Mutex<Option<KeyboardListener>>,
-    /// Flag indicating if we're in recording mode
+    /// Whether the settings UI is currently capturing keys to record a new
+    /// binding. While set, the manager thread suppresses global shortcut
+    /// actions (see `is_capturing`) so recording a combo like "Left Ctrl + V"
+    /// doesn't also fire an existing shortcut bound to those keys.
     is_recording: AtomicBool,
+    /// When the current recording started. Used by `is_capturing` as a safety
+    /// net so suppression auto-expires if the frontend never stops recording.
+    recording_started_at: Mutex<Option<Instant>>,
     /// The binding ID being recorded (if any)
     recording_binding_id: Mutex<Option<String>>,
     /// Flag to stop recording loop
@@ -101,6 +117,7 @@ impl HandyKeysState {
             thread_handle: Mutex::new(Some(thread_handle)),
             recording_listener: Mutex::new(None),
             is_recording: AtomicBool::new(false),
+            recording_started_at: Mutex::new(None),
             recording_binding_id: Mutex::new(None),
             recording_running: Arc::new(AtomicBool::new(false)),
         })
@@ -110,59 +127,120 @@ impl HandyKeysState {
     fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle) {
         info!("handy-keys manager thread started");
 
-        // Create the HotkeyManager in this thread
-        let manager = match HotkeyManager::new_with_blocking() {
+        // Two managers are used so that OS-level key *blocking* is scoped to
+        // only the push-to-talk transcribe triggers. Those must be suppressed
+        // (e.g. holding `option+space` should not type spaces into the focused
+        // app), so they go through a blocking event tap that consumes the
+        // matched combo. EVERY other binding (cancel, pause, history, action
+        // digits, …) is handled by a passive, non-blocking listener that can
+        // never swallow a keystroke.
+        //
+        // This is the fix for the "Parler hijacks my whole keyboard" class of
+        // bug: previously *all* registered bindings were blocking, so a
+        // misbehaving or overly-broad shortcut would consume keys system-wide,
+        // breaking keystroke monitoring for other apps (Klack, the macOS
+        // shortcut recorder, etc.). Now at most the configured transcribe
+        // trigger combos can ever be blocked.
+        let blocking_manager = match HotkeyManager::new_with_blocking() {
             Ok(m) => m,
             Err(e) => {
-                error!("Failed to create HotkeyManager: {}", e);
+                error!("Failed to create blocking HotkeyManager: {}", e);
+                return;
+            }
+        };
+        let passive_manager = match HotkeyManager::new() {
+            Ok(m) => m,
+            Err(e) => {
+                error!("Failed to create passive HotkeyManager: {}", e);
                 return;
             }
         };
 
-        // Maps binding IDs to HotkeyIds and hotkey strings
-        let mut binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
-        let mut hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new(); // (binding_id, hotkey_string)
+        // Separate maps per manager: HotkeyId values are allocated per-manager
+        // and would otherwise collide between the two.
+        let mut blocking_binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
+        let mut blocking_hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
+        let mut passive_binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
+        let mut passive_hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
 
         loop {
-            // Check for hotkey events (non-blocking)
-            while let Some(event) = manager.try_recv() {
-                if let Some((binding_id, hotkey_string)) = hotkey_to_binding.get(&event.id) {
-                    debug!(
-                        "handy-keys event: binding={}, hotkey={}, state={:?}",
-                        binding_id, hotkey_string, event.state
-                    );
-                    let is_pressed = event.state == HotkeyState::Pressed;
-                    handle_shortcut_event(&app, binding_id, hotkey_string, is_pressed);
+            // Drain hotkey events from both managers (non-blocking).
+            for (manager, map) in [
+                (&blocking_manager, &blocking_hotkey_to_binding),
+                (&passive_manager, &passive_hotkey_to_binding),
+            ] {
+                while let Some(event) = manager.try_recv() {
+                    if let Some((binding_id, hotkey_string)) = map.get(&event.id) {
+                        // While the user is recording a new binding in the settings
+                        // UI, suppress all global shortcut actions. Otherwise a
+                        // registered shortcut (e.g. a modifier-only "Left Ctrl"
+                        // transcribe binding) fires the moment its keys are pressed
+                        // during recording, triggering transcription and cutting the
+                        // capture short. Events are still drained so they don't queue
+                        // up and fire once recording ends.
+                        if app
+                            .try_state::<HandyKeysState>()
+                            .is_some_and(|state| state.is_capturing())
+                        {
+                            continue;
+                        }
+                        debug!(
+                            "handy-keys event: binding={}, hotkey={}, state={:?}",
+                            binding_id, hotkey_string, event.state
+                        );
+                        let is_pressed = event.state == HotkeyState::Pressed;
+                        handle_shortcut_event(&app, binding_id, hotkey_string, is_pressed);
+                    }
                 }
             }
 
             // Check for commands (non-blocking with timeout)
-            match cmd_rx.recv_timeout(std::time::Duration::from_millis(10)) {
+            match cmd_rx.recv_timeout(Duration::from_millis(10)) {
                 Ok(cmd) => match cmd {
                     ManagerCommand::Register {
                         binding_id,
                         hotkey_string,
                         response,
                     } => {
-                        let result = Self::do_register(
-                            &manager,
-                            &mut binding_to_hotkey,
-                            &mut hotkey_to_binding,
-                            &binding_id,
-                            &hotkey_string,
-                        );
+                        // Push-to-talk triggers block; everything else is passive.
+                        let result = if is_transcribe_binding(&binding_id) {
+                            Self::do_register(
+                                &blocking_manager,
+                                &mut blocking_binding_to_hotkey,
+                                &mut blocking_hotkey_to_binding,
+                                &binding_id,
+                                &hotkey_string,
+                            )
+                        } else {
+                            Self::do_register(
+                                &passive_manager,
+                                &mut passive_binding_to_hotkey,
+                                &mut passive_hotkey_to_binding,
+                                &binding_id,
+                                &hotkey_string,
+                            )
+                        };
                         let _ = response.send(result);
                     }
                     ManagerCommand::Unregister {
                         binding_id,
                         response,
                     } => {
-                        let result = Self::do_unregister(
-                            &manager,
-                            &mut binding_to_hotkey,
-                            &mut hotkey_to_binding,
-                            &binding_id,
-                        );
+                        let result = if is_transcribe_binding(&binding_id) {
+                            Self::do_unregister(
+                                &blocking_manager,
+                                &mut blocking_binding_to_hotkey,
+                                &mut blocking_hotkey_to_binding,
+                                &binding_id,
+                            )
+                        } else {
+                            Self::do_unregister(
+                                &passive_manager,
+                                &mut passive_binding_to_hotkey,
+                                &mut passive_hotkey_to_binding,
+                                &binding_id,
+                            )
+                        };
                         let _ = response.send(result);
                     }
                     ManagerCommand::Shutdown => {
@@ -259,6 +337,22 @@ impl HandyKeysState {
             .map_err(|_| "Failed to receive unregister response")?
     }
 
+    /// Whether the UI is actively capturing keys for a new binding.
+    ///
+    /// Returns false once `MAX_RECORDING_DURATION` has elapsed even if
+    /// `is_recording` is still set, so a frontend that never calls
+    /// `stop_recording` can't leave global shortcuts suppressed indefinitely.
+    fn is_capturing(&self) -> bool {
+        if !self.is_recording.load(Ordering::SeqCst) {
+            return false;
+        }
+        let started = self
+            .recording_started_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        started.is_some_and(|t| t.elapsed() < MAX_RECORDING_DURATION)
+    }
+
     /// Start recording mode for a specific binding
     pub fn start_recording(&self, app: &AppHandle, binding_id: String) -> Result<(), String> {
         if self.is_recording.load(Ordering::SeqCst) {
@@ -282,6 +376,13 @@ impl HandyKeysState {
                 .lock()
                 .map_err(|_| "Failed to lock recording_binding_id")?;
             *binding = Some(binding_id);
+        }
+        {
+            let mut started = self
+                .recording_started_at
+                .lock()
+                .map_err(|_| "Failed to lock recording_started_at")?;
+            *started = Some(Instant::now());
         }
 
         self.is_recording.store(true, Ordering::SeqCst);
@@ -327,7 +428,7 @@ impl HandyKeysState {
                     error!("Failed to emit key event: {}", e);
                 }
             } else {
-                thread::sleep(std::time::Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(10));
             }
         }
 
@@ -352,6 +453,13 @@ impl HandyKeysState {
                 .lock()
                 .map_err(|_| "Failed to lock recording_binding_id")?;
             *binding = None;
+        }
+        {
+            let mut started = self
+                .recording_started_at
+                .lock()
+                .map_err(|_| "Failed to lock recording_started_at")?;
+            *started = None;
         }
 
         debug!("Stopped handy-keys recording mode");
