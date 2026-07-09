@@ -7,7 +7,9 @@ use crate::managers::history::HistoryManager;
 use crate::managers::model::ModelManager;
 use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::TranscriptionManager;
-use crate::settings::{get_settings, AppSettings, OverlayStyle, APPLE_INTELLIGENCE_PROVIDER_ID};
+use crate::settings::{
+    get_settings, AppSettings, OverlayStyle, PostProcessAction, APPLE_INTELLIGENCE_PROVIDER_ID,
+};
 use crate::shortcut;
 use crate::tray::{change_tray_icon, TrayIconState};
 use crate::utils::{
@@ -479,6 +481,21 @@ async fn process_action(
     }
 }
 
+async fn run_post_process_action(
+    settings: &AppSettings,
+    text: &str,
+    action: &PostProcessAction,
+) -> Option<String> {
+    process_action(
+        settings,
+        text,
+        &action.prompt,
+        action.model.as_deref(),
+        action.provider_id.as_deref(),
+    )
+    .await
+}
+
 async fn maybe_convert_chinese_variant(
     effective_language: &str,
     transcription: &str,
@@ -894,7 +911,17 @@ impl ShortcutAction for TranscribeAction {
                                 transcription
                             );
 
-                            if post_process {
+                            let settings = get_settings(&ah);
+                            let selected_action = selected_action_key.and_then(|key| {
+                                settings
+                                    .post_process_actions
+                                    .iter()
+                                    .find(|action| action.key == key)
+                                    .cloned()
+                            });
+                            let post_process_requested = post_process || selected_action.is_some();
+
+                            if post_process_requested {
                                 if use_streaming_overlay {
                                     tm.emit_stream_working(StreamWorkKind::Polishing);
                                 } else {
@@ -903,7 +930,37 @@ impl ShortcutAction for TranscribeAction {
                             }
 
                             let Some(processed) = complete_unless_cancelled(
-                                process_transcription_output(&ah, &transcription, post_process),
+                                async {
+                                    if let Some(action) = selected_action {
+                                        let base = process_transcription_output(
+                                            &ah,
+                                            &transcription,
+                                            false,
+                                        )
+                                        .await;
+                                        match run_post_process_action(
+                                            &settings,
+                                            &base.final_text,
+                                            &action,
+                                        )
+                                        .await
+                                        {
+                                            Some(result) => ProcessedTranscription {
+                                                final_text: result.clone(),
+                                                post_processed_text: Some(result),
+                                                post_process_prompt: Some(action.prompt),
+                                            },
+                                            None => base,
+                                        }
+                                    } else {
+                                        process_transcription_output(
+                                            &ah,
+                                            &transcription,
+                                            post_process,
+                                        )
+                                        .await
+                                    }
+                                },
                                 || rm.was_cancelled_since(cancel_generation),
                             )
                             .await
@@ -926,7 +983,7 @@ impl ShortcutAction for TranscribeAction {
                                 if let Err(err) = hm.save_entry(
                                     file_name,
                                     transcription,
-                                    post_process,
+                                    post_process_requested,
                                     processed.post_processed_text.clone(),
                                     processed.post_process_prompt.clone(),
                                 ) {
