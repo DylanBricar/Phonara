@@ -1,6 +1,14 @@
 name: "Playwright"
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "bun.lock"
+      - "playwright.config.*"
+      - "tests/**"
   pull_request:
     paths:
       - "src/**"

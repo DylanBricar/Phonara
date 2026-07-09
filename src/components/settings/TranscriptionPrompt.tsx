@@ -3,35 +3,15 @@ import { useTranslation } from "react-i18next";
 import { useSettings } from "../../hooks/useSettings";
 import { useModelStore } from "@/stores/modelStore";
 import { SettingContainer } from "../ui/SettingContainer";
-
-const TOKEN_BUDGET = 112; // Half of Whisper's 224-token window
+import {
+  estimatePromptTokens,
+  TRANSCRIPTION_PROMPT_TOKEN_BUDGET,
+} from "@/lib/text/tokenBudget";
 
 interface TranscriptionPromptProps {
   descriptionMode?: "inline" | "tooltip";
   grouped?: boolean;
 }
-
-/** Per-script token cost estimator (tokens per character). */
-const estimateTokens = (text: string): number => {
-  let tokens = 0;
-  for (const char of text) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code >= 0x4e00 && code <= 0x9fff) {
-      // CJK Unified Ideographs
-      tokens += 2.2;
-    } else if (code >= 0x3040 && code <= 0x30ff) {
-      // Hiragana / Katakana
-      tokens += 2.2;
-    } else if (code >= 0x0400 && code <= 0x04ff) {
-      // Cyrillic
-      tokens += 0.5;
-    } else {
-      // Latin and other scripts
-      tokens += 0.25;
-    }
-  }
-  return Math.ceil(tokens);
-};
 
 const LANGUAGE_PRESETS: Record<string, string> = {
   none: "",
@@ -72,8 +52,14 @@ export const TranscriptionPrompt: React.FC<TranscriptionPromptProps> =
       setLocalValue(currentValue ?? "");
     }, [currentValue]);
 
-    const tokenCount = useMemo(() => estimateTokens(localValue), [localValue]);
-    const usagePercent = Math.min((tokenCount / TOKEN_BUDGET) * 100, 100);
+    const tokenCount = useMemo(
+      () => estimatePromptTokens(localValue),
+      [localValue],
+    );
+    const usagePercent = Math.min(
+      (tokenCount / TRANSCRIPTION_PROMPT_TOKEN_BUDGET) * 100,
+      100,
+    );
 
     const progressColor =
       usagePercent >= 95
@@ -187,7 +173,7 @@ export const TranscriptionPrompt: React.FC<TranscriptionPromptProps> =
               <span className="text-[10px] text-text/40">
                 {t("settings.advanced.transcriptionPrompt.tokenBudget", {
                   used: tokenCount,
-                  total: TOKEN_BUDGET,
+                  total: TRANSCRIPTION_PROMPT_TOKEN_BUDGET,
                 })}
               </span>
             </div>

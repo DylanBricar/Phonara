@@ -16,8 +16,13 @@
     "format:check": "prettier --check . && cd src-tauri && cargo fmt -- --check",
     "format:frontend": "prettier --write .",
     "format:backend": "cd src-tauri && cargo fmt",
+    "test": "bun run test:unit && bun run test:playwright",
+    "test:unit": "bun test tests/unit --coverage --coverage-reporter=text",
     "test:playwright": "playwright test",
     "test:playwright:ui": "playwright test --ui",
+    "quality:check": "bun run check:translations && bun run lint && bun run test:unit && bun run build && bun run test:playwright && bun audit",
+    "precommit": "bun scripts/pre-commit-check.ts",
+    "prepare": "bun scripts/install-git-hooks.ts",
     "check:translations": "bun scripts/check-translations.ts",
     "storybook": "bunx --bun ladle serve --port 1422",
     "postinstall": "bun scripts/check-nix-deps.ts"
