@@ -417,6 +417,23 @@
           "label": "Aperçu de l'overlay",
           "description": "Affiche un aperçu de 3 secondes de l'overlay avec les paramètres actuels.",
           "button": "Aperçu"
+        },
+        "style": {
+          "title": "Style de l'overlay",
+          "description": "Choisir la quantité d'informations affichées par l'overlay d'enregistrement.",
+          "options": {
+            "none": "Aucun",
+            "minimal": "Minimal",
+            "live": "Transcription en direct"
+          }
+        },
+        "position": {
+          "title": "Position de l'overlay",
+          "description": "Choisir où l'overlay d'enregistrement apparaît à l'écran.",
+          "options": {
+            "bottom": "Bas",
+            "top": "Haut"
+          }
         }
       },
       "pasteMethod": {
@@ -574,7 +591,8 @@
         "cancel": "Annuler",
         "selectToEdit": "Sélectionnez un prompt ci-dessus pour voir et modifier ses détails.",
         "createFirst": "Cliquez sur 'Créer un nouveau prompt' ci-dessus pour créer votre premier prompt de post-traitement."
-      }
+      },
+      "title": "Post-traitement"
     },
     "history": {
       "title": "Historique",
@@ -806,6 +824,9 @@
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
         }
       }
+    },
+    "postprocessing": {
+      "title": "Post-traitement"
     }
   },
   "footer": {
@@ -840,7 +861,8 @@
     "yes": "Oui",
     "no": "Non",
     "noOptionsFound": "Aucune option trouvée",
-    "clear": "Effacer"
+    "clear": "Effacer",
+    "reset": "Réinitialiser"
   },
   "accessibility": {
     "permissionsRequired": "Autorisations d'accessibilité requises",

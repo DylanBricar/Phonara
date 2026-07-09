@@ -417,6 +417,23 @@
           "label": "Preview Overlay",
           "description": "Show a 3-second preview of the overlay with current settings.",
           "button": "Preview"
+        },
+        "style": {
+          "title": "Overlay Style",
+          "description": "Choose how much recording feedback the overlay shows.",
+          "options": {
+            "none": "None",
+            "minimal": "Minimal",
+            "live": "Live transcript"
+          }
+        },
+        "position": {
+          "title": "Overlay Position",
+          "description": "Choose where the recording overlay appears on screen.",
+          "options": {
+            "bottom": "Bottom",
+            "top": "Top"
+          }
         }
       },
       "pasteMethod": {
@@ -574,7 +591,8 @@
         "cancel": "İptal",
         "selectToEdit": "Ayrıntılarını görüntülemek ve düzenlemek için yukarıdan bir prompt seçin.",
         "createFirst": "İlk son işlem prompt'unuzu oluşturmak için yukarıdaki “Yeni Prompt Oluştur” seçeneğine tıklayın."
-      }
+      },
+      "title": "Post Processing"
     },
     "history": {
       "title": "Geçmiş",
@@ -806,6 +824,9 @@
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
         }
       }
+    },
+    "postprocessing": {
+      "title": "Post Processing"
     }
   },
   "footer": {
@@ -840,7 +861,8 @@
     "yes": "Evet",
     "no": "Hayır",
     "noOptionsFound": "Seçenek bulunamadı",
-    "clear": "Temizle"
+    "clear": "Temizle",
+    "reset": "Reset"
   },
   "accessibility": {
     "permissionsRequired": "Erişilebilirlik İzinleri Gerekli",

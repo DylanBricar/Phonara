@@ -417,6 +417,23 @@
           "label": "Preview Overlay",
           "description": "Show a 3-second preview of the overlay with current settings.",
           "button": "Preview"
+        },
+        "style": {
+          "title": "Overlay Style",
+          "description": "Choose how much recording feedback the overlay shows.",
+          "options": {
+            "none": "None",
+            "minimal": "Minimal",
+            "live": "Live transcript"
+          }
+        },
+        "position": {
+          "title": "Overlay Position",
+          "description": "Choose where the recording overlay appears on screen.",
+          "options": {
+            "bottom": "Bottom",
+            "top": "Top"
+          }
         }
       },
       "pasteMethod": {
@@ -574,7 +591,8 @@
         "cancel": "रद्द गर्नुहोस्",
         "selectToEdit": "विवरण हेर्न र सम्पादन गर्न माथिबाट प्रम्प्ट चयन गर्नुहोस्।",
         "createFirst": "आफ्नो पहिलो पोस्ट-प्रोसेसिङ प्रम्प्ट बनाउन माथिको 'नयाँ प्रम्प्ट बनाउनुहोस्' क्लिक गर्नुहोस्।"
-      }
+      },
+      "title": "Post Processing"
     },
     "history": {
       "title": "हिस्ट्री",
@@ -806,6 +824,9 @@
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
         }
       }
+    },
+    "postprocessing": {
+      "title": "Post Processing"
     }
   },
   "footer": {
@@ -840,7 +861,8 @@
     "yes": "Yes",
     "no": "No",
     "noOptionsFound": "कुनै विकल्प भेटिएन",
-    "clear": "खाली गर्नुहोस्"
+    "clear": "खाली गर्नुहोस्",
+    "reset": "Reset"
   },
   "accessibility": {
     "permissionsRequired": "Accessibility Permissions Required",
