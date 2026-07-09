@@ -19,17 +19,28 @@ concurrency:
 jobs:
   verify-updater-signing:
     runs-on: ubuntu-latest
+    outputs:
+      has-signing-key: ${{ steps.check-signing-key.outputs.has-signing-key }}
     steps:
-      - name: Require updater signing key
+      - name: Check updater signing key
+        id: check-signing-key
         env:
           TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK:-}" ]]; then
-            echo "::error::TAURI_SIGNING_PRIVATE_KEY is required for release builds because Phonara's updater expects signed artifacts and latest.json."
-            exit 1
+            echo "has-signing-key=false" >> "$GITHUB_OUTPUT"
+            if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+              echo "::error::TAURI_SIGNING_PRIVATE_KEY is required for release builds because Phonara's updater expects signed artifacts and latest.json."
+              exit 1
+            fi
+            echo "::notice::TAURI_SIGNING_PRIVATE_KEY is not configured; skipping automatic release publishing for this push."
+            exit 0
           fi
+          echo "has-signing-key=true" >> "$GITHUB_OUTPUT"
 
   create-release:
+    if: needs.verify-updater-signing.outputs.has-signing-key == 'true'
     permissions:
       contents: write
     needs: verify-updater-signing
