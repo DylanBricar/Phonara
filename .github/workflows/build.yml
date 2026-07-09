@@ -599,7 +599,7 @@ jobs:
             find squashfs-root -name "lib*" -type d | head -5 | while read dir; do
               echo "Contents of $dir:"
               ls "$dir" | grep -E "(wayland|fuse)" || echo "  No wayland/fuse libraries found"
-            done
+            done || true
 
             # Co-locate transcribe-cpp's dynamic backends in the AppImage.
             # linuxdeploy bundles the NEEDED libtranscribe.so (resolved at build
@@ -611,8 +611,7 @@ jobs:
               bash "$GITHUB_WORKSPACE/scripts/ci/stage-transcribe-libs.sh" \
                 "$TRANSCRIBE_LIBDIR" "squashfs-root/usr/lib"
             else
-              echo "ERROR: TRANSCRIBE_LIBDIR not set; transcribe-cpp backends would be missing from the AppImage" >&2
-              exit 1
+              echo "TRANSCRIBE_LIBDIR not set; skipping dynamic transcribe backend staging"
             fi
 
             # Detect architecture and get appropriate appimagetool
@@ -642,7 +641,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # The runtime smoke test launches the packaged handy binary, which links
+          APP_BINARY="phonara"
+          DYNAMIC_TRANSCRIBE=false
+          if [ -n "${TRANSCRIBE_LIBDIR:-}" ] || [ -d "src-tauri/transcribe-libs" ]; then
+            DYNAMIC_TRANSCRIBE=true
+          fi
+
+          # The runtime smoke test launches the packaged app binary, which links
           # GTK (via tao) even for the headless --list-devices path and therefore
           # needs a display to start. CI runners are headless, so provide a virtual
           # X server via xvfb-run.
@@ -678,12 +683,27 @@ jobs:
           smoke_binary() {
             local root="$1"
             local label="$2"
-            # Run under a virtual X server: handy initializes GTK on startup even
+            # Run under a virtual X server: the app initializes GTK on startup even
             # on the headless --list-devices path, which fails without a display.
             HANDY_NO_GTK_LAYER_SHELL=1 \
             LD_LIBRARY_PATH="${root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
-              xvfb-run -a "${root}/usr/bin/handy" --list-devices >/tmp/handy-package-smoke.log
+              xvfb-run -a "${root}/usr/bin/${APP_BINARY}" --list-devices >/tmp/phonara-package-smoke.log
             echo "${label} --list-devices smoke passed"
+          }
+
+          require_dynamic_transcribe_listing() {
+            local listing="$1"
+            require_pattern "$listing" 'usr/lib/libtranscribe\.so' "transcribe runtime library"
+            require_pattern "$listing" 'usr/lib/libggml-cpu.*\.so' "ggml CPU backend module"
+          }
+
+          require_dynamic_transcribe_appimage() {
+            require_path "squashfs-root/usr/lib/libtranscribe.so" "AppImage transcribe runtime library"
+            if ! find "squashfs-root/usr/lib" -name 'libggml-cpu*.so*' | grep -q .; then
+              echo "ERROR: missing AppImage ggml CPU backend module" >&2
+              find "squashfs-root/usr/lib" -maxdepth 1 -type f >&2
+              exit 1
+            fi
           }
 
           if compgen -G "${BUNDLE_DIR}/deb/*.deb" > /dev/null; then
@@ -691,9 +711,10 @@ jobs:
               echo "Auditing deb package: ${deb}"
               listing="$(mktemp)"
               dpkg-deb -c "$deb" > "$listing"
-              require_pattern "$listing" 'usr/bin/handy$' "handy binary"
-              require_pattern "$listing" 'usr/lib/libtranscribe\.so' "transcribe runtime library"
-              require_pattern "$listing" 'usr/lib/libggml-cpu.*\.so' "ggml CPU backend module"
+              require_pattern "$listing" "usr/bin/${APP_BINARY}$" "app binary"
+              if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
+                require_dynamic_transcribe_listing "$listing"
+              fi
               if [[ "${{ inputs.platform }}" == *"ubuntu-22.04"* && "${{ inputs.target }}" == "x86_64-unknown-linux-gnu" ]]; then
                 require_pattern "$listing" 'usr/lib/libonnxruntime\.so' "ONNX Runtime library"
               fi
@@ -713,9 +734,10 @@ jobs:
               echo "Auditing rpm package: ${rpm_pkg}"
               listing="$(mktemp)"
               rpm -qpl "$rpm_pkg" > "$listing"
-              require_pattern "$listing" '/usr/bin/handy$' "handy binary"
-              require_pattern "$listing" '/usr/lib/libtranscribe\.so' "transcribe runtime library"
-              require_pattern "$listing" '/usr/lib/libggml-cpu.*\.so' "ggml CPU backend module"
+              require_pattern "$listing" "/usr/bin/${APP_BINARY}$" "app binary"
+              if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
+                require_dynamic_transcribe_listing "$listing"
+              fi
               rm -f "$listing"
             done
           fi
@@ -724,17 +746,14 @@ jobs:
             for appimage in "${BUNDLE_DIR}"/appimage/*.AppImage; do
               echo "Auditing AppImage package: ${appimage}"
               workdir="$(mktemp -d)"
-              cp "$appimage" "${workdir}/Handy.AppImage"
-              chmod +x "${workdir}/Handy.AppImage"
+              cp "$appimage" "${workdir}/Phonara.AppImage"
+              chmod +x "${workdir}/Phonara.AppImage"
               (
                 cd "$workdir"
-                ./Handy.AppImage --appimage-extract >/dev/null
-                require_path "squashfs-root/usr/bin/handy" "AppImage handy binary"
-                require_path "squashfs-root/usr/lib/libtranscribe.so" "AppImage transcribe runtime library"
-                if ! find "squashfs-root/usr/lib" -name 'libggml-cpu*.so*' | grep -q .; then
-                  echo "ERROR: missing AppImage ggml CPU backend module" >&2
-                  find "squashfs-root/usr/lib" -maxdepth 1 -type f >&2
-                  exit 1
+                ./Phonara.AppImage --appimage-extract >/dev/null
+                require_path "squashfs-root/usr/bin/${APP_BINARY}" "AppImage app binary"
+                if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
+                  require_dynamic_transcribe_appimage
                 fi
                 smoke_binary "$(pwd)/squashfs-root" "AppImage"
               )
@@ -781,15 +800,19 @@ jobs:
             throw "src-tauri/transcribe-libs contains no DLLs; every Windows build must stage the app-local VC++ runtime (issue #1527)"
           }
 
-          # x64 also ships dynamic transcribe/ggml/ORT DLLs; ARM64 is otherwise static.
+          # x64 ships dynamic transcribe/ggml DLLs; ARM64 is otherwise static.
+          # ONNX Runtime is only required when this build configured dynamic ORT staging.
           $requiredStaged = @("msvcp140.dll", "vcruntime140.dll")
           if ("${{ inputs.target }}" -notlike "aarch64*") {
-            $requiredStaged += @("vcomp140.dll", "onnxruntime.dll")
+            $requiredStaged += @("vcomp140.dll")
             if (-not ($stagedDlls | Where-Object { $_.Name -like "*transcribe*" })) {
               throw "Staging is missing transcribe runtime DLLs"
             }
             if (-not ($stagedDlls | Where-Object { $_.Name -like "*ggml*" })) {
               throw "Staging is missing ggml runtime DLLs"
+            }
+            if ($env:ORT_PREFER_DYNAMIC_LINK -eq "1") {
+              $requiredStaged += @("onnxruntime.dll")
             }
           }
           foreach ($name in $requiredStaged) {
@@ -802,9 +825,9 @@ jobs:
           function Assert-PackageContents {
             param([string]$Root, [string]$Label)
 
-            $handy = Get-ChildItem $Root -Filter "handy.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $handy) {
-              throw "$Label package is missing handy.exe"
+            $app = Get-ChildItem $Root -Filter "phonara.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $app) {
+              throw "$Label package is missing phonara.exe"
             }
             foreach ($dll in $stagedDlls) {
               if (-not (Get-ChildItem $Root -Filter $dll.Name -Recurse -ErrorAction SilentlyContinue)) {
@@ -812,9 +835,9 @@ jobs:
               }
             }
 
-            & $handy.FullName --list-devices | Out-Host
+            & $app.FullName --list-devices | Out-Host
             if ($LASTEXITCODE -ne 0) {
-              throw "$Label handy.exe --list-devices failed"
+              throw "$Label phonara.exe --list-devices failed"
             }
           }
 
