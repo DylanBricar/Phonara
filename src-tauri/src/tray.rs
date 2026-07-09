@@ -3,7 +3,7 @@ use crate::managers::model::ModelManager;
 use crate::managers::transcription::TranscriptionManager;
 use crate::settings;
 use crate::tray_i18n::get_tray_translations;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::sync::{Arc, Mutex};
 use tauri::image::Image;
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -25,9 +25,11 @@ impl CurrentTrayIconState {
     pub fn new() -> Self {
         Self(Mutex::new(TrayIconState::Idle))
     }
+
     pub fn get(&self) -> TrayIconState {
         *self.0.lock().unwrap()
     }
+
     fn set(&self, state: TrayIconState) {
         *self.0.lock().unwrap() = state;
     }
@@ -81,6 +83,7 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
     let tray = app.state::<TrayIcon>();
     let theme = get_current_theme(app);
 
+    // Store current state
     app.state::<CurrentTrayIconState>().set(icon);
 
     let icon_path = get_icon_path(theme, icon);
@@ -97,7 +100,14 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
     let icon_elapsed = icon_started.elapsed();
 
     // Update menu based on state
+    let menu_started = std::time::Instant::now();
     update_tray_menu(app, None);
+    debug!(
+        "tray icon change ({:?}): set_icon={:?} menu={:?}",
+        icon,
+        icon_elapsed,
+        menu_started.elapsed()
+    );
 }
 
 pub fn tray_tooltip() -> String {
