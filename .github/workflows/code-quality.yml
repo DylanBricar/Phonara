@@ -45,6 +45,9 @@ jobs:
       - name: Check translation consistency
         run: bun run check:translations
 
+      - name: Scan committed files for obvious secrets
+        run: bun run check:secrets
+
       - name: Run ESLint
         run: bun run lint
 

@@ -2,6 +2,7 @@
   "name": "phonara-app",
   "private": true,
   "version": "0.9.1",
+  "packageManager": "bun@1.3.14",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -20,7 +21,8 @@
     "test:unit": "bun test tests/unit --coverage --coverage-reporter=text",
     "test:playwright": "playwright test",
     "test:playwright:ui": "playwright test --ui",
-    "quality:check": "bun run check:translations && bun run lint && bun run test:unit && bun run build && bun run test:playwright && bun audit",
+    "quality:check": "bun run check:translations && bun run check:secrets && bun run lint && bun run test:unit && bun run build && bun run test:playwright && bun audit",
+    "check:secrets": "bun scripts/check-secrets.ts",
     "precommit": "bun scripts/pre-commit-check.ts",
     "prepare": "bun scripts/install-git-hooks.ts",
     "check:translations": "bun scripts/check-translations.ts",

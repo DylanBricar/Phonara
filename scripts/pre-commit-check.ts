@@ -50,6 +50,8 @@ if (prettierFiles.length > 0) {
   run("bunx", ["prettier", "--check", "--", ...prettierFiles]);
 }
 
+run("bun", ["run", "check:secrets"]);
+
 if (sourceFiles.length > 0) {
   run("bun", ["run", "lint"]);
   run("bun", ["run", "test:unit"]);
