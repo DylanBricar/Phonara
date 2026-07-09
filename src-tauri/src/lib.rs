@@ -27,8 +27,6 @@ use specta_typescript::{BigIntExportBehavior, Typescript};
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 use env_filter::Builder as EnvFilterBuilder;
-#[cfg(unix)]
-use libc;
 use managers::audio::AudioRecordingManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
@@ -204,13 +202,13 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     #[cfg(target_os = "linux")]
     let sig_post_process = libc::SIGRTMIN() + 1;
     #[cfg(target_os = "linux")]
-    let signals = Signals::new(&[sig_post_process, SIGUSR2]).unwrap();
+    let signals = Signals::new([sig_post_process, SIGUSR2]).unwrap();
     #[cfg(target_os = "linux")]
     signal_handle::setup_signal_handler(app_handle.clone(), signals, sig_post_process);
 
     #[cfg(target_os = "macos")]
     {
-        let signals = Signals::new(&[SIGUSR2]).unwrap();
+        let signals = Signals::new([SIGUSR2]).unwrap();
         signal_handle::setup_signal_handler_macos(app_handle.clone(), signals);
     }
 
@@ -252,28 +250,24 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                     }
                 }
                 TrayIconEvent::Click {
-                    button,
-                    button_state,
+                    button: MouseButton::Left,
+                    button_state: MouseButtonState::Up,
                     ..
                 } => {
-                    if matches!(button, MouseButton::Left)
-                        && matches!(button_state, MouseButtonState::Up)
+                    #[cfg(target_os = "macos")]
                     {
-                        #[cfg(target_os = "macos")]
-                        {
-                            let now = Instant::now();
-                            if let Ok(mut last) = LAST_TRAY_CLICK.lock() {
-                                let is_double = last
-                                    .map(|prev| {
-                                        now.duration_since(prev)
-                                            <= Duration::from_millis(DOUBLE_CLICK_THRESHOLD_MS)
-                                    })
-                                    .unwrap_or(false);
-                                *last = Some(now);
-                                if is_double {
-                                    let app = tray.app_handle();
-                                    show_main_window(&app);
-                                }
+                        let now = Instant::now();
+                        if let Ok(mut last) = LAST_TRAY_CLICK.lock() {
+                            let is_double = last
+                                .map(|prev| {
+                                    now.duration_since(prev)
+                                        <= Duration::from_millis(DOUBLE_CLICK_THRESHOLD_MS)
+                                })
+                                .unwrap_or(false);
+                            *last = Some(now);
+                            if is_double {
+                                let app = tray.app_handle();
+                                show_main_window(&app);
                             }
                         }
                     }

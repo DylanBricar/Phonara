@@ -164,7 +164,6 @@ pub fn register_cancel_shortcut(app: &AppHandle) {
     #[cfg(target_os = "linux")]
     {
         let _ = app;
-        return;
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -186,7 +185,6 @@ pub fn unregister_cancel_shortcut(app: &AppHandle) {
     #[cfg(target_os = "linux")]
     {
         let _ = app;
-        return;
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -207,7 +205,6 @@ pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     #[cfg(target_os = "linux")]
     {
         let _ = (app, binding);
-        return;
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -227,7 +224,6 @@ pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
     #[cfg(target_os = "linux")]
     {
         let _ = (app, binding);
-        return;
     }
 
     #[cfg(not(target_os = "linux"))]
