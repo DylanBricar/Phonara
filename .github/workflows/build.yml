@@ -254,9 +254,13 @@ jobs:
           echo "Certificate imported."
 
       - name: Disable updater artifacts when updater signing is unavailable
-        if: ${{ !inputs.updater-artifacts }}
         shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
+          if [[ "${{ inputs.updater-artifacts }}" == "true" && -n "${TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK:-}" ]]; then
+            exit 0
+          fi
           cd src-tauri
           if command -v jq &>/dev/null; then
             jq '.bundle.createUpdaterArtifacts = false' tauri.conf.json > tauri.conf.tmp && mv tauri.conf.tmp tauri.conf.json
@@ -347,12 +351,11 @@ jobs:
           #     statically linking libomp.
           echo "TRANSCRIBE_CMAKE_ARGS=-DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
 
-      - name: Expose Vulkan CMake packages (Windows x64)
+      - name: Configure transcribe-cpp CMake args (Windows x64)
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
         shell: pwsh
         run: |
-          if (-not $env:VULKAN_SDK) { throw "VULKAN_SDK is not set" }
-          echo "CMAKE_PREFIX_PATH=$env:VULKAN_SDK" >> $env:GITHUB_ENV
+          echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_VULKAN=OFF -DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
 
       # Bundle the VC++ runtime app-local so Handy starts on machines without a
       # current Microsoft redistributable. build.rs stages DLLs from these dirs
@@ -520,8 +523,8 @@ jobs:
           AZURE_CLIENT_ID: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_SECRET || '' }}
           AZURE_TENANT_ID: ${{ inputs.sign-binaries && secrets.AZURE_TENANT_ID || '' }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ (inputs.sign-binaries || inputs.updater-artifacts) && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ (inputs.sign-binaries || inputs.updater-artifacts) && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ (inputs.sign-binaries || (inputs.updater-artifacts && secrets.TAURI_SIGNING_PRIVATE_KEY != '')) && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ (inputs.sign-binaries || (inputs.updater-artifacts && secrets.TAURI_SIGNING_PRIVATE_KEY != '')) && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           tagName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}

@@ -45,10 +45,7 @@
     },
     "linux": {
       "deb": {
-        "depends": ["libgtk-layer-shell0", "libopenblas0"],
-        "files": {
-          "/usr/lib": "transcribe-libs"
-        }
+        "depends": ["libgtk-layer-shell0", "libopenblas0"]
       },
       "rpm": {
         "depends": [
@@ -57,16 +54,10 @@
         ],
         "compression": {
           "type": "none"
-        },
-        "files": {
-          "/usr/lib": "transcribe-libs"
         }
       },
       "appimage": {
-        "bundleMediaFramework": true,
-        "files": {
-          "/usr/lib": "transcribe-libs"
-        }
+        "bundleMediaFramework": true
       }
     },
     "windows": {}
