@@ -49,6 +49,15 @@ pub fn get_current_theme(app: &AppHandle) -> AppTheme {
         // On Linux, always use the colored theme
         AppTheme::Colored
     } else {
+        // On Windows the tray icon sits on the taskbar, which follows the
+        // system theme rather than the app theme. In Custom personalization mode
+        // the app can be light while the taskbar is dark, making a window-theme
+        // tray icon invisible.
+        #[cfg(target_os = "windows")]
+        if let Some(theme) = windows_taskbar_theme() {
+            return theme;
+        }
+
         // On other platforms, map system theme to our app theme
         if let Some(main_window) = app.get_webview_window("main") {
             match main_window.theme().unwrap_or(Theme::Dark) {
@@ -60,6 +69,22 @@ pub fn get_current_theme(app: &AppHandle) -> AppTheme {
             AppTheme::Dark
         }
     }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_taskbar_theme() -> Option<AppTheme> {
+    use winreg::enums::HKEY_CURRENT_USER;
+    use winreg::RegKey;
+
+    let personalize = RegKey::predef(HKEY_CURRENT_USER)
+        .open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize")
+        .ok()?;
+    let system_uses_light: u32 = personalize.get_value("SystemUsesLightTheme").ok()?;
+    Some(if system_uses_light == 1 {
+        AppTheme::Light
+    } else {
+        AppTheme::Dark
+    })
 }
 
 /// Gets the appropriate icon path for the given theme and state
@@ -104,11 +129,17 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
     let menu_started = std::time::Instant::now();
     update_tray_menu(app, None);
     debug!(
-        "tray icon change ({:?}): set_icon={:?} menu={:?}",
+        "tray icon change ({:?}): icon={} set_icon={:?} menu={:?}",
         icon,
+        icon_path,
         icon_elapsed,
         menu_started.elapsed()
     );
+}
+
+pub fn refresh_tray_icon(app: &AppHandle) {
+    let icon = app.state::<CurrentTrayIconState>().get();
+    change_tray_icon(app, icon);
 }
 
 fn load_tray_icon(resolved_icon_path: tauri::Result<PathBuf>) -> tauri::Result<Image<'static>> {
