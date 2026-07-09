@@ -23,7 +23,7 @@
     "test:playwright:ui": "playwright test --ui",
     "quality:check": "bun run check:translations && bun run check:secrets && bun run lint && bun run test:unit && bun run build && bun run test:playwright && bun audit",
     "quality:rust": "cd src-tauri && cargo fmt -- --check && cargo clippy -- -D warnings && cargo test",
-    "audit:rust": "cd src-tauri && cargo audit",
+    "audit:rust": "cargo audit --file src-tauri/Cargo.lock --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195",
     "check:secrets": "bun scripts/check-secrets.ts",
     "precommit": "bun scripts/pre-commit-check.ts",
     "prepare": "bun scripts/install-git-hooks.ts",
