@@ -85,6 +85,7 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
 
     let icon_path = get_icon_path(theme, icon);
 
+    let icon_started = std::time::Instant::now();
     let _ = tray.set_icon(Some(
         Image::from_path(
             app.path()
@@ -93,6 +94,7 @@ pub fn change_tray_icon(app: &AppHandle, icon: TrayIconState) {
         )
         .expect("failed to set icon"),
     ));
+    let icon_elapsed = icon_started.elapsed();
 
     // Update menu based on state
     update_tray_menu(app, None);

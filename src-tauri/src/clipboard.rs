@@ -113,6 +113,7 @@ fn paste_via_clipboard(
     app_handle: &AppHandle,
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
+    paste_delay_after_ms: u64,
 ) -> Result<(), String> {
     let saved_content = save_clipboard_content();
 
@@ -705,6 +706,7 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     let settings = get_settings(&app_handle);
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;
+    let paste_delay_after_ms = settings.paste_delay_after_ms;
 
     let text = if settings.append_trailing_space {
         format!("{} ", text)
@@ -741,6 +743,7 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
                 &app_handle,
                 &paste_method,
                 paste_delay_ms,
+                paste_delay_after_ms,
             ) {
                 clipboard_paste_error = Some(e);
             }

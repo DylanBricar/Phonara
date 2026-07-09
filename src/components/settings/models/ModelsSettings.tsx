@@ -11,13 +11,17 @@ import {
   getTranslatedModelName,
   getTranslatedModelDescription,
 } from "@/lib/utils/modelTranslation";
+import { supportsLanguageCode } from "@/lib/constants/languages";
 import { ProcessingModelsSection } from "./ProcessingModelsSection";
 import { GeminiKeyDialog, OpenaiKeyDialog } from "./ApiKeyDialogs";
 import { LanguageFilterDropdown } from "./LanguageFilterDropdown";
 
 const modelSupportsLanguage = (model: ModelInfo, langCode: string): boolean => {
-  return model.supported_languages.includes(langCode);
+  return supportsLanguageCode(model.supported_languages, langCode);
 };
+
+const isLegacyModel = (model: ModelInfo): boolean =>
+  typeof model.source === "object" && "Url" in model.source;
 
 type ModelsTab = "transcription" | "processing";
 
@@ -25,6 +29,7 @@ export const ModelsSettings: React.FC = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<ModelsTab>("transcription");
   const [switchingModelId, setSwitchingModelId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
   const [languageFilter, setLanguageFilter] = useState("all");
   const [modelSearchQuery, setModelSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -44,10 +49,12 @@ export const ModelsSettings: React.FC = () => {
     verifyingModels,
     extractingModels,
     loading,
+    isRescanning,
     downloadModel,
     cancelDownload,
     selectModel,
     deleteModel,
+    rescanLocalModels,
   } = useModelStore();
 
   const geminiApiKey = getSetting("gemini_api_key") as string | undefined;
@@ -179,6 +186,8 @@ export const ModelsSettings: React.FC = () => {
   const filteredModels = useMemo(() => {
     const query = modelSearchQuery.toLowerCase().trim();
     return models.filter((model: ModelInfo) => {
+      // Hide deprecated legacy (.bin/ONNX) downloads unless already on disk.
+      if (isLegacyModel(model) && !model.is_downloaded) return false;
       if (languageFilter !== "all") {
         if (!modelSupportsLanguage(model, languageFilter)) return false;
       }

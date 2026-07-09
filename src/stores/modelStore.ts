@@ -29,14 +29,13 @@ interface ModelsStore {
   downloadStats: Record<string, DownloadStats>;
   loading: boolean;
   error: string | null;
-  hasAnyModels: boolean;
-  isFirstRun: boolean;
   initialized: boolean;
+  isRescanning: boolean;
 
   initialize: () => Promise<void>;
   loadModels: () => Promise<void>;
   loadCurrentModel: () => Promise<void>;
-  checkFirstRun: () => Promise<boolean>;
+  rescanLocalModels: () => Promise<void>;
   selectModel: (modelId: string) => Promise<boolean>;
   downloadModel: (modelId: string) => Promise<boolean>;
   cancelDownload: (modelId: string) => Promise<boolean>;
@@ -64,9 +63,8 @@ export const useModelStore = create<ModelsStore>()(
     downloadStats: {},
     loading: true,
     error: null,
-    hasAnyModels: false,
-    isFirstRun: false,
     initialized: false,
+    isRescanning: false,
 
     setModels: (models) => set({ models }),
     setCurrentModel: (currentModel) => set({ currentModel }),
@@ -118,17 +116,17 @@ export const useModelStore = create<ModelsStore>()(
       } catch {}
     },
 
-    checkFirstRun: async () => {
+    rescanLocalModels: async () => {
+      set({ isRescanning: true });
       try {
-        const result = await commands.hasAnyModelsAvailable();
-        if (result.status === "ok") {
-          const hasModels = result.data;
-          set({ hasAnyModels: hasModels, isFirstRun: !hasModels });
-          return !hasModels;
+        const result = await commands.rescanLocalModels();
+        if (result.status !== "ok") {
+          set({ error: `Failed to rescan models: ${result.error}` });
         }
-        return false;
-      } catch {
-        return false;
+      } catch (err) {
+        set({ error: `Failed to rescan models: ${err}` });
+      } finally {
+        set({ isRescanning: false });
       }
     },
 
@@ -137,11 +135,7 @@ export const useModelStore = create<ModelsStore>()(
         set({ error: null });
         const result = await commands.setActiveModel(modelId);
         if (result.status === "ok") {
-          set({
-            currentModel: modelId,
-            isFirstRun: false,
-            hasAnyModels: true,
-          });
+          set({ currentModel: modelId });
           return true;
         } else {
           set({ error: `Failed to switch to model: ${result.error}` });
@@ -261,9 +255,9 @@ export const useModelStore = create<ModelsStore>()(
     initialize: async () => {
       if (get().initialized) return;
 
-      const { loadModels, loadCurrentModel, checkFirstRun } = get();
+      const { loadModels, loadCurrentModel } = get();
 
-      await Promise.all([loadModels(), loadCurrentModel(), checkFirstRun()]);
+      await Promise.all([loadModels(), loadCurrentModel()]);
 
       listen<DownloadProgress>("model-download-progress", (event) => {
         const progress = event.payload;
@@ -407,6 +401,10 @@ export const useModelStore = create<ModelsStore>()(
         Promise.all([get().loadModels(), get().loadCurrentModel()]).catch(
           (error) => console.error("Failed to reload models:", error),
         );
+      });
+
+      listen("models-updated", () => {
+        get().loadModels();
       });
 
       set({ initialized: true });

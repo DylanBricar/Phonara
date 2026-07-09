@@ -2,11 +2,21 @@ import { listen } from "@tauri-apps/api/event";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "./RecordingOverlay.css";
-import { commands } from "@/bindings";
+import { commands, events } from "@/bindings";
+import type {
+  StreamPhase,
+  StreamPhaseEvent,
+  StreamTextEvent,
+  StreamWorkKind,
+} from "@/bindings";
 import i18n, { syncLanguageFromSettings } from "@/i18n";
 import { getLanguageDirection } from "@/lib/utils/rtl";
 
-type OverlayState = "recording" | "transcribing" | "processing";
+type OverlayState = "recording" | "streaming" | "transcribing" | "processing";
+
+// Number of reactive bars in the waveform (the simple, smoothed style shared by
+// every overlay form). Mic levels arrive as 16 FFT buckets; we take the first N.
+const WAVE_BARS = 9;
 
 const isValidHexColor = (v: string): boolean =>
   /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v);

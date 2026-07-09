@@ -2,6 +2,8 @@ import type {
   AppSettings as Settings,
   TextReplacement,
   LogLevel,
+  OrtAcceleratorSetting,
+  TranscribeAcceleratorSetting,
 } from "@/bindings";
 import { commands } from "@/bindings";
 
@@ -20,6 +22,10 @@ export const settingUpdaters: {
     commands.changeAutostartSetting(value as boolean),
   update_checks_enabled: (value) =>
     commands.changeUpdateChecksSetting(value as boolean),
+  show_whats_new_on_update: (value) =>
+    commands.changeShowWhatsNewOnUpdateSetting(value as boolean),
+  whats_new_last_seen_version: (value) =>
+    commands.changeWhatsNewLastSeenVersionSetting(value as string),
   push_to_talk: (value) => commands.changePttSetting(value as boolean),
   selected_microphone: (value) =>
     commands.setSelectedMicrophone(
@@ -45,6 +51,7 @@ export const settingUpdaters: {
     commands.changeSelectedLanguageSetting(value as string),
   overlay_position: (value) =>
     commands.changeOverlayPositionSetting(value as string),
+  overlay_style: (value) => commands.changeOverlayStyleSetting(value as string),
   overlay_high_visibility: (value) =>
     commands.changeOverlayHighVisibilitySetting(value as boolean),
   debug_mode: (value) => commands.changeDebugModeSetting(value as boolean),
@@ -61,6 +68,9 @@ export const settingUpdaters: {
     commands.changeWhisperUseGpuSetting(value as boolean),
   word_correction_threshold: (value) =>
     commands.changeWordCorrectionThresholdSetting(value as number),
+  paste_delay_ms: (value) => commands.changePasteDelayMsSetting(value as number),
+  paste_delay_after_ms: (value) =>
+    commands.changePasteDelayAfterMsSetting(value as number),
   paste_method: (value) => commands.changePasteMethodSetting(value as string),
   typing_tool: (value) => commands.changeTypingToolSetting(value as string),
   external_script_path: (value) =>
@@ -83,8 +93,17 @@ export const settingUpdaters: {
   app_language: (value) => commands.changeAppLanguageSetting(value as string),
   experimental_enabled: (value) =>
     commands.changeExperimentalEnabledSetting(value as boolean),
+  vad_enabled: (value) => commands.changeVadEnabledSetting(value as boolean),
   show_tray_icon: (value) =>
     commands.changeShowTrayIconSetting(value as boolean),
+  transcribe_accelerator: (value) =>
+    commands.changeTranscribeAcceleratorSetting(
+      value as TranscribeAcceleratorSetting,
+    ),
+  ort_accelerator: (value) =>
+    commands.changeOrtAcceleratorSetting(value as OrtAcceleratorSetting),
+  transcribe_gpu_device: (value) =>
+    commands.changeTranscribeGpuDevice(value as number),
   long_audio_model: (value) =>
     commands.changeLongAudioModelSetting((value as string | null) ?? null),
   long_audio_threshold_seconds: (value) =>

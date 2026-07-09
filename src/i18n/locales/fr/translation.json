@@ -20,11 +20,12 @@
   },
   "onboarding": {
     "subtitle": "Pour commencer, choisissez un modèle de transcription",
+    "existingModelsTitle": "Compatible Models",
+    "downloadModelsTitle": "Available to Download",
+    "showAllModels": "Show all {{total}} models",
+    "showFewerModels": "Show fewer models",
     "recommended": "Recommandé",
-    "download": "Télécharger",
-    "downloading": "Téléchargement...",
     "customModelDescription": "Non officiellement pris en charge",
-    "downloadFailed": "Échec du téléchargement. Veuillez réessayer.",
     "modelCard": {
       "accuracy": "précision",
       "speed": "vitesse"
@@ -116,8 +117,7 @@
       }
     },
     "errors": {
-      "loadModels": "Échec du chargement des modèles disponibles",
-      "downloadModel": "Échec du téléchargement du modèle : {{error}}"
+      "selectModel": "Failed to select model"
     },
     "permissions": {
       "title": "Autorisations requises",
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "Personnalisé",
+    "streaming": "Streaming",
     "active": "Actif",
     "switching": "Changement...",
     "noModelsAvailable": "Aucun modèle disponible",
@@ -163,11 +164,12 @@
     "downloadSpeed": "{{speed}} Mo/s",
     "capabilities": {
       "languageSelection": "Prend en charge plusieurs langues d'entrée",
-      "multiLanguage": "Multilingue",
+      "languageCount": "{{total}} languages",
       "translation": "Peut traduire en anglais",
       "translate": "Traduire en anglais",
       "singleLanguage": "Prend en charge uniquement cette langue",
-      "languageOnly": "{{language}} uniquement"
+      "languageOnly": "{{language}} uniquement",
+      "streaming": "Affiche la transcription en direct pendant que vous parlez"
     },
     "cancel": "Annuler",
     "cancelDownload": "Annuler le téléchargement",
@@ -207,9 +209,6 @@
       "deleteActiveConfirm": "{{modelName}} est votre modèle actif. Le supprimer arrêtera les transcriptions jusqu'à ce que vous sélectionniez un nouveau modèle. Êtes-vous sûr ?",
       "deleteTitle": "Supprimer le modèle",
       "filters": {
-        "all": "Tous",
-        "multiLanguage": "Multilingue",
-        "translation": "Traduction",
         "allLanguages": "Toutes les langues"
       },
       "noModelsMatch": "Aucun modèle ne correspond à ce filtre.",
@@ -273,7 +272,6 @@
       "language": {
         "title": "Langue",
         "description": "Sélectionnez la langue pour la reconnaissance vocale. Auto déterminera automatiquement la langue, tandis que sélectionner une langue spécifique peut améliorer la précision pour cette langue.",
-        "descriptionUnsupported": "Le modèle Parakeet détecte automatiquement la langue. Aucune sélection manuelle n'est nécessaire.",
         "searchPlaceholder": "Rechercher des langues...",
         "noResults": "Aucune langue trouvée",
         "auto": "Auto"
@@ -342,7 +340,6 @@
       }
     },
     "advanced": {
-      "title": "Avancé",
       "groups": {
         "app": "Application",
         "output": "Sortie",
@@ -360,7 +357,7 @@
         "description": "Maintient le flux du microphone ouvert pendant 30 secondes après l'arrêt de l'enregistrement, réduisant la latence pour les transcriptions consécutives. Peut dégrader la qualité audio Bluetooth."
       },
       "acceleration": {
-        "whisper": {
+        "transcribe": {
           "title": "Accélération Whisper",
           "description": "Accélération matérielle pour les modèles Whisper. Auto utilise le GPU si disponible (Metal sur macOS, Vulkan sur Windows/Linux)."
         },
@@ -369,8 +366,6 @@
           "description": "Accélération matérielle pour les modèles ONNX (Parakeet, Canary, Moonshine, etc.). DirectML sur Windows est expérimental. Les modèles peuvent échouer à transcrire."
         },
         "gpuDevice": {
-          "title": "Appareil GPU",
-          "description": "Sélectionnez le GPU à utiliser pour l'inférence Whisper. Auto choisit le GPU dédié.",
           "auto": "Auto"
         }
       },
@@ -465,8 +460,7 @@
       },
       "translateToEnglish": {
         "label": "Traduire en anglais",
-        "description": "Traduire automatiquement la parole d'autres langues vers l'anglais pendant la transcription.",
-        "descriptionUnsupported": "La traduction n'est pas prise en charge par le modèle {{model}}."
+        "description": "Traduire automatiquement la parole d'autres langues vers l'anglais pendant la transcription."
       },
       "modelUnload": {
         "title": "Décharger le modèle",
@@ -529,7 +523,6 @@
       }
     },
     "postProcessing": {
-      "title": "Post-traitement",
       "hotkey": {
         "title": "Raccourci clavier"
       },
@@ -540,9 +533,6 @@
           "description": "Sélectionnez un fournisseur compatible OpenAI."
         },
         "appleIntelligence": {
-          "title": "Apple Intelligence",
-          "description": "Fonctionne entièrement sur l'appareil. Aucune clé API ni accès réseau n'est requis.",
-          "requirements": "Nécessite un Mac Apple Silicon exécutant macOS Tahoe (26.0) ou une version ultérieure. Apple Intelligence doit être activé dans les Préférences Système.",
           "unavailable": "Apple Intelligence n'est pas disponible sur cet appareil. Nécessite un Mac Apple Silicon exécutant macOS Tahoe (26.0) ou une version ultérieure avec Apple Intelligence activé dans les Préférences Système."
         },
         "baseUrl": {
@@ -557,10 +547,8 @@
         },
         "model": {
           "title": "Modèle",
-          "descriptionApple": "Fournissez une limite de tokens optionnelle ou conservez le préréglage par défaut sur l'appareil.",
           "descriptionCustom": "Fournissez l'identifiant du modèle attendu par votre point de terminaison personnalisé.",
           "descriptionDefault": "Choisissez un modèle exposé par le fournisseur sélectionné.",
-          "placeholderApple": "Apple Intelligence",
           "placeholderWithOptions": "Rechercher ou sélectionner un modèle",
           "placeholderNoOptions": "Tapez un nom de modèle",
           "refreshModels": "Actualiser les modèles"
@@ -618,6 +606,17 @@
       "logLevel": {
         "title": "Niveau de journalisation",
         "description": "Définir le niveau de détail de la journalisation"
+      },
+      "liveLogs": {
+        "title": "Journaux en direct",
+        "description": "Affichez les journaux de l'application en temps réel pour diagnostiquer les problèmes sans ouvrir le fichier journal. Seuls les journaux émis pendant que ce panneau est ouvert sont affichés ; respecte le réglage Niveau de journalisation ci-dessus.",
+        "live": "En direct",
+        "paused": "En pause",
+        "pause": "Pause",
+        "resume": "Reprendre",
+        "copied": "Copié",
+        "lineCount": "{{count}} lignes",
+        "empty": "En attente de journaux… Les entrées apparaîtront ici au fur et à mesure que l'application les émet."
       },
       "updateChecks": {
         "label": "Vérifier les mises à jour",
@@ -686,12 +685,23 @@
         "settings": "Paramètres :"
       },
       "pasteDelay": {
-        "title": "Délai de collage",
-        "description": "Délai avant l'envoi de la touche de collage (en millisecondes). Augmentez si le mauvais texte est collé."
+        "title": "Délai de collage (avant)",
+        "description": "Délai (en millisecondes) après la copie du texte, avant l'envoi de la touche de collage. Augmentez si rien n'est collé."
+      },
+      "pasteDelayAfter": {
+        "title": "Délai de collage (après)",
+        "description": "Délai (en millisecondes) après la touche de collage, avant la restauration de votre presse-papiers précédent. Augmentez si l'ancien contenu du presse-papiers est collé à la place de la transcription."
       },
       "recordingBuffer": {
         "title": "Tampon d'enregistrement supplémentaire",
         "description": "Temps supplémentaire (en millisecondes) pour continuer l'enregistrement après avoir relâché la touche, pour capturer l'audio restant. 0 = pas de tampon supplémentaire."
+      },
+      "whatsNewPreview": {
+        "title": "Aperçu des nouveautés",
+        "description": "Ouvrir la dernière note de version intégrée sans la marquer comme vue",
+        "button": "Aperçu",
+        "noNotes": "Aucune note de version intégrée trouvée",
+        "error": "Impossible d’afficher l’aperçu des notes de version"
       }
     },
     "appearance": {
@@ -748,11 +758,15 @@
       },
       "acknowledgments": {
         "title": "Remerciements",
-        "whisper": {
-          "title": "Whisper.cpp",
+        "ggml": {
+          "title": "ggml",
           "description": "Inférence haute performance du modèle de reconnaissance vocale automatique Whisper d'OpenAI",
           "details": "Phonara utilise Whisper.cpp pour un traitement rapide et local de la parole en texte. Merci au travail incroyable de Georgi Gerganov et des contributeurs."
         }
+      },
+      "whatsNewUpdates": {
+        "label": "Afficher les nouveautés",
+        "description": "Afficher les notes de version après les mises à jour de Handy"
       }
     },
     "gemini": {
@@ -795,13 +809,9 @@
     }
   },
   "footer": {
-    "downloadingModel": "Téléchargement de {{model}}...",
     "checkingUpdates": "Recherche de mises à jour...",
-    "updateAvailable": "Mise à jour disponible : {{version}}",
     "updateAvailableShort": "Mise à jour disponible",
     "upToDate": "À jour",
-    "downloadUpdate": "Télécharger la mise à jour",
-    "restart": "Redémarrer",
     "updateCheckingDisabled": "Vérification des mises à jour désactivée",
     "downloading": "Téléchargement... {{progress}}%",
     "installing": "Installation...",
@@ -816,15 +826,7 @@
   },
   "common": {
     "loading": "Chargement...",
-    "save": "Enregistrer",
-    "cancel": "Annuler",
-    "reset": "Réinitialiser",
-    "add": "Ajouter",
-    "remove": "Supprimer",
     "delete": "Supprimer",
-    "edit": "Modifier",
-    "create": "Créer",
-    "update": "Mettre à jour",
     "close": "Fermer",
     "open": "Ouvrir",
     "default": "Par défaut",
@@ -858,7 +860,8 @@
     "modelLoadFailed": "Échec du chargement du modèle : {{model}}",
     "modelLoadFailedUnknown": "modèle inconnu",
     "pasteFailedTitle": "Échec du collage du texte",
-    "pasteFailed": "Le texte n'a pas pu être collé dans l'application active."
+    "pasteFailed": "Le texte n'a pas pu être collé dans l'application active.",
+    "transcriptionFailedTitle": "Échec de la transcription"
   },
   "appLanguage": {
     "title": "Langue de l'application",

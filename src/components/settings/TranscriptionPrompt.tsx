@@ -84,7 +84,10 @@ export const TranscriptionPrompt: React.FC<TranscriptionPromptProps> =
 
     const isWhisperModel = useMemo(() => {
       const model = models.find((m) => m.id === currentModel);
-      return model?.engine_type === "Whisper";
+      return (
+        model?.engine_type === "TranscribeCpp" &&
+        /whisper/i.test(`${model.id} ${model.name} ${model.filename}`)
+      );
     }, [models, currentModel]);
 
     const isAutoLanguage = getSetting("selected_language") === "auto";

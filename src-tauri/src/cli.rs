@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone, Default)]
 #[command(name = "phonara", about = "Phonara - Speech to Text")]
@@ -23,6 +24,27 @@ pub struct CliArgs {
 
     #[arg(long, help = "Start transcription immediately on launch")]
     pub transcribe: bool,
+
+    #[arg(short = 'f', long, value_name = "WAV")]
+    pub transcribe_file: Option<PathBuf>,
+
+    #[arg(long)]
+    pub model: Option<String>,
+
+    #[arg(long, value_name = "N")]
+    pub device_index: Option<usize>,
+
+    #[arg(long)]
+    pub list_devices: bool,
+
+    #[arg(long)]
+    pub list_models: bool,
+
+    #[arg(long, value_name = "N")]
+    pub repeat: Option<usize>,
+
+    #[arg(long)]
+    pub json: bool,
 
     #[arg(
         long,

@@ -11,6 +11,7 @@ import AccessibilityPermissions from "./components/AccessibilityPermissions";
 import Footer from "./components/footer";
 import Onboarding, { AccessibilityOnboarding } from "./components/onboarding";
 import { Sidebar, SidebarSection, SECTIONS_CONFIG } from "./components/Sidebar";
+import { WhatsNewGate } from "./components/whats-new";
 import { useSettings } from "./hooks/useSettings";
 import { useSettingsStore } from "./stores/settingsStore";
 import { commands } from "@/bindings";
@@ -149,6 +150,19 @@ function App() {
     };
   }, [t]);
 
+  // Listen for transcription failures and show a toast.
+  // The payload is the backend error message (also logged to handy.log).
+  useEffect(() => {
+    const unlisten = listen<string>("transcription-error", (event) => {
+      toast.error(t("errors.transcriptionFailedTitle"), {
+        description: event.payload,
+      });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [t]);
+
   // Listen for model loading failures and show a toast
   useEffect(() => {
     const unlisten = listen<ModelStateEvent>("model-state-changed", (event) => {
@@ -179,14 +193,15 @@ function App() {
 
   const checkOnboardingStatus = async () => {
     try {
+      const settingsResult = await commands.getAppSettings();
+      const hasCompletedOnboarding =
+        settingsResult.status === "ok" &&
+        settingsResult.data.onboarding_completed === true;
       const appIdentifier = await getIdentifier();
       const isDevFlavor = appIdentifier.endsWith(".dev");
-
-      const result = await commands.hasAnyModelsAvailable();
-      const hasModels = result.status === "ok" && result.data;
       const currentPlatform = platform();
 
-      if (hasModels) {
+      if (hasCompletedOnboarding) {
         // Returning user - check if they need to grant permissions first
         setIsReturningUser(true);
 

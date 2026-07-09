@@ -137,8 +137,8 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 
 | Source                                              | Last Commit Hash |
 | --------------------------------------------------- | ---------------- |
-| [cjpais/Handy](https://github.com/cjpais/Handy)     | `cfab1dd`        |
-| [Melvynx/Parler](https://github.com/Melvynx/Parler) | `c313fd1`        |
+| [cjpais/Handy](https://github.com/cjpais/Handy)     | `87c45f8`        |
+| [Melvynx/Parler](https://github.com/Melvynx/Parler) | `1aaa38b`        |
 
 ### How to Contribute
 
@@ -177,10 +177,12 @@ The goal is to create both a useful tool and a foundation for others to build up
 
 MIT License - see [LICENSE](LICENSE) for details.
 
+Handy is open-source software, but the Handy name, logo, icon, and brand assets are not open-source. Unofficial forks, rewrites, and redistributions must use their own branding and must not imply endorsement or affiliation.
+
 ## Acknowledgments
 
 - **Whisper** by OpenAI for the speech recognition model
-- **whisper.cpp and ggml** for amazing cross-platform whisper inference/acceleration
+- **ggml and transcribe.cpp** for amazing cross-platform speech-to-text inference/acceleration
 - **Silero** for great lightweight VAD
 - **Tauri** team for the excellent Rust-based app framework
 - **Community contributors** helping make Phonara and its upstream projects better

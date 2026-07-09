@@ -20,11 +20,12 @@
   },
   "onboarding": {
     "subtitle": "Pro začátek vyberte model pro přepis",
+    "existingModelsTitle": "Compatible Models",
+    "downloadModelsTitle": "Available to Download",
+    "showAllModels": "Show all {{total}} models",
+    "showFewerModels": "Show fewer models",
     "recommended": "Doporučeno",
-    "download": "Stáhnout",
-    "downloading": "Stahování...",
     "customModelDescription": "Oficiálně nepodporováno",
-    "downloadFailed": "Stahování se nezdařilo. Zkuste to prosím znovu.",
     "modelCard": {
       "accuracy": "přesnost",
       "speed": "rychlost"
@@ -116,8 +117,7 @@
       }
     },
     "errors": {
-      "loadModels": "Nepodařilo se načíst dostupné modely",
-      "downloadModel": "Nepodařilo se stáhnout model: {{error}}"
+      "selectModel": "Failed to select model"
     },
     "permissions": {
       "title": "Vyžadována oprávnění",
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "Vlastní",
+    "streaming": "Streaming",
     "active": "Aktivní",
     "noModelsAvailable": "Nejsou dostupné žádné modely",
     "verifying": "Ověřování {{modelName}}...",
@@ -163,11 +164,12 @@
     "downloadSpeed": "{{speed}} MB/s",
     "capabilities": {
       "languageSelection": "Podporuje více vstupních jazyků",
-      "multiLanguage": "Vícejazyčný",
+      "languageCount": "{{total}} languages",
       "translation": "Umí překládat do angličtiny",
       "translate": "Přeložit do angličtiny",
       "singleLanguage": "Podporuje pouze tento jazyk",
-      "languageOnly": "Pouze {{language}}"
+      "languageOnly": "Pouze {{language}}",
+      "streaming": "Zobrazuje přepis živě, jak mluvíte"
     },
     "cancel": "Zrušit",
     "cancelDownload": "Zrušit stahování",
@@ -187,15 +189,10 @@
     "models": {
       "title": "Modely přepisu",
       "description": "Vyberte model přepisu nebo stáhněte další modely. Různé modely nabízejí různé úrovně přesnosti a rychlosti.",
-      "downloaded": "Staženo",
-      "available": "K dispozici ke stažení",
       "deleteConfirm": "Opravdu chcete smazat {{modelName}}? Pro opětovné použití jej budete muset znovu stáhnout.",
       "deleteActiveConfirm": "{{modelName}} je váš aktivní model. Jeho smazáním se zastaví přepisy, dokud nevyberete nový model. Opravdu chcete pokračovat?",
       "deleteTitle": "Smazat model",
       "filters": {
-        "all": "Vše",
-        "multiLanguage": "Vícejazyčný",
-        "translation": "Překlad",
         "allLanguages": "Všechny jazyky"
       },
       "noModelsMatch": "Tomuto filtru neodpovídají žádné modely.",
@@ -263,7 +260,6 @@
       "language": {
         "title": "Jazyk",
         "description": "Vyberte jazyk rozpoznávání řeči. Auto jazyk určí automaticky, zatímco výběr konkrétního jazyka může zlepšit přesnost.",
-        "descriptionUnsupported": "Model Parakeet rozpozná jazyk automaticky. Ruční výběr není potřeba.",
         "searchPlaceholder": "Hledat jazyky...",
         "noResults": "Žádné jazyky nenalezeny",
         "auto": "Auto"
@@ -332,7 +328,6 @@
       }
     },
     "advanced": {
-      "title": "Pokročilé",
       "groups": {
         "app": "Aplikace",
         "output": "Výstup",
@@ -350,7 +345,7 @@
         "description": "Ponechá stream mikrofonu otevřený po dobu 30 sekund po zastavení nahrávání, čímž se sníží latence při opakovaném přepisu. Může zhoršit kvalitu zvuku Bluetooth."
       },
       "acceleration": {
-        "whisper": {
+        "transcribe": {
           "title": "Akcelerace Whisper",
           "description": "Hardwarová akcelerace pro modely Whisper. Automatický režim používá GPU, pokud je k dispozici (Metal na macOS, Vulkan na Windows/Linux)."
         },
@@ -359,8 +354,6 @@
           "description": "Hardwarová akcelerace pro modely ONNX (Parakeet, Canary, Moonshine atd.). DirectML na Windows je experimentální. Modely nemusí správně přepisovat."
         },
         "gpuDevice": {
-          "title": "GPU zařízení",
-          "description": "Vyberte, který GPU použít pro Whisper. Automaticky vybere dedikovaný GPU.",
           "auto": "Automaticky"
         }
       },
@@ -455,8 +448,7 @@
       },
       "translateToEnglish": {
         "label": "Překládat do angličtiny",
-        "description": "Během přepisu automaticky překládat řeč z jiných jazyků do angličtiny.",
-        "descriptionUnsupported": "Překlad není podporován modelem {{model}}."
+        "description": "Během přepisu automaticky překládat řeč z jiných jazyků do angličtiny."
       },
       "modelUnload": {
         "title": "Uvolnění modelu",
@@ -519,7 +511,6 @@
       }
     },
     "postProcessing": {
-      "title": "Následné zpracování",
       "hotkey": {
         "title": "Klávesová zkratka"
       },
@@ -530,9 +521,6 @@
           "description": "Vyberte poskytovatele kompatibilního s OpenAI."
         },
         "appleIntelligence": {
-          "title": "Apple Intelligence",
-          "description": "Běží plně na zařízení. Není potřeba API klíč ani síťové připojení.",
-          "requirements": "Vyžaduje Mac s Apple Silicon a macOS Tahoe (26.0) nebo novější. Apple Intelligence musí být povoleno v Nastavení systému.",
           "unavailable": "Apple Intelligence není na tomto zařízení k dispozici. Vyžaduje Mac s Apple Silicon a macOS Tahoe (26.0) nebo novější a povolené Apple Intelligence v Nastavení systému."
         },
         "baseUrl": {
@@ -547,10 +535,8 @@
         },
         "model": {
           "title": "Model",
-          "descriptionApple": "Zadejte volitelný číselný limit tokenů nebo ponechte výchozí předvolbu na zařízení.",
           "descriptionCustom": "Zadejte identifikátor modelu očekávaný vaším vlastním endpointem.",
           "descriptionDefault": "Vyberte model dostupný u vybraného poskytovatele.",
-          "placeholderApple": "Apple Intelligence",
           "placeholderWithOptions": "Vyhledejte nebo vyberte model",
           "placeholderNoOptions": "Zadejte název modelu",
           "refreshModels": "Obnovit modely"
@@ -608,6 +594,17 @@
       "logLevel": {
         "title": "Úroveň logování",
         "description": "Nastavte úroveň podrobnosti logování"
+      },
+      "liveLogs": {
+        "title": "Živé logy",
+        "description": "Sledujte logy aplikace v reálném čase a diagnostikujte problémy bez otevírání souboru logu. Zobrazují se pouze logy vytvořené, když je tento panel otevřený; respektuje nastavení Úroveň logování výše.",
+        "live": "Živě",
+        "paused": "Pozastaveno",
+        "pause": "Pozastavit",
+        "resume": "Pokračovat",
+        "copied": "Zkopírováno",
+        "lineCount": "Řádků: {{count}}",
+        "empty": "Čekání na logy… Záznamy se zde zobrazí, jakmile je aplikace vygeneruje."
       },
       "updateChecks": {
         "label": "Kontrolovat aktualizace",
@@ -667,8 +664,12 @@
         "settings": "Nastavení:"
       },
       "pasteDelay": {
-        "title": "Zpoždění vložení",
-        "description": "Zpoždění před odesláním klávesy pro vložení (v milisekundách). Zvyšte, pokud se vkládá špatný text."
+        "title": "Zpoždění vložení (před)",
+        "description": "Zpoždění (v milisekundách) po zkopírování textu, před odesláním klávesy pro vložení. Zvyšte, pokud se nic nevloží."
+      },
+      "pasteDelayAfter": {
+        "title": "Zpoždění vložení (po)",
+        "description": "Zpoždění (v milisekundách) po klávese pro vložení, před obnovením předchozí schránky. Zvyšte, pokud se místo přepisu vkládá starý obsah schránky."
       },
       "recordingBuffer": {
         "title": "Extra vyrovnávací paměť nahrávání",
@@ -706,8 +707,8 @@
       },
       "acknowledgments": {
         "title": "Poděkování",
-        "whisper": {
-          "title": "Whisper.cpp",
+        "ggml": {
+          "title": "ggml",
           "description": "Vysoce výkonné inferenční zpracování modelu automatického rozpoznávání řeči Whisper od OpenAI",
           "details": "Phonara používá Whisper.cpp pro rychlé lokální zpracování řeči na text. Díky skvělé práci Georgiho Gerganova a přispěvatelů."
         }
@@ -795,13 +796,9 @@
     }
   },
   "footer": {
-    "downloadingModel": "Stahuji {{model}}...",
     "checkingUpdates": "Kontroluji aktualizace...",
-    "updateAvailable": "Dostupná aktualizace: {{version}}",
     "updateAvailableShort": "Dostupná aktualizace",
     "upToDate": "Vše aktuální",
-    "downloadUpdate": "Stáhnout aktualizaci",
-    "restart": "Restartovat",
     "updateCheckingDisabled": "Kontrola aktualizací vypnuta",
     "downloading": "Stahování... {{progress}}%",
     "installing": "Instalace...",
@@ -816,15 +813,7 @@
   },
   "common": {
     "loading": "Načítání...",
-    "save": "Uložit",
-    "cancel": "Zrušit",
-    "reset": "Obnovit",
-    "add": "Přidat",
-    "remove": "Odebrat",
     "delete": "Smazat",
-    "edit": "Upravit",
-    "create": "Vytvořit",
-    "update": "Aktualizovat",
     "close": "Zavřít",
     "open": "Otevřít",
     "default": "Výchozí",
@@ -858,7 +847,8 @@
     "modelLoadFailed": "Nepodařilo se načíst model: {{model}}",
     "modelLoadFailedUnknown": "neznámý model",
     "pasteFailedTitle": "Vložení textu se nezdařilo",
-    "pasteFailed": "Text nebylo možné vložit do aktivní aplikace."
+    "pasteFailed": "Text nebylo možné vložit do aktivní aplikace.",
+    "transcriptionFailedTitle": "Přepis selhal"
   },
   "appLanguage": {
     "title": "Jazyk aplikace",

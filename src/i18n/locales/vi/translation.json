@@ -20,11 +20,12 @@
   },
   "onboarding": {
     "subtitle": "Để bắt đầu, hãy chọn một mô hình chuyển đổi giọng nói",
+    "existingModelsTitle": "Compatible Models",
+    "downloadModelsTitle": "Available to Download",
+    "showAllModels": "Show all {{total}} models",
+    "showFewerModels": "Show fewer models",
     "recommended": "Đề xuất",
-    "download": "Tải xuống",
-    "downloading": "Đang tải xuống...",
     "customModelDescription": "Không được hỗ trợ chính thức",
-    "downloadFailed": "Tải xuống thất bại. Vui lòng thử lại.",
     "modelCard": {
       "accuracy": "độ chính xác",
       "speed": "tốc độ"
@@ -116,8 +117,7 @@
       }
     },
     "errors": {
-      "loadModels": "Không thể tải các mô hình có sẵn",
-      "downloadModel": "Không thể tải mô hình: {{error}}"
+      "selectModel": "Failed to select model"
     },
     "permissions": {
       "title": "Cần cấp quyền",
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "Tùy chỉnh",
+    "streaming": "Truyền trực tiếp",
     "active": "Đang hoạt động",
     "switching": "Đang chuyển...",
     "noModelsAvailable": "Không có mô hình nào",
@@ -163,11 +164,12 @@
     "downloadSpeed": "{{speed}} MB/s",
     "capabilities": {
       "languageSelection": "Hỗ trợ nhiều ngôn ngữ đầu vào",
-      "multiLanguage": "Đa ngôn ngữ",
+      "languageCount": "{{total}} languages",
       "translation": "Có thể dịch sang tiếng Anh",
       "translate": "Dịch sang tiếng Anh",
       "singleLanguage": "Chỉ hỗ trợ ngôn ngữ này",
-      "languageOnly": "Chỉ {{language}}"
+      "languageOnly": "Chỉ {{language}}",
+      "streaming": "Hiển thị phiên âm trực tiếp khi bạn nói"
     },
     "cancel": "Hủy",
     "cancelDownload": "Hủy tải xuống",
@@ -187,15 +189,10 @@
     "models": {
       "title": "Mô hình chuyển đổi",
       "description": "Chọn mô hình chuyển đổi hoặc tải thêm mô hình. Các mô hình khác nhau có mức độ chính xác và tốc độ khác nhau.",
-      "downloaded": "Đã tải xuống",
-      "available": "Có thể tải xuống",
       "deleteConfirm": "Bạn có chắc chắn muốn xóa {{modelName}}? Bạn sẽ cần tải lại để sử dụng.",
       "deleteActiveConfirm": "{{modelName}} là mô hình đang hoạt động của bạn. Xóa nó sẽ dừng phiên âm cho đến khi bạn chọn một mô hình mới. Bạn có chắc không?",
       "deleteTitle": "Xóa mô hình",
       "filters": {
-        "all": "Tất cả",
-        "multiLanguage": "Đa ngôn ngữ",
-        "translation": "Dịch thuật",
         "allLanguages": "Tất cả ngôn ngữ"
       },
       "noModelsMatch": "Không có mô hình nào khớp với bộ lọc này.",
@@ -263,7 +260,6 @@
       "language": {
         "title": "Ngôn ngữ",
         "description": "Chọn ngôn ngữ để nhận dạng giọng nói. Tự động sẽ tự động xác định ngôn ngữ, trong khi chọn một ngôn ngữ cụ thể có thể cải thiện độ chính xác cho ngôn ngữ đó.",
-        "descriptionUnsupported": "Mô hình Parakeet tự động phát hiện ngôn ngữ. Không cần chọn thủ công.",
         "searchPlaceholder": "Tìm kiếm ngôn ngữ...",
         "noResults": "Không tìm thấy ngôn ngữ",
         "auto": "Tự động"
@@ -332,7 +328,6 @@
       }
     },
     "advanced": {
-      "title": "Nâng cao",
       "groups": {
         "app": "Ứng dụng",
         "output": "Đầu ra",
@@ -350,7 +345,7 @@
         "description": "Giữ luồng micro mở trong 30 giây sau khi dừng ghi âm, giảm độ trễ khi phiên âm liên tiếp. Có thể làm giảm chất lượng âm thanh Bluetooth khi đang hoạt động."
       },
       "acceleration": {
-        "whisper": {
+        "transcribe": {
           "title": "Tăng tốc Whisper",
           "description": "Tăng tốc phần cứng cho các mô hình Whisper. Chế độ tự động sử dụng GPU nếu có (Metal trên macOS, Vulkan trên Windows/Linux)."
         },
@@ -359,8 +354,6 @@
           "description": "Tăng tốc phần cứng cho các mô hình ONNX (Parakeet, Canary, Moonshine, v.v.). DirectML trên Windows là thử nghiệm. Các mô hình có thể không chuyển đổi giọng nói được."
         },
         "gpuDevice": {
-          "title": "Thiết bị GPU",
-          "description": "Chọn GPU để sử dụng cho suy luận Whisper. Tự động chọn GPU chuyên dụng.",
           "auto": "Tự động"
         }
       },
@@ -455,8 +448,7 @@
       },
       "translateToEnglish": {
         "label": "Dịch sang tiếng Anh",
-        "description": "Tự động dịch giọng nói từ các ngôn ngữ khác sang tiếng Anh trong quá trình chuyển đổi.",
-        "descriptionUnsupported": "Mô hình {{model}} không hỗ trợ dịch thuật."
+        "description": "Tự động dịch giọng nói từ các ngôn ngữ khác sang tiếng Anh trong quá trình chuyển đổi."
       },
       "modelUnload": {
         "title": "Giải phóng mô hình",
@@ -519,7 +511,6 @@
       }
     },
     "postProcessing": {
-      "title": "Xử lý sau",
       "hotkey": {
         "title": "Phím tắt"
       },
@@ -530,9 +521,6 @@
           "description": "Chọn một nhà cung cấp tương thích OpenAI."
         },
         "appleIntelligence": {
-          "title": "Apple Intelligence",
-          "description": "Chạy hoàn toàn trên thiết bị. Không cần khóa API hoặc truy cập mạng.",
-          "requirements": "Yêu cầu Mac Apple Silicon chạy macOS Tahoe (26.0) trở lên. Apple Intelligence phải được bật trong Cài đặt Hệ thống.",
           "unavailable": "Apple Intelligence không khả dụng trên thiết bị này. Yêu cầu Mac Apple Silicon chạy macOS Tahoe (26.0) trở lên với Apple Intelligence được bật trong Cài đặt Hệ thống."
         },
         "baseUrl": {
@@ -547,10 +535,8 @@
         },
         "model": {
           "title": "Mô hình",
-          "descriptionApple": "Cung cấp giới hạn token tùy chọn hoặc giữ cài đặt mặc định trên thiết bị.",
           "descriptionCustom": "Cung cấp định danh mô hình được yêu cầu bởi điểm cuối tùy chỉnh của bạn.",
           "descriptionDefault": "Chọn một mô hình được cung cấp bởi nhà cung cấp đã chọn.",
-          "placeholderApple": "Apple Intelligence",
           "placeholderWithOptions": "Tìm kiếm hoặc chọn một mô hình",
           "placeholderNoOptions": "Nhập tên mô hình",
           "refreshModels": "Làm mới mô hình"
@@ -608,6 +594,17 @@
       "logLevel": {
         "title": "Mức nhật ký",
         "description": "Đặt mức độ chi tiết của nhật ký"
+      },
+      "liveLogs": {
+        "title": "Nhật ký trực tiếp",
+        "description": "Truyền nhật ký ứng dụng theo thời gian thực để chẩn đoán sự cố mà không cần mở tệp nhật ký. Chỉ hiển thị nhật ký được tạo khi bảng này đang mở; tuân theo cài đặt Mức nhật ký ở trên.",
+        "live": "Trực tiếp",
+        "paused": "Đã tạm dừng",
+        "pause": "Tạm dừng",
+        "resume": "Tiếp tục",
+        "copied": "Đã sao chép",
+        "lineCount": "{{count}} dòng",
+        "empty": "Đang chờ nhật ký… Các mục sẽ xuất hiện ở đây khi ứng dụng phát ra."
       },
       "updateChecks": {
         "label": "Kiểm tra cập nhật",
@@ -667,8 +664,12 @@
         "settings": "Cài đặt:"
       },
       "pasteDelay": {
-        "title": "Độ trễ dán",
-        "description": "Độ trễ trước khi gửi phím dán (tính bằng mili giây). Tăng nếu văn bản sai đang được dán."
+        "title": "Độ trễ dán (trước)",
+        "description": "Độ trễ (tính bằng mili giây) sau khi sao chép văn bản, trước khi gửi phím dán. Tăng nếu không có gì được dán."
+      },
+      "pasteDelayAfter": {
+        "title": "Độ trễ dán (sau)",
+        "description": "Độ trễ (tính bằng mili giây) sau khi gửi phím dán, trước khi khôi phục bảng nhớ tạm trước đó. Tăng nếu nội dung bảng nhớ tạm cũ được dán thay vì bản chép lời."
       },
       "recordingBuffer": {
         "title": "Bộ đệm ghi âm thêm",
@@ -706,8 +707,8 @@
       },
       "acknowledgments": {
         "title": "Lời cảm ơn",
-        "whisper": {
-          "title": "Whisper.cpp",
+        "ggml": {
+          "title": "ggml",
           "description": "Suy luận hiệu suất cao của mô hình nhận dạng giọng nói tự động Whisper của OpenAI",
           "details": "Phonara sử dụng Whisper.cpp để xử lý chuyển đổi giọng nói thành văn bản nhanh, cục bộ. Cảm ơn công việc tuyệt vời của Georgi Gerganov và các cộng tác viên."
         }
@@ -795,13 +796,9 @@
     }
   },
   "footer": {
-    "downloadingModel": "Đang tải {{model}}...",
     "checkingUpdates": "Đang kiểm tra cập nhật...",
-    "updateAvailable": "Có bản cập nhật: {{version}}",
     "updateAvailableShort": "Có bản cập nhật",
     "upToDate": "Đã cập nhật",
-    "downloadUpdate": "Tải cập nhật",
-    "restart": "Khởi động lại",
     "updateCheckingDisabled": "Đã tắt kiểm tra cập nhật",
     "downloading": "Đang tải... {{progress}}%",
     "installing": "Đang cài đặt...",
@@ -816,15 +813,7 @@
   },
   "common": {
     "loading": "Đang tải...",
-    "save": "Lưu",
-    "cancel": "Hủy",
-    "reset": "Đặt lại",
-    "add": "Thêm",
-    "remove": "Xóa",
     "delete": "Xóa",
-    "edit": "Chỉnh sửa",
-    "create": "Tạo",
-    "update": "Cập nhật",
     "close": "Đóng",
     "open": "Mở",
     "default": "Mặc định",
@@ -858,7 +847,8 @@
     "modelLoadFailed": "Không thể tải mô hình: {{model}}",
     "modelLoadFailedUnknown": "mô hình không xác định",
     "pasteFailedTitle": "Không thể dán văn bản",
-    "pasteFailed": "Không thể dán văn bản vào ứng dụng đang hoạt động."
+    "pasteFailed": "Không thể dán văn bản vào ứng dụng đang hoạt động.",
+    "transcriptionFailedTitle": "Phiên âm thất bại"
   },
   "appLanguage": {
     "title": "Ngôn ngữ ứng dụng",

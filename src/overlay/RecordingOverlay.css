@@ -116,8 +116,102 @@
   100% {
     opacity: 0.5;
   }
-  50% {
+  to {
     opacity: 1;
+    transform: none;
+  }
+}
+.scard.leaving {
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 240ms ease,
+    transform 300ms ease;
+}
+.scard.open {
+  width: var(--ov-open-w);
+  border-radius: 16px;
+}
+.scard.working {
+  width: var(--ov-work-w);
+  border-radius: 18px;
+}
+
+/* Compact form: two fixed widths so the recording→working change is an animatable
+   width transition (intrinsic max-content can't be transitioned, and every label
+   is short enough to fit the resting pill, so content-sizing produced no visible
+   grow). The resting pill hugs the waveform; the working pill is roomy enough to
+   center the longest label — the .swork-label ellipsis is only a safety net past it. */
+.scard.compact {
+  animation: none;
+  width: var(--ov-rest-w);
+}
+.scard.compact.cworking {
+  width: var(--ov-work-w);
+}
+
+/* text region — auto-height open via grid-rows trick; region fades as a whole */
+.stext {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 440ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 260ms ease;
+}
+.scard.open .stext {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.stext-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+.stext-cap {
+  max-height: var(--ov-cap-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  padding-top: 12px;
+  padding-bottom: 0px;
+  padding-left: 14px;
+  padding-right: 14px;
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.35;
+  letter-spacing: -0.003em;
+  color: color-mix(in srgb, var(--color-text) 90%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+/* Hide the scrollbar (WebKit/Chromium) — scroll-back is signalled by the fade. */
+.stext-cap::-webkit-scrollbar {
+  display: none;
+}
+.stext-cap p {
+  /* Bottom-anchor the text when it's shorter than the viewport, avoiding the
+     justify-content:flex-end overflow bug that makes the top unscrollable. */
+  margin: auto 0 0;
+}
+.stext-cap .tentative {
+  color: inherit;
+}
+.scaret {
+  display: inline-block;
+  width: 2px;
+  height: 1.02em;
+  translate: 0 3px;
+  margin-left: 1px;
+  background: var(--s-accent);
+  border-radius: 2px;
+  animation: scaret-blink 1.05s steps(1) infinite;
+}
+@keyframes scaret-blink {
+  50% {
+    opacity: 0;
   }
 }
 
@@ -186,6 +280,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--s-muted);
+  background: var(--s-hair);
   cursor: pointer;
   transition: background-color 150ms ease-out;
   flex-shrink: 0;
@@ -205,4 +301,30 @@
 
 .recording-overlay.state-processing {
   border-color: rgba(168, 85, 247, 0.5);
+}
+
+/* working state (transcribing / polishing) — spinner + label */
+.sspinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--s-hair);
+  border-top-color: var(--s-accent);
+  animation: sspin 0.7s linear infinite;
+  flex: none;
+}
+@keyframes sspin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+.swork-label {
+  font-size: 12px;
+  color: var(--s-muted);
+  white-space: nowrap;
+  padding: 0 8px; /* breathing room from the spinner / cancel when content-sized */
+  /* Safety net: ellipsize rather than clip if a label exceeds the max pill width. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

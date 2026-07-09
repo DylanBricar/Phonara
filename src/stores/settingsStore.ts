@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import type {
   AppSettings as Settings,
   AudioDevice,
-  WhisperAcceleratorSetting,
+  TranscribeAcceleratorSetting,
   OrtAcceleratorSetting,
 } from "@/bindings";
 import { commands } from "@/bindings";
@@ -181,7 +181,7 @@ export const useSettingsStore = create<SettingsStore>()(
                 bindings: {
                   ...state.settings.bindings,
                   [id]: {
-                    ...state.settings.bindings[id]!,
+                    ...state.settings.bindings?.[id]!,
                     current_binding: binding,
                   },
                 },
@@ -207,7 +207,7 @@ export const useSettingsStore = create<SettingsStore>()(
                   bindings: {
                     ...state.settings.bindings,
                     [id]: {
-                      ...state.settings.bindings[id]!,
+                      ...state.settings.bindings?.[id]!,
                       current_binding: originalBinding,
                     },
                   },

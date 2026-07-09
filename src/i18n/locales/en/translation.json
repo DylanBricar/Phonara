@@ -20,11 +20,12 @@
   },
   "onboarding": {
     "subtitle": "To get started, choose a transcription model",
+    "existingModelsTitle": "Compatible Models",
+    "downloadModelsTitle": "Available to Download",
+    "showAllModels": "Show all {{total}} models",
+    "showFewerModels": "Show fewer models",
     "recommended": "Recommended",
-    "download": "Download",
-    "downloading": "Downloading...",
     "customModelDescription": "Not officially supported",
-    "downloadFailed": "Download failed. Please try again.",
     "modelCard": {
       "accuracy": "accuracy",
       "speed": "speed"
@@ -116,8 +117,7 @@
       }
     },
     "errors": {
-      "loadModels": "Failed to load available models",
-      "downloadModel": "Failed to download model: {{error}}"
+      "selectModel": "Failed to select model"
     },
     "permissions": {
       "title": "Permissions Required",
@@ -143,6 +143,8 @@
   },
   "modelSelector": {
     "custom": "Custom",
+    "legacy": "Legacy",
+    "streaming": "Streaming",
     "active": "Active",
     "switching": "Switching...",
     "noModelsAvailable": "No models available",
@@ -166,8 +168,8 @@
     "capabilities": {
       "languageSelection": "Supports multiple input languages",
       "singleLanguage": "Supports this language only",
-      "multiLanguage": "Multi-language",
-      "languageOnly": "{{language}} Only",
+      "languageCount": "{{total}} languages",
+      "languageOnly": "{{language}} only",
       "translation": "Can translate to English",
       "translate": "Translate to English"
     },
@@ -235,7 +237,6 @@
       "language": {
         "title": "Language",
         "description": "Select the language for speech recognition. Auto will automatically determine the language, while selecting a specific language can improve accuracy for that language.",
-        "descriptionUnsupported": "Parakeet model automatically detects the language. No manual selection is needed.",
         "searchPlaceholder": "Search languages...",
         "noResults": "No languages found",
         "auto": "Auto"
@@ -275,9 +276,6 @@
       "deleteActiveConfirm": "{{modelName}} is your active model. Deleting it will stop transcriptions until you select a new model. Are you sure?",
       "deleteTitle": "Delete Model",
       "filters": {
-        "all": "All",
-        "multiLanguage": "Multi-language",
-        "translation": "Translation",
         "allLanguages": "All Languages"
       },
       "searchPlaceholder": "Search models...",
@@ -342,7 +340,6 @@
       }
     },
     "advanced": {
-      "title": "Advanced",
       "groups": {
         "app": "App",
         "output": "Output",
@@ -360,17 +357,15 @@
         "description": "Keeps the microphone stream open for 30 seconds after recording stops, reducing latency for back-to-back transcriptions. May degrade Bluetooth audio quality while active."
       },
       "acceleration": {
-        "whisper": {
-          "title": "Whisper Acceleration",
-          "description": "Hardware acceleration for Whisper models. Auto uses GPU if available (Metal on macOS, Vulkan on Windows/Linux)."
+        "transcribe": {
+          "title": "transcribe.cpp Acceleration",
+          "description": "Hardware acceleration for transcribe.cpp (Whisper-family) models. Auto uses GPU if available (Metal on macOS, Vulkan on Windows/Linux)."
         },
         "ort": {
           "title": "ONNX Acceleration",
           "description": "Hardware acceleration for ONNX models (Parakeet, Canary, Moonshine, etc.). DirectML on Windows is experimental. Models may fail to transcribe."
         },
         "gpuDevice": {
-          "title": "GPU Device",
-          "description": "Select which GPU to use for Whisper inference. Auto picks the dedicated GPU.",
           "auto": "Auto"
         }
       },
@@ -465,8 +460,7 @@
       },
       "translateToEnglish": {
         "label": "Translate to English",
-        "description": "Automatically translate speech from other languages to English during transcription.",
-        "descriptionUnsupported": "Translation is not supported by the {{model}} model."
+        "description": "Automatically translate speech from other languages to English during transcription."
       },
       "modelUnload": {
         "title": "Unload Model",
@@ -529,7 +523,6 @@
       }
     },
     "postProcessing": {
-      "title": "Post Process",
       "hotkey": {
         "title": "Hotkey"
       },
@@ -540,9 +533,6 @@
           "description": "Select an OpenAI-compatible provider."
         },
         "appleIntelligence": {
-          "title": "Apple Intelligence",
-          "description": "Runs fully on-device. No API key or network access is required.",
-          "requirements": "Requires an Apple Silicon Mac running macOS Tahoe (26.0) or later. Apple Intelligence must be enabled in System Settings.",
           "unavailable": "Apple Intelligence is not available on this device. Requires an Apple Silicon Mac running macOS Tahoe (26.0) or later with Apple Intelligence enabled in System Settings."
         },
         "baseUrl": {
@@ -557,10 +547,8 @@
         },
         "model": {
           "title": "Model",
-          "descriptionApple": "Provide an optional numeric token limit or keep the default on-device preset.",
           "descriptionCustom": "Provide the model identifier expected by your custom endpoint.",
           "descriptionDefault": "Choose a model exposed by the selected provider.",
-          "placeholderApple": "Apple Intelligence",
           "placeholderWithOptions": "Search or select a model",
           "placeholderNoOptions": "Type a model name",
           "refreshModels": "Refresh models"
@@ -657,9 +645,27 @@
         "title": "Log Level",
         "description": "Set the verbosity of logging"
       },
+      "liveLogs": {
+        "title": "Live Logs",
+        "description": "Stream application logs in real time to diagnose issues without opening the log file. Only logs emitted while this panel is open are shown; respects the Log Level setting above.",
+        "live": "Live",
+        "paused": "Paused",
+        "pause": "Pause",
+        "resume": "Resume",
+        "copied": "Copied",
+        "lineCount": "{{count}} lines",
+        "empty": "Waiting for logs… Entries appear here as the app emits them."
+      },
       "updateChecks": {
         "label": "Check for Updates",
         "description": "Automatically check for new versions of Phonara"
+      },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -724,8 +730,12 @@
         "settings": "Settings:"
       },
       "pasteDelay": {
-        "title": "Paste Delay",
-        "description": "Delay before sending paste keystroke (in milliseconds). Increase if wrong text is being pasted."
+        "title": "Paste Delay (Before)",
+        "description": "Delay (in milliseconds) after copying text, before sending the paste keystroke. Increase if nothing gets pasted."
+      },
+      "pasteDelayAfter": {
+        "title": "Paste Delay (After)",
+        "description": "Delay (in milliseconds) after the paste keystroke, before restoring your previous clipboard. Increase if your old clipboard content is being pasted instead of the transcription."
       },
       "recordingBuffer": {
         "title": "Extra Recording Buffer",
@@ -762,6 +772,10 @@
         "title": "Version",
         "description": "Current version of Phonara"
       },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
       "appDataDirectory": {
         "title": "App Data Directory",
         "description": "Location where Phonara stores its data"
@@ -795,13 +809,9 @@
     }
   },
   "footer": {
-    "downloadingModel": "Downloading {{model}}...",
     "checkingUpdates": "Checking for updates...",
-    "updateAvailable": "Update available: {{version}}",
     "updateAvailableShort": "Update available",
     "upToDate": "Up to date",
-    "downloadUpdate": "Download Update",
-    "restart": "Restart",
     "updateCheckingDisabled": "Update Checking Disabled",
     "downloading": "Downloading... {{progress}}%",
     "installing": "Installing...",
@@ -814,17 +824,12 @@
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
   },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
+  },
   "common": {
     "loading": "Loading...",
-    "save": "Save",
-    "cancel": "Cancel",
-    "reset": "Reset",
-    "add": "Add",
-    "remove": "Remove",
     "delete": "Delete",
-    "edit": "Edit",
-    "create": "Create",
-    "update": "Update",
     "close": "Close",
     "open": "Open",
     "default": "Default",
@@ -858,7 +863,8 @@
     "modelLoadFailed": "Failed to load model: {{model}}",
     "modelLoadFailedUnknown": "unknown model",
     "pasteFailedTitle": "Failed to Paste Text",
-    "pasteFailed": "Text could not be pasted into the active application."
+    "pasteFailed": "Text could not be pasted into the active application.",
+    "transcriptionFailedTitle": "Transcription Failed"
   },
   "appLanguage": {
     "title": "Application Language",

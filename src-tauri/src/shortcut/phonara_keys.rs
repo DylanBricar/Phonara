@@ -7,9 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::settings::{self, get_settings, ShortcutBinding};
+use crate::transcription_coordinator::is_transcribe_binding;
 
 use super::handler::handle_shortcut_event;
 
@@ -26,11 +28,14 @@ enum ManagerCommand {
     Shutdown,
 }
 
+const MAX_RECORDING_DURATION: Duration = Duration::from_secs(30);
+
 pub struct PhonaraKeysState {
     command_sender: Mutex<Sender<ManagerCommand>>,
     thread_handle: Mutex<Option<JoinHandle<()>>>,
     recording_listener: Mutex<Option<KeyboardListener>>,
     is_recording: AtomicBool,
+    recording_started_at: Mutex<Option<Instant>>,
     recording_binding_id: Mutex<Option<String>>,
     recording_running: Arc<AtomicBool>,
 }
@@ -57,57 +62,98 @@ impl PhonaraKeysState {
             thread_handle: Mutex::new(Some(thread_handle)),
             recording_listener: Mutex::new(None),
             is_recording: AtomicBool::new(false),
+            recording_started_at: Mutex::new(None),
             recording_binding_id: Mutex::new(None),
             recording_running: Arc::new(AtomicBool::new(false)),
         })
     }
 
     fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle) {
-        let manager = match HotkeyManager::new_with_blocking() {
+        let blocking_manager = match HotkeyManager::new_with_blocking() {
             Ok(m) => m,
             Err(e) => {
-                error!("Failed to create HotkeyManager: {}", e);
+                error!("Failed to create blocking HotkeyManager: {}", e);
+                return;
+            }
+        };
+        let passive_manager = match HotkeyManager::new() {
+            Ok(m) => m,
+            Err(e) => {
+                error!("Failed to create passive HotkeyManager: {}", e);
                 return;
             }
         };
 
-        let mut binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
-        let mut hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
+        let mut blocking_binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
+        let mut blocking_hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
+        let mut passive_binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
+        let mut passive_hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
 
         loop {
-            while let Some(event) = manager.try_recv() {
-                if let Some((binding_id, hotkey_string)) = hotkey_to_binding.get(&event.id) {
-                    let is_pressed = event.state == HotkeyState::Pressed;
-                    handle_shortcut_event(&app, binding_id, hotkey_string, is_pressed);
+            for (manager, map) in [
+                (&blocking_manager, &blocking_hotkey_to_binding),
+                (&passive_manager, &passive_hotkey_to_binding),
+            ] {
+                while let Some(event) = manager.try_recv() {
+                    if let Some((binding_id, hotkey_string)) = map.get(&event.id) {
+                        if app
+                            .try_state::<PhonaraKeysState>()
+                            .is_some_and(|state| state.is_capturing())
+                        {
+                            continue;
+                        }
+
+                        let is_pressed = event.state == HotkeyState::Pressed;
+                        handle_shortcut_event(&app, binding_id, hotkey_string, is_pressed);
+                    }
                 }
             }
 
-            match cmd_rx.recv_timeout(std::time::Duration::from_millis(10)) {
+            match cmd_rx.recv_timeout(Duration::from_millis(10)) {
                 Ok(cmd) => match cmd {
                     ManagerCommand::Register {
                         binding_id,
                         hotkey_string,
                         response,
                     } => {
-                        let result = Self::do_register(
-                            &manager,
-                            &mut binding_to_hotkey,
-                            &mut hotkey_to_binding,
-                            &binding_id,
-                            &hotkey_string,
-                        );
+                        let result = if is_transcribe_binding(&binding_id) {
+                            Self::do_register(
+                                &blocking_manager,
+                                &mut blocking_binding_to_hotkey,
+                                &mut blocking_hotkey_to_binding,
+                                &binding_id,
+                                &hotkey_string,
+                            )
+                        } else {
+                            Self::do_register(
+                                &passive_manager,
+                                &mut passive_binding_to_hotkey,
+                                &mut passive_hotkey_to_binding,
+                                &binding_id,
+                                &hotkey_string,
+                            )
+                        };
                         let _ = response.send(result);
                     }
                     ManagerCommand::Unregister {
                         binding_id,
                         response,
                     } => {
-                        let result = Self::do_unregister(
-                            &manager,
-                            &mut binding_to_hotkey,
-                            &mut hotkey_to_binding,
-                            &binding_id,
-                        );
+                        let result = if is_transcribe_binding(&binding_id) {
+                            Self::do_unregister(
+                                &blocking_manager,
+                                &mut blocking_binding_to_hotkey,
+                                &mut blocking_hotkey_to_binding,
+                                &binding_id,
+                            )
+                        } else {
+                            Self::do_unregister(
+                                &passive_manager,
+                                &mut passive_binding_to_hotkey,
+                                &mut passive_hotkey_to_binding,
+                                &binding_id,
+                            )
+                        };
                         let _ = response.send(result);
                     }
                     ManagerCommand::Shutdown => {
@@ -189,6 +235,18 @@ impl PhonaraKeysState {
             .map_err(|_| "Failed to receive unregister response")?
     }
 
+    fn is_capturing(&self) -> bool {
+        if !self.is_recording.load(Ordering::SeqCst) {
+            return false;
+        }
+
+        let started = self
+            .recording_started_at
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        started.is_some_and(|t| t.elapsed() < MAX_RECORDING_DURATION)
+    }
+
     pub fn start_recording(&self, app: &AppHandle, binding_id: String) -> Result<(), String> {
         if self.is_recording.load(Ordering::SeqCst) {
             return Err("Already recording".into());
@@ -210,6 +268,13 @@ impl PhonaraKeysState {
                 .lock()
                 .map_err(|_| "Failed to lock recording_binding_id")?;
             *binding = Some(binding_id);
+        }
+        {
+            let mut started = self
+                .recording_started_at
+                .lock()
+                .map_err(|_| "Failed to lock recording_started_at")?;
+            *started = Some(Instant::now());
         }
 
         self.is_recording.store(true, Ordering::SeqCst);
@@ -250,7 +315,7 @@ impl PhonaraKeysState {
                     error!("Failed to emit key event: {}", e);
                 }
             } else {
-                thread::sleep(std::time::Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(10));
             }
         }
     }
@@ -272,6 +337,13 @@ impl PhonaraKeysState {
                 .lock()
                 .map_err(|_| "Failed to lock recording_binding_id")?;
             *binding = None;
+        }
+        {
+            let mut started = self
+                .recording_started_at
+                .lock()
+                .map_err(|_| "Failed to lock recording_started_at")?;
+            *started = None;
         }
 
         Ok(())
