@@ -11,12 +11,12 @@
   "sidebar": {
     "general": "一般",
     "models": "模型",
+    "appearance": "Appearance",
     "advanced": "進階",
     "postProcessing": "後處理",
     "history": "歷史紀錄",
     "debug": "偵錯",
-    "about": "關於",
-    "appearance": "Appearance"
+    "about": "關於"
   },
   "onboarding": {
     "subtitle": "首先，請選擇一種模型",
@@ -79,22 +79,6 @@
         "name": "SenseVoice",
         "description": "速度極快。支援中文、英語、日語、韓語、粵語。"
       },
-      "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "俄語語音辨識。快速且準確。"
-      },
-      "canary-180m-flash": {
-        "name": "Canary 180M Flash",
-        "description": "速度極快。支援英語、德語、西班牙語、法語。支援翻譯。"
-      },
-      "canary-1b-v2": {
-        "name": "Canary 1B v2",
-        "description": "準確的多語言模型。25種歐洲語言。支援翻譯。"
-      },
-      "cohere-int8": {
-        "name": "Cohere",
-        "description": "大型模型，速度較慢，但多語言辨識非常準確。"
-      },
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
@@ -114,6 +98,22 @@
       "whisper-distil-fr": {
         "name": "Whisper French Lite",
         "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "俄語語音辨識。快速且準確。"
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "速度極快。支援英語、德語、西班牙語、法語。支援翻譯。"
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "準確的多語言模型。25種歐洲語言。支援翻譯。"
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "大型模型，速度較慢，但多語言辨識非常準確。"
       }
     },
     "errors": {
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "自訂",
+    "legacy": "Legacy",
     "streaming": "串流",
     "active": "使用中",
     "switching": "切換中...",
@@ -185,6 +186,16 @@
         "description": "使用顯示卡加速轉錄。如果遇到問題請停用此選項（例如：部分 AMD GPU 因 Vulkan 驅動程式錯誤導致輸出亂碼）。CPU 模式較慢但更穩定。"
       }
     },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
+    },
     "general": {
       "title": "一般",
       "shortcut": {
@@ -194,6 +205,7 @@
         "none": "未設定快捷鍵",
         "notFound": "未找到快捷鍵",
         "pressKeys": "請按鍵...",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "轉錄快捷鍵",
@@ -220,8 +232,7 @@
           "restore": "無法還原原始快捷鍵",
           "set": "無法設定快捷鍵: {{error}}",
           "reset": "無法將快捷鍵重設為原始值"
-        },
-        "clickToSet": "Click to set"
+        }
       },
       "language": {
         "title": "語言",
@@ -253,20 +264,22 @@
     "models": {
       "title": "轉錄模型",
       "description": "選擇轉錄模型或下載其他模型。不同模型提供不同的準確度和速度",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
       "yourModels": "已下載的模型",
       "availableModels": "可供下載",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
       "deleteConfirm": "確定要刪除 {{modelName}} 嗎？刪除後須重新下載才能使用",
       "deleteActiveConfirm": "{{modelName}} 是您目前使用的模型。刪除後將停止轉錄，直到您選擇新的模型。確定要刪除嗎？",
       "deleteTitle": "刪除模型",
       "filters": {
         "allLanguages": "所有語言"
       },
-      "noModelsMatch": "沒有符合此篩選條件的模型",
       "searchPlaceholder": "搜尋模型...",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Processing"
-      },
+      "noModelsMatch": "沒有符合此篩選條件的模型",
       "processingModels": {
         "title": "Processing Models",
         "description": "Save LLM models for use in post-processing actions.",
@@ -291,6 +304,12 @@
         "placeholder": "選擇麥克風...",
         "loading": "載入中..."
       },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
+      },
       "audioFeedback": {
         "label": "聲音回饋",
         "description": "錄製開始和停止時播放聲音"
@@ -304,12 +323,6 @@
       "volume": {
         "title": "音量",
         "description": "調整聲音回饋的音量"
-      },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -573,16 +586,54 @@
       "unsave": "從已儲存中移除",
       "delete": "刪除條目",
       "deleteError": "刪除條目失敗，請重試",
-      "retranscribe": "重新轉錄",
-      "retranscribeError": "重新轉錄失敗，請重試。",
-      "transcribing": "轉錄中...",
-      "transcriptionFailed": "轉錄失敗。您可以使用重試圖示重新轉錄。",
       "reprocess": "Reprocess with different model",
       "reprocessing": "Reprocessing...",
       "selectModel": "Select model",
       "originalTranscript": "Original",
       "postProcessed": "Post-processed",
-      "action": "Action {{key}}"
+      "action": "Action {{key}}",
+      "retranscribe": "重新轉錄",
+      "retranscribeError": "重新轉錄失敗，請重試。",
+      "transcribing": "轉錄中...",
+      "transcriptionFailed": "轉錄失敗。您可以使用重試圖示重新轉錄。"
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "debug": {
       "title": "偵錯",
@@ -609,6 +660,13 @@
         "label": "檢查更新",
         "description": "自動檢查 Phonara 的新版本"
       },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
+      },
       "soundTheme": {
         "label": "聲音主題",
         "description": "選擇錄製開始和停止回饋的聲音主題"
@@ -631,6 +689,15 @@
         "weeks2": "2 週後",
         "months3": "3 個月後",
         "placeholder": "選擇保留期限..."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       },
       "alwaysOnMicrophone": {
         "label": "麥克風常開",
@@ -673,101 +740,7 @@
       "recordingBuffer": {
         "title": "額外錄音緩衝",
         "description": "放開按鍵後繼續錄音的額外時間（毫秒），以捕捉尾音。0 = 無額外緩衝。"
-      },
-      "recordingsDirectory": {
-        "title": "Recordings Directory",
-        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
-        "default": "Default (App Data)",
-        "choose": "Choose Folder",
-        "reset": "Reset to Default",
-        "current": "Current: {{path}}",
-        "restartNote": "Restart the app to apply the new recordings directory."
       }
-    },
-    "about": {
-      "title": "關於",
-      "version": {
-        "title": "版本",
-        "description": "Phonara 的目前版本"
-      },
-      "appDataDirectory": {
-        "title": "應用程式資料目錄",
-        "description": "Phonara 儲存資料的位置"
-      },
-      "sourceCode": {
-        "title": "原始碼",
-        "description": "檢視原始碼並參與貢獻",
-        "button": "在 GitHub 上檢視"
-      },
-      "supportDevelopment": {
-        "title": "支持開發",
-        "description": "幫助我們繼續開發 Phonara",
-        "button": "捐贈"
-      },
-      "acknowledgments": {
-        "title": "致謝",
-        "ggml": {
-          "title": "ggml",
-          "description": "針對 OpenAI Whisper 自動語音識別模型的高效能推理引擎",
-          "details": "Phonara 使用 Whisper.cpp 進行快速的本機語音轉文字處理。感謝 Georgi Gerganov 和貢獻者們的傑出工作"
-        }
-      },
-      "exportImport": {
-        "title": "Export / Import Settings",
-        "description": "Transfer your configuration to another computer",
-        "export": "Export",
-        "import": "Import",
-        "exportSuccess": "Settings exported successfully",
-        "importSuccess": "Settings imported successfully"
-      }
-    },
-    "longAudioModel": {
-      "title": "Long Audio Model",
-      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
-      "modelLabel": "Model for long recordings",
-      "modelDescription": "Select a model to use for recordings longer than the threshold.",
-      "thresholdLabel": "Duration threshold (seconds)",
-      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
-      "disabled": "Disabled",
-      "seconds": "{{value}}s"
-    },
-    "gemini": {
-      "title": "Gemini API",
-      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your Gemini API key",
-      "model": "Model",
-      "modelDescription": "Select which Gemini model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
-      "selectModel": "Gemini Model",
-      "models": {
-        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
-        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
-        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
-        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
-        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
-    },
-    "openai": {
-      "title": "OpenAI API",
-      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your OpenAI API key",
-      "model": "Model",
-      "modelDescription": "Select which OpenAI model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
-      "selectModel": "OpenAI Model",
-      "models": {
-        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
-        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
-        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
     },
     "appearance": {
       "title": "Appearance",
@@ -792,6 +765,47 @@
         "system": "System"
       },
       "overlay": "Overlay"
+    },
+    "about": {
+      "title": "關於",
+      "version": {
+        "title": "版本",
+        "description": "Phonara 的目前版本"
+      },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
+      "appDataDirectory": {
+        "title": "應用程式資料目錄",
+        "description": "Phonara 儲存資料的位置"
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
+      "sourceCode": {
+        "title": "原始碼",
+        "description": "檢視原始碼並參與貢獻",
+        "button": "在 GitHub 上檢視"
+      },
+      "supportDevelopment": {
+        "title": "支持開發",
+        "description": "幫助我們繼續開發 Phonara",
+        "button": "捐贈"
+      },
+      "acknowledgments": {
+        "title": "致謝",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        }
+      }
     }
   },
   "footer": {
@@ -809,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "載入中...",

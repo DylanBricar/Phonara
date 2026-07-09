@@ -11,12 +11,12 @@
   "sidebar": {
     "general": "Allgemein",
     "models": "Modelle",
+    "appearance": "Appearance",
     "advanced": "Erweitert",
     "postProcessing": "Nachbearbeitung",
     "history": "Verlauf",
     "debug": "Debug",
-    "about": "Info",
-    "appearance": "Appearance"
+    "about": "Info"
   },
   "onboarding": {
     "subtitle": "Wähle ein Transkriptionsmodell, um loszulegen",
@@ -79,22 +79,6 @@
         "name": "SenseVoice",
         "description": "Sehr schnell. Chinesisch, Englisch, Japanisch, Koreanisch, Kantonesisch."
       },
-      "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "Russische Spracherkennung. Schnell und präzise."
-      },
-      "canary-180m-flash": {
-        "name": "Canary 180M Flash",
-        "description": "Sehr schnell. Englisch, Deutsch, Spanisch, Französisch. Unterstützt Übersetzung."
-      },
-      "canary-1b-v2": {
-        "name": "Canary 1B v2",
-        "description": "Genaue mehrsprachige Erkennung. 25 europäische Sprachen. Unterstützt Übersetzung."
-      },
-      "cohere-int8": {
-        "name": "Cohere",
-        "description": "Ein großes, langsameres, aber sehr genaues mehrsprachiges Modell."
-      },
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
@@ -114,6 +98,22 @@
       "whisper-distil-fr": {
         "name": "Whisper French Lite",
         "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "Russische Spracherkennung. Schnell und präzise."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "Sehr schnell. Englisch, Deutsch, Spanisch, Französisch. Unterstützt Übersetzung."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "Genaue mehrsprachige Erkennung. 25 europäische Sprachen. Unterstützt Übersetzung."
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "Ein großes, langsameres, aber sehr genaues mehrsprachiges Modell."
       }
     },
     "errors": {
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "Benutzerdefiniert",
+    "legacy": "Legacy",
     "streaming": "Streaming",
     "active": "Aktiv",
     "switching": "Wechseln...",
@@ -162,17 +163,16 @@
     "noModelDownloadRequired": "Kein Modell - Download erforderlich",
     "deleteModel": "{{modelName}} löschen",
     "downloadSpeed": "{{speed}} MB/s",
-    "capabilities": {
-      "languageSelection": "Unterstützt mehrere Eingabesprachen",
-      "languageCount": "{{total}} languages",
-      "translation": "Kann ins Englische übersetzen",
-      "translate": "Ins Englische übersetzen",
-      "singleLanguage": "Unterstützt nur diese Sprache",
-      "languageOnly": "Nur {{language}}",
-      "streaming": "Zeigt die Transkription live während des Sprechens an"
-    },
     "cancel": "Abbrechen",
     "cancelDownload": "Download abbrechen",
+    "capabilities": {
+      "languageSelection": "Unterstützt mehrere Eingabesprachen",
+      "singleLanguage": "Unterstützt nur diese Sprache",
+      "languageCount": "{{total}} languages",
+      "languageOnly": "Nur {{language}}",
+      "translation": "Kann ins Englische übersetzen",
+      "translate": "Ins Englische übersetzen"
+    },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
     "switchFailed": "Failed to switch model"
@@ -186,38 +186,15 @@
         "description": "Nutzt Ihre Grafikkarte für schnellere Transkription. Deaktivieren Sie diese Option bei Problemen (z.B. fehlerhafte Ausgabe bei einigen AMD-GPUs aufgrund eines Vulkan-Treiber-Bugs). Der CPU-Modus ist langsamer, aber zuverlässiger."
       }
     },
-    "models": {
-      "title": "Transkriptionsmodelle",
-      "description": "Wähle ein Transkriptionsmodell aus oder lade zusätzliche Modelle herunter. Verschiedene Modelle bieten unterschiedliche Genauigkeits- und Geschwindigkeitsstufen.",
-      "deleteConfirm": "Bist du sicher, dass du {{modelName}} löschen möchtest? Du musst es erneut herunterladen, um es zu verwenden.",
-      "deleteActiveConfirm": "{{modelName}} ist dein aktives Modell. Das Löschen stoppt Transkriptionen, bis du ein neues Modell auswählst. Bist du sicher?",
-      "deleteTitle": "Modell löschen",
-      "filters": {
-        "allLanguages": "Alle Sprachen"
-      },
-      "noModelsMatch": "Keine Modelle entsprechen diesem Filter.",
-      "yourModels": "Heruntergeladene Modelle",
-      "availableModels": "Zum Download verfügbar",
-      "searchPlaceholder": "Modelle suchen...",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Processing"
-      },
-      "processingModels": {
-        "title": "Processing Models",
-        "description": "Save LLM models for use in post-processing actions.",
-        "noModels": "No processing models saved yet. Add one to use in your actions.",
-        "addModel": "Add Processing Model",
-        "provider": "Provider",
-        "apiKey": "API Key",
-        "apiKeyPlaceholder": "Enter API key",
-        "model": "Model",
-        "modelPlaceholder": "Select or type a model",
-        "save": "Save",
-        "cancel": "Cancel",
-        "fetchModels": "Fetch models",
-        "alreadySaved": "This model is already saved."
-      }
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
     },
     "general": {
       "title": "Allgemein",
@@ -228,6 +205,7 @@
         "none": "Keine Tastenkürzel konfiguriert",
         "notFound": "Tastenkürzel nicht gefunden",
         "pressKeys": "Tasten drücken...",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "Transkriptions-Tastenkürzel",
@@ -254,8 +232,7 @@
           "restore": "Ursprüngliches Tastenkürzel konnte nicht wiederhergestellt werden",
           "set": "Tastenkürzel konnte nicht gesetzt werden: {{error}}",
           "reset": "Tastenkürzel konnte nicht auf Originalwert zurückgesetzt werden"
-        },
-        "clickToSet": "Click to set"
+        }
       },
       "language": {
         "title": "Sprache",
@@ -284,6 +261,41 @@
         "audioFiles": "Audio Files"
       }
     },
+    "models": {
+      "title": "Transkriptionsmodelle",
+      "description": "Wähle ein Transkriptionsmodell aus oder lade zusätzliche Modelle herunter. Verschiedene Modelle bieten unterschiedliche Genauigkeits- und Geschwindigkeitsstufen.",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
+      "yourModels": "Heruntergeladene Modelle",
+      "availableModels": "Zum Download verfügbar",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
+      "deleteConfirm": "Bist du sicher, dass du {{modelName}} löschen möchtest? Du musst es erneut herunterladen, um es zu verwenden.",
+      "deleteActiveConfirm": "{{modelName}} ist dein aktives Modell. Das Löschen stoppt Transkriptionen, bis du ein neues Modell auswählst. Bist du sicher?",
+      "deleteTitle": "Modell löschen",
+      "filters": {
+        "allLanguages": "Alle Sprachen"
+      },
+      "searchPlaceholder": "Modelle suchen...",
+      "noModelsMatch": "Keine Modelle entsprechen diesem Filter.",
+      "processingModels": {
+        "title": "Processing Models",
+        "description": "Save LLM models for use in post-processing actions.",
+        "noModels": "No processing models saved yet. Add one to use in your actions.",
+        "addModel": "Add Processing Model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Select or type a model",
+        "save": "Save",
+        "cancel": "Cancel",
+        "fetchModels": "Fetch models",
+        "alreadySaved": "This model is already saved."
+      }
+    },
     "sound": {
       "title": "Ton",
       "microphone": {
@@ -291,6 +303,12 @@
         "description": "Bevorzugtes Mikrofon auswählen",
         "placeholder": "Mikrofon auswählen...",
         "loading": "Wird geladen..."
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
       },
       "audioFeedback": {
         "label": "Audio-Feedback",
@@ -305,12 +323,6 @@
       "volume": {
         "title": "Lautstärke",
         "description": "Lautstärke der Audio-Feedback-Töne anpassen"
-      },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -574,16 +586,54 @@
       "unsave": "Aus Gespeicherten entfernen",
       "delete": "Eintrag löschen",
       "deleteError": "Eintrag konnte nicht gelöscht werden. Bitte versuche es erneut.",
-      "retranscribe": "Erneut transkribieren",
-      "retranscribeError": "Erneute Transkription fehlgeschlagen. Bitte versuche es erneut.",
-      "transcribing": "Transkribiere...",
-      "transcriptionFailed": "Transkription fehlgeschlagen. Du kannst über das Wiederholen-Symbol erneut transkribieren.",
       "reprocess": "Reprocess with different model",
       "reprocessing": "Reprocessing...",
       "selectModel": "Select model",
       "originalTranscript": "Original",
       "postProcessed": "Post-processed",
-      "action": "Action {{key}}"
+      "action": "Action {{key}}",
+      "retranscribe": "Erneut transkribieren",
+      "retranscribeError": "Erneute Transkription fehlgeschlagen. Bitte versuche es erneut.",
+      "transcribing": "Transkribiere...",
+      "transcriptionFailed": "Transkription fehlgeschlagen. Du kannst über das Wiederholen-Symbol erneut transkribieren."
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "debug": {
       "title": "Debug",
@@ -610,6 +660,13 @@
         "label": "Nach Updates suchen",
         "description": "Automatisch nach neuen Versionen von Phonara suchen"
       },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
+      },
       "soundTheme": {
         "label": "Sound-Thema",
         "description": "Sound-Thema für Aufnahme-Start und -Stop-Feedback auswählen"
@@ -632,6 +689,15 @@
         "weeks2": "Nach 2 Wochen",
         "months3": "Nach 3 Monaten",
         "placeholder": "Aufbewahrungszeitraum auswählen..."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       },
       "alwaysOnMicrophone": {
         "label": "Mikrofon immer aktiv",
@@ -674,101 +740,7 @@
       "recordingBuffer": {
         "title": "Zusätzlicher Aufnahmepuffer",
         "description": "Zusätzliche Zeit (in Millisekunden), um nach dem Loslassen der Taste weiter aufzunehmen, um nachlaufendes Audio zu erfassen. 0 = kein zusätzlicher Puffer."
-      },
-      "recordingsDirectory": {
-        "title": "Recordings Directory",
-        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
-        "default": "Default (App Data)",
-        "choose": "Choose Folder",
-        "reset": "Reset to Default",
-        "current": "Current: {{path}}",
-        "restartNote": "Restart the app to apply the new recordings directory."
       }
-    },
-    "about": {
-      "title": "Info",
-      "version": {
-        "title": "Version",
-        "description": "Aktuelle Version von Phonara"
-      },
-      "appDataDirectory": {
-        "title": "App-Datenverzeichnis",
-        "description": "Speicherort der Phonara-Daten"
-      },
-      "sourceCode": {
-        "title": "Quellcode",
-        "description": "Quellcode ansehen und beitragen",
-        "button": "Auf GitHub ansehen"
-      },
-      "supportDevelopment": {
-        "title": "Entwicklung unterstützen",
-        "description": "Hilf uns, Phonara weiterzuentwickeln",
-        "button": "Spenden"
-      },
-      "acknowledgments": {
-        "title": "Danksagungen",
-        "ggml": {
-          "title": "ggml",
-          "description": "Hochleistungs-Inferenz des Whisper-Spracherkennungsmodells von OpenAI",
-          "details": "Phonara verwendet Whisper.cpp für schnelle, lokale Sprach-zu-Text-Verarbeitung. Dank an Georgi Gerganov und die Mitwirkenden für ihre großartige Arbeit."
-        }
-      },
-      "exportImport": {
-        "title": "Export / Import Settings",
-        "description": "Transfer your configuration to another computer",
-        "export": "Export",
-        "import": "Import",
-        "exportSuccess": "Settings exported successfully",
-        "importSuccess": "Settings imported successfully"
-      }
-    },
-    "longAudioModel": {
-      "title": "Long Audio Model",
-      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
-      "modelLabel": "Model for long recordings",
-      "modelDescription": "Select a model to use for recordings longer than the threshold.",
-      "thresholdLabel": "Duration threshold (seconds)",
-      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
-      "disabled": "Disabled",
-      "seconds": "{{value}}s"
-    },
-    "gemini": {
-      "title": "Gemini API",
-      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your Gemini API key",
-      "model": "Model",
-      "modelDescription": "Select which Gemini model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
-      "selectModel": "Gemini Model",
-      "models": {
-        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
-        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
-        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
-        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
-        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
-    },
-    "openai": {
-      "title": "OpenAI API",
-      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your OpenAI API key",
-      "model": "Model",
-      "modelDescription": "Select which OpenAI model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
-      "selectModel": "OpenAI Model",
-      "models": {
-        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
-        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
-        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
     },
     "appearance": {
       "title": "Appearance",
@@ -793,6 +765,47 @@
         "system": "System"
       },
       "overlay": "Overlay"
+    },
+    "about": {
+      "title": "Info",
+      "version": {
+        "title": "Version",
+        "description": "Aktuelle Version von Phonara"
+      },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
+      "appDataDirectory": {
+        "title": "App-Datenverzeichnis",
+        "description": "Speicherort der Phonara-Daten"
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
+      "sourceCode": {
+        "title": "Quellcode",
+        "description": "Quellcode ansehen und beitragen",
+        "button": "Auf GitHub ansehen"
+      },
+      "supportDevelopment": {
+        "title": "Entwicklung unterstützen",
+        "description": "Hilf uns, Phonara weiterzuentwickeln",
+        "button": "Spenden"
+      },
+      "acknowledgments": {
+        "title": "Danksagungen",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        }
+      }
     }
   },
   "footer": {
@@ -810,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "Wird geladen...",

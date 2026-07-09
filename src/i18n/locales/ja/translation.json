@@ -11,12 +11,12 @@
   "sidebar": {
     "general": "一般",
     "models": "モデル",
+    "appearance": "Appearance",
     "advanced": "詳細設定",
     "postProcessing": "後処理",
     "history": "履歴",
     "debug": "デバッグ",
-    "about": "概要",
-    "appearance": "Appearance"
+    "about": "概要"
   },
   "onboarding": {
     "subtitle": "開始するには、文字起こしのモデルを選択してください",
@@ -79,22 +79,6 @@
         "name": "SenseVoice",
         "description": "非常に高速。中国語、英語、日本語、韓国語、広東語。"
       },
-      "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "ロシア語音声認識。高速かつ高精度。"
-      },
-      "canary-180m-flash": {
-        "name": "Canary 180M Flash",
-        "description": "非常に高速。英語、ドイツ語、スペイン語、フランス語。翻訳対応。"
-      },
-      "canary-1b-v2": {
-        "name": "Canary 1B v2",
-        "description": "高精度な多言語対応。25のヨーロッパ言語。翻訳対応。"
-      },
-      "cohere-int8": {
-        "name": "Cohere",
-        "description": "大型で低速ですが、非常に高精度な多言語モデル。"
-      },
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
@@ -114,6 +98,22 @@
       "whisper-distil-fr": {
         "name": "Whisper French Lite",
         "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "ロシア語音声認識。高速かつ高精度。"
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "非常に高速。英語、ドイツ語、スペイン語、フランス語。翻訳対応。"
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "高精度な多言語対応。25のヨーロッパ言語。翻訳対応。"
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "大型で低速ですが、非常に高精度な多言語モデル。"
       }
     },
     "errors": {
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "カスタム",
+    "legacy": "Legacy",
     "streaming": "ストリーミング",
     "active": "アクティブ",
     "switching": "切替中…",
@@ -162,17 +163,16 @@
     "noModelDownloadRequired": "モデルなし - ダウンロードが必要",
     "deleteModel": "{{modelName}}を削除",
     "downloadSpeed": "{{speed}} MB/s",
-    "capabilities": {
-      "languageSelection": "複数の入力言語をサポート",
-      "languageCount": "{{total}}言語",
-      "translation": "英語への翻訳が可能",
-      "translate": "英語に翻訳",
-      "singleLanguage": "この言語のみ対応",
-      "languageOnly": "{{language}}のみ",
-      "streaming": "話しながらリアルタイムで文字起こしを表示"
-    },
     "cancel": "キャンセル",
     "cancelDownload": "ダウンロードをキャンセル",
+    "capabilities": {
+      "languageSelection": "複数の入力言語をサポート",
+      "singleLanguage": "この言語のみ対応",
+      "languageCount": "{{total}}言語",
+      "languageOnly": "{{language}}のみ",
+      "translation": "英語への翻訳が可能",
+      "translate": "英語に翻訳"
+    },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
     "switchFailed": "Failed to switch model"
@@ -186,38 +186,15 @@
         "description": "グラフィックカードを使用して文字起こしを高速化します。問題が発生した場合はこのオプションを無効にしてください（例：一部のAMD GPUでVulkanドライバーのバグにより出力が文字化けする場合）。CPUモードは低速ですが、より安定しています。"
       }
     },
-    "models": {
-      "title": "文字起こしのモデル",
-      "description": "文字起こしのモデルを選択するか、追加のモデルをダウンロードします。異なるモデルは精度と速度のレベルが異なります。",
-      "deleteConfirm": "{{modelName}}を削除してもよろしいですか? 再度使用するにはダウンロードが必要です。",
-      "deleteActiveConfirm": "{{modelName}}は現在使用中のモデルです。削除すると、新しいモデルを選択するまで文字起こしが停止します。本当に削除しますか?",
-      "deleteTitle": "モデルを削除",
-      "filters": {
-        "allLanguages": "すべての言語"
-      },
-      "noModelsMatch": "このフィルターに一致するモデルがありません。",
-      "yourModels": "ダウンロード済みモデル",
-      "availableModels": "ダウンロード可能",
-      "searchPlaceholder": "モデルを検索...",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Processing"
-      },
-      "processingModels": {
-        "title": "Processing Models",
-        "description": "Save LLM models for use in post-processing actions.",
-        "noModels": "No processing models saved yet. Add one to use in your actions.",
-        "addModel": "Add Processing Model",
-        "provider": "Provider",
-        "apiKey": "API Key",
-        "apiKeyPlaceholder": "Enter API key",
-        "model": "Model",
-        "modelPlaceholder": "Select or type a model",
-        "save": "Save",
-        "cancel": "Cancel",
-        "fetchModels": "Fetch models",
-        "alreadySaved": "This model is already saved."
-      }
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
     },
     "general": {
       "title": "一般",
@@ -228,6 +205,7 @@
         "none": "ショートカットが設定されていません",
         "notFound": "ショートカットが見つかりません",
         "pressKeys": "キーを押してください…",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "文字起こしのショートカット",
@@ -254,8 +232,7 @@
           "restore": "元のショートカットを復元できませんでした",
           "set": "ショートカットを設定できませんでした: {{error}}",
           "reset": "ショートカットを元の値にリセットできませんでした"
-        },
-        "clickToSet": "Click to set"
+        }
       },
       "language": {
         "title": "言語",
@@ -284,6 +261,41 @@
         "audioFiles": "Audio Files"
       }
     },
+    "models": {
+      "title": "文字起こしのモデル",
+      "description": "文字起こしのモデルを選択するか、追加のモデルをダウンロードします。異なるモデルは精度と速度のレベルが異なります。",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
+      "yourModels": "ダウンロード済みモデル",
+      "availableModels": "ダウンロード可能",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
+      "deleteConfirm": "{{modelName}}を削除してもよろしいですか? 再度使用するにはダウンロードが必要です。",
+      "deleteActiveConfirm": "{{modelName}}は現在使用中のモデルです。削除すると、新しいモデルを選択するまで文字起こしが停止します。本当に削除しますか?",
+      "deleteTitle": "モデルを削除",
+      "filters": {
+        "allLanguages": "すべての言語"
+      },
+      "searchPlaceholder": "モデルを検索...",
+      "noModelsMatch": "このフィルターに一致するモデルがありません。",
+      "processingModels": {
+        "title": "Processing Models",
+        "description": "Save LLM models for use in post-processing actions.",
+        "noModels": "No processing models saved yet. Add one to use in your actions.",
+        "addModel": "Add Processing Model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Select or type a model",
+        "save": "Save",
+        "cancel": "Cancel",
+        "fetchModels": "Fetch models",
+        "alreadySaved": "This model is already saved."
+      }
+    },
     "sound": {
       "title": "サウンド",
       "microphone": {
@@ -291,6 +303,12 @@
         "description": "使用するマイクデバイスを選択",
         "placeholder": "マイクを選択…",
         "loading": "読み込み中…"
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
       },
       "audioFeedback": {
         "label": "オーディオフィードバック",
@@ -305,12 +323,6 @@
       "volume": {
         "title": "音量",
         "description": "音声フィードバックの音量を調整"
-      },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -574,16 +586,54 @@
       "unsave": "保存から削除",
       "delete": "エントリーを削除",
       "deleteError": "エントリーの削除に失敗しました。もう一度お試しください。",
-      "retranscribe": "再文字起こし",
-      "retranscribeError": "再文字起こしに失敗しました。もう一度お試しください。",
-      "transcribing": "文字起こし中...",
-      "transcriptionFailed": "文字起こしに失敗しました。リトライアイコンを使用して再文字起こしできます。",
       "reprocess": "Reprocess with different model",
       "reprocessing": "Reprocessing...",
       "selectModel": "Select model",
       "originalTranscript": "Original",
       "postProcessed": "Post-processed",
-      "action": "Action {{key}}"
+      "action": "Action {{key}}",
+      "retranscribe": "再文字起こし",
+      "retranscribeError": "再文字起こしに失敗しました。もう一度お試しください。",
+      "transcribing": "文字起こし中...",
+      "transcriptionFailed": "文字起こしに失敗しました。リトライアイコンを使用して再文字起こしできます。"
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "debug": {
       "title": "デバッグ",
@@ -610,6 +660,13 @@
         "label": "アップデートを確認",
         "description": "Phonaraの新しいバージョンを自動的にチェック"
       },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
+      },
       "soundTheme": {
         "label": "サウンドテーマ",
         "description": "録音開始・停止フィードバックのサウンドテーマを選択"
@@ -632,6 +689,15 @@
         "weeks2": "2週間後",
         "months3": "3ヶ月後",
         "placeholder": "保持期間を選択…"
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       },
       "alwaysOnMicrophone": {
         "label": "マイク常時オン",
@@ -674,101 +740,7 @@
       "recordingBuffer": {
         "title": "追加録音バッファ",
         "description": "キーを離した後に録音を続ける追加時間（ミリ秒）。末尾の音声を捕捉するため。0 = 追加バッファなし。"
-      },
-      "recordingsDirectory": {
-        "title": "Recordings Directory",
-        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
-        "default": "Default (App Data)",
-        "choose": "Choose Folder",
-        "reset": "Reset to Default",
-        "current": "Current: {{path}}",
-        "restartNote": "Restart the app to apply the new recordings directory."
       }
-    },
-    "about": {
-      "title": "概要",
-      "version": {
-        "title": "バージョン",
-        "description": "Phonaraの現在のバージョン"
-      },
-      "appDataDirectory": {
-        "title": "アプリデータディレクトリ",
-        "description": "Phonaraがデータを保存する場所"
-      },
-      "sourceCode": {
-        "title": "ソースコード",
-        "description": "ソースコードを見て貢献する",
-        "button": "GitHub で見る"
-      },
-      "supportDevelopment": {
-        "title": "開発を支援",
-        "description": "Phonaraの開発を支援してください",
-        "button": "寄付する"
-      },
-      "acknowledgments": {
-        "title": "謝辞",
-        "whisper": {
-          "title": "Whisper.cpp",
-          "description": "OpenAIのWhisper自動音声認識モデルの高性能推論",
-          "details": "Phonaraは高速でローカルな音声からテキストへの変換にWhisper.cppを使用しています。Georgi Gerganov氏と貢献者の皆様の素晴らしい仕事に感謝します。"
-        }
-      },
-      "exportImport": {
-        "title": "Export / Import Settings",
-        "description": "Transfer your configuration to another computer",
-        "export": "Export",
-        "import": "Import",
-        "exportSuccess": "Settings exported successfully",
-        "importSuccess": "Settings imported successfully"
-      }
-    },
-    "longAudioModel": {
-      "title": "Long Audio Model",
-      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
-      "modelLabel": "Model for long recordings",
-      "modelDescription": "Select a model to use for recordings longer than the threshold.",
-      "thresholdLabel": "Duration threshold (seconds)",
-      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
-      "disabled": "Disabled",
-      "seconds": "{{value}}s"
-    },
-    "gemini": {
-      "title": "Gemini API",
-      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your Gemini API key",
-      "model": "Model",
-      "modelDescription": "Select which Gemini model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
-      "selectModel": "Gemini Model",
-      "models": {
-        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
-        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
-        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
-        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
-        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
-    },
-    "openai": {
-      "title": "OpenAI API",
-      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your OpenAI API key",
-      "model": "Model",
-      "modelDescription": "Select which OpenAI model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
-      "selectModel": "OpenAI Model",
-      "models": {
-        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
-        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
-        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
     },
     "appearance": {
       "title": "Appearance",
@@ -793,6 +765,47 @@
         "system": "System"
       },
       "overlay": "Overlay"
+    },
+    "about": {
+      "title": "概要",
+      "version": {
+        "title": "バージョン",
+        "description": "Phonaraの現在のバージョン"
+      },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
+      "appDataDirectory": {
+        "title": "アプリデータディレクトリ",
+        "description": "Phonaraがデータを保存する場所"
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
+      "sourceCode": {
+        "title": "ソースコード",
+        "description": "ソースコードを見て貢献する",
+        "button": "GitHub で見る"
+      },
+      "supportDevelopment": {
+        "title": "開発を支援",
+        "description": "Phonaraの開発を支援してください",
+        "button": "寄付する"
+      },
+      "acknowledgments": {
+        "title": "謝辞",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "OpenAIのWhisper自動音声認識モデルの高性能推論",
+          "details": "Phonaraは高速でローカルな音声からテキストへの変換にWhisper.cppを使用しています。Georgi Gerganov氏と貢献者の皆様の素晴らしい仕事に感謝します。"
+        }
+      }
     }
   },
   "footer": {
@@ -810,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "読み込み中…",

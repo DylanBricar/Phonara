@@ -172,12 +172,16 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         .cloned()
         .unwrap_or_default();
 
+    let is_deepseek_custom =
+        provider.id == "custom" && provider.base_url.contains("api.deepseek.com");
+
     // Disable reasoning for providers where post-processing rarely benefits from it.
-    // - custom: top-level reasoning_effort (works for local OpenAI-compat servers)
-    // - openrouter: nested reasoning object; exclude:true also keeps reasoning text
-    //   out of the response so it can't pollute structured-output JSON parsing
+    // Most local OpenAI-compatible servers accept `reasoning_effort: "none"`,
+    // but DeepSeek rejects that enum.
+    // OpenRouter uses a nested reasoning object; exclude:true also keeps reasoning
+    // text out of the response so it can't pollute structured-output JSON parsing.
     let (reasoning_effort, reasoning) = match provider.id.as_str() {
-        "custom" => (Some("none".to_string()), None),
+        "custom" if !is_deepseek_custom => (Some("none".to_string()), None),
         "openrouter" => (
             None,
             Some(crate::llm_client::ReasoningConfig {
@@ -696,11 +700,12 @@ impl ShortcutAction for TranscribeAction {
             debug!("Always-on mode: Playing audio feedback immediately");
             let rm_clone = Arc::clone(&rm);
             let app_clone = app.clone();
+            let mute_generation = rm.mute_generation();
             // The blocking helper exits immediately if audio feedback is disabled,
             // so we can always reuse this thread to ensure mute happens right after playback.
             std::thread::spawn(move || {
                 play_feedback_sound_blocking(&app_clone, SoundType::Start);
-                rm_clone.apply_mute();
+                rm_clone.apply_mute(mute_generation);
             });
 
             if let Err(e) = rm.try_start_recording(&binding_id, vad_policy) {
@@ -718,13 +723,14 @@ impl ShortcutAction for TranscribeAction {
                     // Small delay to ensure microphone stream is active
                     let app_clone = app.clone();
                     let rm_clone = Arc::clone(&rm);
+                    let mute_generation = rm.mute_generation();
                     std::thread::spawn(move || {
                         std::thread::sleep(std::time::Duration::from_millis(100));
                         debug!("Handling delayed audio feedback/mute sequence");
                         // Helper handles disabled audio feedback by returning early, so we reuse it
                         // to keep mute sequencing consistent in every mode.
                         play_feedback_sound_blocking(&app_clone, SoundType::Start);
-                        rm_clone.apply_mute();
+                        rm_clone.apply_mute(mute_generation);
                     });
                 }
                 Err(e) => {

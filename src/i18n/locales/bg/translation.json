@@ -11,12 +11,12 @@
   "sidebar": {
     "general": "Общи",
     "models": "Модели",
+    "appearance": "Appearance",
     "advanced": "Разширени",
     "postProcessing": "Постобработка",
     "history": "История",
     "debug": "Отстраняване",
-    "about": "За приложението",
-    "appearance": "Appearance"
+    "about": "За приложението"
   },
   "onboarding": {
     "subtitle": "За да започнете, изберете модел за транскрипция",
@@ -79,22 +79,6 @@
         "name": "SenseVoice",
         "description": "Много бърз. Китайски, английски, японски, корейски, кантонски."
       },
-      "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "Разпознаване на руска реч. Бърз и точен."
-      },
-      "canary-180m-flash": {
-        "name": "Canary 180M Flash",
-        "description": "Много бърз. Английски, немски, испански, френски. Поддържа превод."
-      },
-      "canary-1b-v2": {
-        "name": "Canary 1B v2",
-        "description": "Точен многоезичен. 25 европейски езика. Поддържа превод."
-      },
-      "cohere-int8": {
-        "name": "Cohere",
-        "description": "Голям, по-бавен, но много точен многоезичен модел."
-      },
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
@@ -114,6 +98,22 @@
       "whisper-distil-fr": {
         "name": "Whisper French Lite",
         "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "Разпознаване на руска реч. Бърз и точен."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "Много бърз. Английски, немски, испански, френски. Поддържа превод."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "Точен многоезичен. 25 европейски езика. Поддържа превод."
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "Голям, по-бавен, но много точен многоезичен модел."
       }
     },
     "errors": {
@@ -134,15 +134,16 @@
       "granted": "Разрешено",
       "waiting": "Изчакване...",
       "allGranted": "Готово!",
+      "skip": "Skip for now",
       "errors": {
         "checkFailed": "Проверката на разрешенията не бе успешна. Опитайте отново.",
         "requestFailed": "Заявката за разрешение не бе успешна. Опитайте отново."
-      },
-      "skip": "Skip for now"
+      }
     }
   },
   "modelSelector": {
     "custom": "Персонализиран",
+    "legacy": "Legacy",
     "streaming": "Стрийминг",
     "active": "Активен",
     "switching": "Превключване...",
@@ -185,6 +186,16 @@
         "description": "Use your graphics card for faster transcription. Disable this if you experience issues (e.g. garbled output on some AMD GPUs due to a Vulkan driver bug). CPU mode is slower but more reliable."
       }
     },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
+    },
     "general": {
       "title": "Общи",
       "shortcut": {
@@ -194,6 +205,7 @@
         "none": "Няма настроени бързи клавиши",
         "notFound": "Бързият клавиш не е намерен",
         "pressKeys": "Натиснете клавишите...",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "Бърз клавиш за транскрипция",
@@ -220,8 +232,7 @@
           "restore": "Неуспешно възстановяване на оригиналния бърз клавиш",
           "set": "Неуспешно задаване на бързия клавиш: {{error}}",
           "reset": "Неуспешно нулиране на бързия клавиш към първоначалната стойност"
-        },
-        "clickToSet": "Click to set"
+        }
       },
       "language": {
         "title": "Език",
@@ -253,20 +264,22 @@
     "models": {
       "title": "Модели за транскрипция",
       "description": "Изберете модел за транскрипция или изтеглете допълнителни. Различните модели предлагат различна точност и скорост.",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
       "yourModels": "Изтеглени модели",
       "availableModels": "Налични за изтегляне",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
       "deleteConfirm": "Сигурни ли сте, че искате да изтриете {{modelName}}? Ще трябва да го изтеглите отново, за да го използвате.",
       "deleteActiveConfirm": "{{modelName}} е вашият активен модел. Изтриването му ще спре транскрипциите, докато не изберете нов модел. Сигурни ли сте?",
       "deleteTitle": "Изтриване на модел",
       "filters": {
         "allLanguages": "Всички езици"
       },
-      "noModelsMatch": "Няма модели, отговарящи на този филтър.",
       "searchPlaceholder": "Search models...",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Processing"
-      },
+      "noModelsMatch": "Няма модели, отговарящи на този филтър.",
       "processingModels": {
         "title": "Processing Models",
         "description": "Save LLM models for use in post-processing actions.",
@@ -291,6 +304,12 @@
         "placeholder": "Изберете микрофон...",
         "loading": "Зареждане..."
       },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
+      },
       "audioFeedback": {
         "label": "Звукова обратна връзка",
         "description": "Възпроизвеждане на звук при старт и край на записа"
@@ -304,12 +323,6 @@
       "volume": {
         "title": "Сила на звука",
         "description": "Регулирайте силата на звуците за обратна връзка"
-      },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -573,16 +586,54 @@
       "unsave": "Премахване от запазените",
       "delete": "Изтриване на записа",
       "deleteError": "Изтриването на записа не бе успешно. Опитайте отново.",
-      "retranscribe": "Повторна транскрипция",
-      "retranscribeError": "Повторната транскрипция не бе успешна. Опитайте отново.",
-      "transcribing": "Транскрибиране...",
-      "transcriptionFailed": "Транскрипцията не бе успешна. Можете да опитате отново с иконата за повторен опит.",
       "reprocess": "Reprocess with different model",
       "reprocessing": "Reprocessing...",
       "selectModel": "Select model",
       "originalTranscript": "Original",
       "postProcessed": "Post-processed",
-      "action": "Action {{key}}"
+      "action": "Action {{key}}",
+      "retranscribe": "Повторна транскрипция",
+      "retranscribeError": "Повторната транскрипция не бе успешна. Опитайте отново.",
+      "transcribing": "Транскрибиране...",
+      "transcriptionFailed": "Транскрипцията не бе успешна. Можете да опитате отново с иконата за повторен опит."
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "debug": {
       "title": "Отстраняване",
@@ -609,6 +660,13 @@
         "label": "Проверка за актуализации",
         "description": "Автоматична проверка за нови версии на Phonara"
       },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
+      },
       "soundTheme": {
         "label": "Звукова тема",
         "description": "Избор на звукова тема за сигнал при старт и край на записа"
@@ -631,6 +689,15 @@
         "weeks2": "След 2 седмици",
         "months3": "След 3 месеца",
         "placeholder": "Изберете период на съхранение..."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       },
       "alwaysOnMicrophone": {
         "label": "Постоянно активен микрофон",
@@ -673,101 +740,7 @@
       "recordingBuffer": {
         "title": "Допълнителен буфер на записа",
         "description": "Допълнително време (в милисекунди) за запис след пускане на клавиша, за да се улови краят на аудиото. 0 = без допълнителен буфер."
-      },
-      "recordingsDirectory": {
-        "title": "Recordings Directory",
-        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
-        "default": "Default (App Data)",
-        "choose": "Choose Folder",
-        "reset": "Reset to Default",
-        "current": "Current: {{path}}",
-        "restartNote": "Restart the app to apply the new recordings directory."
       }
-    },
-    "about": {
-      "title": "За приложението",
-      "version": {
-        "title": "Версия",
-        "description": "Текуща версия на Phonara"
-      },
-      "appDataDirectory": {
-        "title": "Папка с данни на приложението",
-        "description": "Мястото, където Phonara съхранява данните си"
-      },
-      "sourceCode": {
-        "title": "Изходен код",
-        "description": "Преглед на изходния код и принос",
-        "button": "Вижте в GitHub"
-      },
-      "supportDevelopment": {
-        "title": "Подкрепете разработката",
-        "description": "Помогнете ни да продължим да развиваме Phonara",
-        "button": "Дарение"
-      },
-      "acknowledgments": {
-        "title": "Благодарности",
-        "ggml": {
-          "title": "ggml",
-          "description": "Високопроизводително изпълнение на автоматичния модел за разпознаване на реч Whisper на OpenAI",
-          "details": "Phonara използва Whisper.cpp за бързо локално реч-към-текст. Благодарности на Georgi Gerganov и сътрудниците за отличната работа."
-        }
-      },
-      "exportImport": {
-        "title": "Export / Import Settings",
-        "description": "Transfer your configuration to another computer",
-        "export": "Export",
-        "import": "Import",
-        "exportSuccess": "Settings exported successfully",
-        "importSuccess": "Settings imported successfully"
-      }
-    },
-    "longAudioModel": {
-      "title": "Long Audio Model",
-      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
-      "modelLabel": "Model for long recordings",
-      "modelDescription": "Select a model to use for recordings longer than the threshold.",
-      "thresholdLabel": "Duration threshold (seconds)",
-      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
-      "disabled": "Disabled",
-      "seconds": "{{value}}s"
-    },
-    "gemini": {
-      "title": "Gemini API",
-      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your Gemini API key",
-      "model": "Model",
-      "modelDescription": "Select which Gemini model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
-      "selectModel": "Gemini Model",
-      "models": {
-        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
-        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
-        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
-        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
-        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
-    },
-    "openai": {
-      "title": "OpenAI API",
-      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your OpenAI API key",
-      "model": "Model",
-      "modelDescription": "Select which OpenAI model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
-      "selectModel": "OpenAI Model",
-      "models": {
-        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
-        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
-        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
     },
     "appearance": {
       "title": "Appearance",
@@ -792,6 +765,47 @@
         "system": "System"
       },
       "overlay": "Overlay"
+    },
+    "about": {
+      "title": "За приложението",
+      "version": {
+        "title": "Версия",
+        "description": "Текуща версия на Phonara"
+      },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
+      "appDataDirectory": {
+        "title": "Папка с данни на приложението",
+        "description": "Мястото, където Phonara съхранява данните си"
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
+      "sourceCode": {
+        "title": "Изходен код",
+        "description": "Преглед на изходния код и принос",
+        "button": "Вижте в GitHub"
+      },
+      "supportDevelopment": {
+        "title": "Подкрепете разработката",
+        "description": "Помогнете ни да продължим да развиваме Phonara",
+        "button": "Дарение"
+      },
+      "acknowledgments": {
+        "title": "Благодарности",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        }
+      }
     }
   },
   "footer": {
@@ -809,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "Зареждане...",

@@ -11,6 +11,7 @@
   "sidebar": {
     "general": "Algemeen",
     "models": "Modellen",
+    "appearance": "Appearance",
     "advanced": "Geavanceerd",
     "postProcessing": "Naverwerking",
     "history": "Geschiedenis",
@@ -78,6 +79,26 @@
         "name": "SenseVoice",
         "description": "Zeer snel. Chinees, Engels, Japans, Koreaans, Kantonees."
       },
+      "gemini-api": {
+        "name": "Gemini API",
+        "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
+      },
+      "openai-api": {
+        "name": "OpenAI API",
+        "description": "Cloud-based transcription via OpenAI. Requires API key and internet."
+      },
+      "whisper-large-v3-fr": {
+        "name": "Whisper Large V3 French",
+        "description": "Best accuracy for French. Fine-tuned on 2500h+ French audio."
+      },
+      "whisper-large-v3-fr-distil": {
+        "name": "Whisper French Distil",
+        "description": "Fast French model. 16 decoder layers, 1.9x faster than full."
+      },
+      "whisper-distil-fr": {
+        "name": "Whisper French Lite",
+        "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
       "gigaam-v3-e2e-ctc": {
         "name": "GigaAM v3",
         "description": "Russische spraakherkenning. Snel en nauwkeurig."
@@ -113,6 +134,7 @@
       "granted": "Verleend",
       "waiting": "Wachten...",
       "allGranted": "Alles ingesteld!",
+      "skip": "Skip for now",
       "errors": {
         "checkFailed": "Machtigingen controleren mislukt. Probeer het opnieuw.",
         "requestFailed": "Machtiging aanvragen mislukt. Probeer het opnieuw."
@@ -149,13 +171,30 @@
       "languageCount": "{{total}} talen",
       "languageOnly": "Alleen {{language}}",
       "translation": "Kan vertalen naar het Engels",
-      "translate": "Vertalen",
-      "streaming": "Toont live transcriptie tijdens het spreken"
-    }
+      "translate": "Vertalen"
+    },
+    "statusCheckFailed": "Failed to check model status",
+    "loadFailed": "Failed to load model",
+    "switchFailed": "Failed to switch model"
   },
   "settings": {
     "modelSettings": {
-      "title": "Instellingen voor {{model}}"
+      "title": "Instellingen voor {{model}}",
+      "noSettingsNeeded": "This model works automatically with no configuration needed.",
+      "gpuAcceleration": {
+        "label": "GPU Acceleration",
+        "description": "Use your graphics card for faster transcription. Disable this if you experience issues (e.g. garbled output on some AMD GPUs due to a Vulkan driver bug). CPU mode is slower but more reliable."
+      }
+    },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
     },
     "general": {
       "title": "Algemeen",
@@ -166,6 +205,7 @@
         "none": "Geen sneltoetsen geconfigureerd",
         "notFound": "Sneltoets niet gevonden",
         "pressKeys": "Druk op toetsen...",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "Sneltoets voor dicteren",
@@ -178,6 +218,14 @@
           "transcribe_with_post_process": {
             "name": "Sneltoets voor naverwerking",
             "description": "Optioneel: Een specifieke sneltoets die altijd AI-naverwerking toepast op je transcriptie."
+          },
+          "show_history": {
+            "name": "Show History",
+            "description": "Opens the app window and navigates to the History tab."
+          },
+          "copy_latest_history": {
+            "name": "Copy Latest History",
+            "description": "Copies the latest transcription entry to your clipboard."
           }
         },
         "errors": {
@@ -196,25 +244,57 @@
       "pushToTalk": {
         "label": "Push-to-talk",
         "description": "Ingedrukt houden om op te nemen, loslaten om te stoppen"
+      },
+      "transcribeFile": {
+        "title": "Transcribe File",
+        "description": "Transcribe an audio file from your computer",
+        "button": "Choose Audio File",
+        "supportedFormats": "Supported: WAV",
+        "transcribing": "Transcribing...",
+        "loadingFile": "Loading file...",
+        "loadingModel": "Loading model...",
+        "result": "Transcription Result",
+        "copy": "Copy to Clipboard",
+        "copied": "Copied!",
+        "noResult": "No transcription result",
+        "error": "Transcription failed: {{error}}",
+        "audioFiles": "Audio Files"
       }
     },
     "models": {
       "title": "Transcriptiemodellen",
       "description": "Selecteer een transcriptiemodel of download extra modellen. Verschillende modellen bieden variërende niveaus van nauwkeurigheid en snelheid.",
-      "searchPlaceholder": "Modellen zoeken op naam...",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
       "yourModels": "Gedownloade modellen",
       "availableModels": "Beschikbaar voor download",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
       "deleteConfirm": "Weet je zeker dat je {{modelName}} wilt verwijderen? Je moet het model opnieuw downloaden om het weer te gebruiken.",
       "deleteActiveConfirm": "{{modelName}} is je actieve model. Als je dit verwijdert, stoppen de transcripties totdat je een nieuw model selecteert. Weet je het zeker?",
       "deleteTitle": "Model verwijderen",
       "filters": {
         "allLanguages": "Alle talen"
       },
-      "rescan": {
-        "label": "Opnieuw scannen",
-        "tooltip": "Scannen naar modellen die buiten Handy om zijn toegevoegd aan de modellenmap of Hugging Face-cache"
-      },
-      "noModelsMatch": "Geen modellen voldoen aan dit filter."
+      "searchPlaceholder": "Modellen zoeken op naam...",
+      "noModelsMatch": "Geen modellen voldoen aan dit filter.",
+      "processingModels": {
+        "title": "Processing Models",
+        "description": "Save LLM models for use in post-processing actions.",
+        "noModels": "No processing models saved yet. Add one to use in your actions.",
+        "addModel": "Add Processing Model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Select or type a model",
+        "save": "Save",
+        "cancel": "Cancel",
+        "fetchModels": "Fetch models",
+        "alreadySaved": "This model is already saved."
+      }
     },
     "sound": {
       "title": "Geluid",
@@ -223,6 +303,12 @@
         "description": "Selecteer de gewenste microfoon",
         "placeholder": "Microfoon selecteren...",
         "loading": "Laden..."
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
       },
       "audioFeedback": {
         "label": "Geluidsfeedback",
@@ -237,6 +323,20 @@
       "volume": {
         "title": "Volume",
         "description": "Pas het volume van de geluidsfeedback aan"
+      },
+      "soundTheme": {
+        "label": "Sound Theme",
+        "description": "Choose a sound theme for recording start and stop feedback",
+        "preview": "Preview sound theme (plays start then stop)",
+        "custom": "Custom"
+      },
+      "customSounds": {
+        "start": "Start",
+        "stop": "Stop",
+        "browse": "Browse for audio file",
+        "clear": "Clear custom sound",
+        "default": "Default",
+        "audioFiles": "Audio Files"
       }
     },
     "advanced": {
@@ -245,7 +345,8 @@
         "output": "Uitvoer",
         "transcription": "Transcriptie",
         "history": "Geschiedenis",
-        "experimental": "Experimenteel"
+        "experimental": "Experimenteel",
+        "cloudModels": "Cloud Models"
       },
       "experimentalToggle": {
         "label": "Experimentele functies",
@@ -281,22 +382,41 @@
         "description": "Toon het Handy-pictogram in het systeemvak."
       },
       "overlay": {
-        "style": {
-          "title": "Overlay",
-          "description": "Kies de opname-overlay: 'Geen' verbergt deze, 'Minimaal' toont een compacte balk, 'Live' toont de tekst in realtime tijdens het spreken (alleen voor streaming-modellen). Op Linux wordt 'Geen' aanbevolen.",
-          "options": {
-            "none": "Geen",
-            "minimal": "Minimaal",
-            "live": "Live"
-          }
+        "title": "Overlay Position",
+        "description": "Display visual feedback overlay during recording and transcription. On Linux 'None' is recommended.",
+        "options": {
+          "none": "None",
+          "bottom": "Bottom",
+          "top": "Top"
         },
-        "position": {
-          "title": "Overlay-positie",
-          "description": "Waar de overlay op het scherm verschijnt tijdens het opnemen en transcriberen.",
-          "options": {
-            "bottom": "Onderkant",
-            "top": "Bovenkant"
-          }
+        "highVisibility": {
+          "label": "High Visibility Overlay",
+          "description": "Add a red border to the recording overlay for better visibility."
+        },
+        "borderColor": {
+          "label": "Border Color",
+          "description": "Custom border color for the recording overlay."
+        },
+        "backgroundColor": {
+          "label": "Background Color",
+          "description": "Custom background color for the recording overlay."
+        },
+        "borderWidth": {
+          "label": "Border Width",
+          "description": "Border thickness of the recording overlay."
+        },
+        "width": {
+          "label": "Overlay Width",
+          "description": "Width of the recording overlay in pixels."
+        },
+        "height": {
+          "label": "Overlay Height",
+          "description": "Height of the recording overlay in pixels."
+        },
+        "preview": {
+          "label": "Preview Overlay",
+          "description": "Show a 3-second preview of the overlay with current settings.",
+          "button": "Preview"
         }
       },
       "pasteMethod": {
@@ -364,9 +484,42 @@
         "remove": "{{word}} verwijderen",
         "duplicate": "\"{{word}}\" bestaat al"
       },
-      "voiceActivityDetection": {
-        "title": "Spraakactiviteitsdetectie (VAD)",
-        "description": "Filter stilte uit opnames. Streaming-modellen gebruiken een langere VAD-uitloop; het uitschakelen van VAD neemt de ruwe audio op."
+      "textReplacements": {
+        "title": "Text Replacements",
+        "description": "Define exact find-and-replace rules applied after transcription. Unlike Custom Words, these perform exact string matching.",
+        "findPlaceholder": "Find...",
+        "replacePlaceholder": "Replace with...",
+        "caseSensitive": "Case sensitive",
+        "add": "Add Rule",
+        "remove": "Remove replacement rule",
+        "duplicate": "A rule with this find text already exists",
+        "emptyFind": "Find text cannot be empty",
+        "emptyReplace": "(delete)"
+      },
+      "whisperInitialPrompt": {
+        "title": "Whisper Initial Prompt",
+        "description": "Provide an initial prompt to guide Whisper transcription. Use this to hint specific terminology, names, acronyms, or formatting preferences (e.g., \"Meeting with Dr. Smith about the ACME project\"). Only applies to Whisper models.",
+        "placeholder": "e.g., technical terms, names, context..."
+      },
+      "transcriptionPrompt": {
+        "title": "Transcription Prompt",
+        "description": "Custom prompt to guide Whisper transcription style and formatting. Combined with Custom Words when both are set.",
+        "placeholder": "e.g., Use proper punctuation. Capitalize sentences...",
+        "tokenBudget": "Token budget: {{used}} / {{total}}",
+        "warningNonWhisper": "This prompt only applies to Whisper models. Your current model uses a different engine.",
+        "warningAutoLanguage": "With auto language detection, the prompt may not match the detected language.",
+        "presets": "Language presets",
+        "presetNone": "None",
+        "presetEnglish": "English",
+        "presetSpanish": "Spanish",
+        "presetFrench": "French",
+        "presetGerman": "German",
+        "presetPortuguese": "Portuguese",
+        "presetItalian": "Italian",
+        "presetRussian": "Russian",
+        "presetJapanese": "Japanese",
+        "presetChineseSimplified": "Chinese (Simplified)",
+        "presetChineseTraditional": "Chinese (Traditional)"
       }
     },
     "postProcessing": {
@@ -433,10 +586,54 @@
       "unsave": "Verwijderen uit opgeslagen",
       "delete": "Item verwijderen",
       "deleteError": "Item verwijderen mislukt. Probeer het opnieuw.",
+      "reprocess": "Reprocess with different model",
+      "reprocessing": "Reprocessing...",
+      "selectModel": "Select model",
+      "originalTranscript": "Original",
+      "postProcessed": "Post-processed",
+      "action": "Action {{key}}",
       "retranscribe": "Opnieuw transcriberen",
       "retranscribeError": "Opnieuw transcriberen mislukt. Probeer het opnieuw.",
       "transcribing": "Transcriberen...",
       "transcriptionFailed": "Transcriptie mislukt. Je kunt het opnieuw proberen via het herlaad-pictogram."
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "debug": {
       "title": "Probleemoplossing",
@@ -493,6 +690,15 @@
         "months3": "Na 3 maanden",
         "placeholder": "Selecteer bewaarperiode..."
       },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
+      },
       "alwaysOnMicrophone": {
         "label": "Microfoon altijd aan",
         "description": "Houd de microfoon actief voor een snellere reactietijd"
@@ -536,6 +742,30 @@
         "description": "Extra tijd (in milliseconden) om te blijven opnemen nadat je de toets loslaat, om naloopaudio op te vangen. 0 = geen extra buffer."
       }
     },
+    "appearance": {
+      "title": "Appearance",
+      "themeMode": {
+        "title": "Theme",
+        "description": "Choose between light, dark, or system theme",
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "accentColor": {
+        "title": "Accent Color",
+        "description": "Choose the main color of the interface",
+        "blue": "Blue",
+        "green": "Green",
+        "red": "Red",
+        "purple": "Purple",
+        "orange": "Orange",
+        "pink": "Pink",
+        "teal": "Teal",
+        "yellow": "Yellow",
+        "system": "System"
+      },
+      "overlay": "Overlay"
+    },
     "about": {
       "title": "Over Handy",
       "version": {
@@ -550,6 +780,14 @@
         "title": "App-datamap",
         "description": "Locatie waar Handy de gegevens opslaat"
       },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
       "sourceCode": {
         "title": "Broncode",
         "description": "Bekijk de broncode en draag bij",
@@ -562,10 +800,10 @@
       },
       "acknowledgments": {
         "title": "Dankbetuigingen",
-        "ggml": {
-          "title": "ggml",
-          "description": "Krachtige tensorbibliotheek voor lokale AI-verwerking",
-          "details": "Handy's lokale spraak-naar-tekst is gebouwd op transcribe.cpp en ggml. Met dank aan het geweldige werk van Georgi Gerganov en alle bijdragers."
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
         }
       }
     }
@@ -581,7 +819,10 @@
     "checkForUpdates": "Controleren op updates",
     "portableUpdateTitle": "Handmatige update vereist",
     "portableUpdateMessage": "Draagbare (portable) installaties kunnen niet automatisch worden bijgewerkt. Om bij te werken: download het nieuwste NSIS-installatiebestand van GitHub Releases, installeer het in dezelfde map en kopieer vervolgens je Data/-map (instellingen, modellen, opnames) van de oude versie naar de nieuwe.",
-    "portableUpdateButton": "GitHub Releases openen"
+    "portableUpdateButton": "GitHub Releases openen",
+    "updateCheckFailed": "Failed to check for updates",
+    "restartFailed": "Update installed, but restart failed",
+    "updateInstallFailed": "Failed to install update"
   },
   "whatsNew": {
     "title": "Nieuw in Handy v{{version}}"
@@ -591,13 +832,21 @@
     "delete": "Verwijderen",
     "close": "Sluiten",
     "open": "Openen",
-    "copy": "Kopiëren",
-    "clear": "Wissen",
-    "noOptionsFound": "Geen opties gevonden"
+    "default": "Default",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "on": "On",
+    "off": "Off",
+    "yes": "Yes",
+    "no": "No",
+    "noOptionsFound": "Geen opties gevonden",
+    "clear": "Wissen"
   },
   "accessibility": {
+    "permissionsRequired": "Accessibility Permissions Required",
     "permissionsDescription": "Handy heeft toegankelijkheidsmachtigingen nodig om getranscribeerde tekst te kunnen typen.",
-    "openSettings": "Systeeminstellingen openen"
+    "openSettings": "Systeeminstellingen openen",
+    "dismiss": "Dismiss"
   },
   "errors": {
     "loadDirectory": "Fout bij laden van map: {{error}}",
@@ -623,6 +872,14 @@
   },
   "overlay": {
     "transcribing": "Transcriberen...",
-    "processing": "Verwerken..."
+    "processing": "Verwerken...",
+    "cancelConfirm": "Esc again to cancel",
+    "pause": "Pause recording",
+    "resume": "Resume recording",
+    "cancel": "Cancel recording"
+  },
+  "progressBar": {
+    "downloading": "{{count}} downloading...",
+    "downloadingSingle": "Downloading..."
   }
 }

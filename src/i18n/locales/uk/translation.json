@@ -11,12 +11,12 @@
   "sidebar": {
     "general": "Загальні",
     "models": "Моделі",
+    "appearance": "Appearance",
     "advanced": "Розширені",
     "postProcessing": "Постобробка",
     "history": "Історія",
     "debug": "Дебаг",
-    "about": "Інфо",
-    "appearance": "Appearance"
+    "about": "Інфо"
   },
   "onboarding": {
     "subtitle": "Для початку оберіть модель транскрипції",
@@ -79,22 +79,6 @@
         "name": "SenseVoice",
         "description": "Дуже швидкий. Китайська, англійська, японська, корейська, кантонська."
       },
-      "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "Розпізнавання російського мовлення. Швидко і точно."
-      },
-      "canary-180m-flash": {
-        "name": "Canary 180M Flash",
-        "description": "Дуже швидка. Англійська, німецька, іспанська, французька. Підтримує переклад."
-      },
-      "canary-1b-v2": {
-        "name": "Canary 1B v2",
-        "description": "Точна багатомовна. 25 європейських мов. Підтримує переклад."
-      },
-      "cohere-int8": {
-        "name": "Cohere",
-        "description": "Велика, повільніша, але дуже точна багатомовна модель."
-      },
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
@@ -114,6 +98,22 @@
       "whisper-distil-fr": {
         "name": "Whisper French Lite",
         "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "Розпізнавання російського мовлення. Швидко і точно."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "Дуже швидка. Англійська, німецька, іспанська, французька. Підтримує переклад."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "Точна багатомовна. 25 європейських мов. Підтримує переклад."
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "Велика, повільніша, але дуже точна багатомовна модель."
       }
     },
     "errors": {
@@ -143,8 +143,10 @@
   },
   "modelSelector": {
     "custom": "Користувацька",
+    "legacy": "Legacy",
     "streaming": "Потокове",
     "active": "Активна",
+    "switching": "Перемикання...",
     "noModelsAvailable": "Немає доступних моделей",
     "verifying": "Перевірка {{modelName}}...",
     "verifyingGeneric": "Перевірка...",
@@ -160,19 +162,17 @@
     "modelUnloaded": "Модель вивантажена",
     "noModelDownloadRequired": "Немає моделі - потрібно завантажити",
     "deleteModel": "Видалити {{modelName}}",
-    "switching": "Перемикання...",
     "downloadSpeed": "{{speed}} MB/s",
-    "capabilities": {
-      "languageSelection": "Підтримує кілька мов введення",
-      "languageCount": "{{total}} languages",
-      "translation": "Може перекладати на англійську",
-      "translate": "Перекласти на англійську",
-      "singleLanguage": "Підтримує лише цю мову",
-      "languageOnly": "Лише {{language}}",
-      "streaming": "Показує транскрипцію в реальному часі під час мовлення"
-    },
     "cancel": "Скасувати",
     "cancelDownload": "Скасувати завантаження",
+    "capabilities": {
+      "languageSelection": "Підтримує кілька мов введення",
+      "singleLanguage": "Підтримує лише цю мову",
+      "languageCount": "{{total}} languages",
+      "languageOnly": "Лише {{language}}",
+      "translation": "Може перекладати на англійську",
+      "translate": "Перекласти на англійську"
+    },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
     "switchFailed": "Failed to switch model"
@@ -186,6 +186,16 @@
         "description": "Використовуйте відеокарту для швидшої транскрипції. Вимкніть цю опцію, якщо виникають проблеми (наприклад, спотворений вивід на деяких GPU AMD через помилку драйвера Vulkan). Режим CPU повільніший, але надійніший."
       }
     },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
+    },
     "general": {
       "title": "Загальні",
       "shortcut": {
@@ -195,6 +205,7 @@
         "none": "Скорочення не налаштовані",
         "notFound": "Скорочення не знайдено",
         "pressKeys": "Натисніть клавіші...",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "Гаряча клавіша транскрипції",
@@ -221,8 +232,7 @@
           "restore": "Не вдалося відновити початкове скорочення",
           "set": "Не вдалося встановити скорочення: {{error}}",
           "reset": "Не вдалося скинути скорочення до початкового значення"
-        },
-        "clickToSet": "Click to set"
+        }
       },
       "language": {
         "title": "Мова",
@@ -254,20 +264,22 @@
     "models": {
       "title": "Моделі транскрипції",
       "description": "Виберіть модель транскрипції або завантажте додаткові моделі. Різні моделі пропонують різні рівні точності та швидкості.",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
+      "yourModels": "Завантажені моделі",
+      "availableModels": "Доступні для завантаження",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
       "deleteConfirm": "Ви впевнені, що хочете видалити {{modelName}}? Вам потрібно буде завантажити її знову, щоб використовувати.",
       "deleteActiveConfirm": "{{modelName}} — ваша активна модель. Видалення зупинить транскрипцію, доки ви не оберете нову модель. Ви впевнені?",
       "deleteTitle": "Видалити модель",
       "filters": {
         "allLanguages": "Усі мови"
       },
-      "noModelsMatch": "Жодна модель не відповідає цьому фільтру.",
-      "yourModels": "Завантажені моделі",
-      "availableModels": "Доступні для завантаження",
       "searchPlaceholder": "Search models...",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Processing"
-      },
+      "noModelsMatch": "Жодна модель не відповідає цьому фільтру.",
       "processingModels": {
         "title": "Processing Models",
         "description": "Save LLM models for use in post-processing actions.",
@@ -292,6 +304,12 @@
         "placeholder": "Оберіть мікрофон...",
         "loading": "Завантаження..."
       },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
+      },
       "audioFeedback": {
         "label": "Звукове сповіщення",
         "description": "Відтворювати звук при початку та зупинці запису"
@@ -305,12 +323,6 @@
       "volume": {
         "title": "Гучність",
         "description": "Налаштуйте гучність звукових сповіщень"
-      },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
       },
       "soundTheme": {
         "label": "Sound Theme",
@@ -574,16 +586,54 @@
       "unsave": "Видалити зі збережених",
       "delete": "Видалити запис",
       "deleteError": "Не вдалося видалити запис. Спробуйте ще раз.",
-      "retranscribe": "Перетранскрибувати",
-      "retranscribeError": "Не вдалося перетранскрибувати. Будь ласка, спробуйте ще раз.",
-      "transcribing": "Транскрибування...",
-      "transcriptionFailed": "Транскрипція не вдалася. Ви можете перетранскрибувати за допомогою іконки повтору.",
       "reprocess": "Reprocess with different model",
       "reprocessing": "Reprocessing...",
       "selectModel": "Select model",
       "originalTranscript": "Original",
       "postProcessed": "Post-processed",
-      "action": "Action {{key}}"
+      "action": "Action {{key}}",
+      "retranscribe": "Перетранскрибувати",
+      "retranscribeError": "Не вдалося перетранскрибувати. Будь ласка, спробуйте ще раз.",
+      "transcribing": "Транскрибування...",
+      "transcriptionFailed": "Транскрипція не вдалася. Ви можете перетранскрибувати за допомогою іконки повтору."
+    },
+    "gemini": {
+      "title": "Gemini API",
+      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your Gemini API key",
+      "model": "Model",
+      "modelDescription": "Select which Gemini model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
+      "selectModel": "Gemini Model",
+      "models": {
+        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
+        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
+        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
+        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
+        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "openai": {
+      "title": "OpenAI API",
+      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
+      "apiKey": "API Key",
+      "apiKeyPlaceholder": "Enter your OpenAI API key",
+      "model": "Model",
+      "modelDescription": "Select which OpenAI model to use for transcription",
+      "apiKeyRequired": "API Key Required",
+      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
+      "selectModel": "OpenAI Model",
+      "models": {
+        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
+        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
+        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
+      },
+      "save": "Save",
+      "cancel": "Cancel"
     },
     "debug": {
       "title": "Дебаг",
@@ -610,6 +660,13 @@
         "label": "Перевірка оновлень",
         "description": "Автоматично перевіряти наявність нових версій Phonara"
       },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
+      },
       "soundTheme": {
         "label": "Звукова тема",
         "description": "Оберіть звукову тему для сповіщень про початок і зупинку запису"
@@ -632,6 +689,15 @@
         "weeks2": "Через 2 тижні",
         "months3": "Через 3 місяці",
         "placeholder": "Оберіть період зберігання..."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
       },
       "alwaysOnMicrophone": {
         "label": "Постійно активний мікрофон",
@@ -674,101 +740,7 @@
       "recordingBuffer": {
         "title": "Додатковий буфер запису",
         "description": "Додатковий час (у мілісекундах) для продовження запису після відпускання клавіші, щоб захопити завершальний звук. 0 = без додаткового буфера."
-      },
-      "recordingsDirectory": {
-        "title": "Recordings Directory",
-        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
-        "default": "Default (App Data)",
-        "choose": "Choose Folder",
-        "reset": "Reset to Default",
-        "current": "Current: {{path}}",
-        "restartNote": "Restart the app to apply the new recordings directory."
       }
-    },
-    "about": {
-      "title": "Інфо",
-      "version": {
-        "title": "Версія",
-        "description": "Поточна версія Phonara"
-      },
-      "appDataDirectory": {
-        "title": "Папка даних програми",
-        "description": "Розташування даних Phonara"
-      },
-      "sourceCode": {
-        "title": "Вихідний код",
-        "description": "Переглянути вихідний код та зробити внесок",
-        "button": "Переглянути на GitHub"
-      },
-      "supportDevelopment": {
-        "title": "Підтримати розробку",
-        "description": "Допоможіть нам продовжувати розвивати Phonara",
-        "button": "Підтримати"
-      },
-      "acknowledgments": {
-        "title": "Подяки",
-        "ggml": {
-          "title": "ggml",
-          "description": "Високопродуктивний інференс моделі автоматичного розпізнавання мовлення Whisper від OpenAI",
-          "details": "Phonara використовує Whisper.cpp для швидкої локальної обробки мовлення в текст. Дякуємо за чудову роботу Георгію Герганову та контриб'юторам."
-        }
-      },
-      "exportImport": {
-        "title": "Export / Import Settings",
-        "description": "Transfer your configuration to another computer",
-        "export": "Export",
-        "import": "Import",
-        "exportSuccess": "Settings exported successfully",
-        "importSuccess": "Settings imported successfully"
-      }
-    },
-    "longAudioModel": {
-      "title": "Long Audio Model",
-      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
-      "modelLabel": "Model for long recordings",
-      "modelDescription": "Select a model to use for recordings longer than the threshold.",
-      "thresholdLabel": "Duration threshold (seconds)",
-      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
-      "disabled": "Disabled",
-      "seconds": "{{value}}s"
-    },
-    "gemini": {
-      "title": "Gemini API",
-      "description": "Use Google's Gemini API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your Gemini API key",
-      "model": "Model",
-      "modelDescription": "Select which Gemini model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your Google Gemini API key to use cloud transcription.",
-      "selectModel": "Gemini Model",
-      "models": {
-        "gemini-2.0-flash": "Gemini 2.0 Flash (Free: 1500 req/day)",
-        "gemini-2.0-flash-lite": "Gemini 2.0 Flash Lite (Free: 1500 req/day)",
-        "gemini-2.5-flash": "Gemini 2.5 Flash (Free: 20 req/day)",
-        "gemini-2.5-pro": "Gemini 2.5 Pro (Free: 25 req/day)",
-        "gemini-1.5-flash": "Gemini 1.5 Flash (Free: 1500 req/day)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
-    },
-    "openai": {
-      "title": "OpenAI API",
-      "description": "Use OpenAI's API for cloud-based transcription. Requires an API key.",
-      "apiKey": "API Key",
-      "apiKeyPlaceholder": "Enter your OpenAI API key",
-      "model": "Model",
-      "modelDescription": "Select which OpenAI model to use for transcription",
-      "apiKeyRequired": "API Key Required",
-      "apiKeyRequiredDescription": "Enter your OpenAI API key to use cloud transcription (paid: ~$0.003/min).",
-      "selectModel": "OpenAI Model",
-      "models": {
-        "gpt-4o-mini-transcribe": "GPT-4o Mini Transcribe (cheapest, ~$0.003/min)",
-        "gpt-4o-transcribe": "GPT-4o Transcribe (best quality, ~$0.006/min)",
-        "whisper-1": "Whisper-1 (legacy, ~$0.006/min)"
-      },
-      "save": "Save",
-      "cancel": "Cancel"
     },
     "appearance": {
       "title": "Appearance",
@@ -793,6 +765,47 @@
         "system": "System"
       },
       "overlay": "Overlay"
+    },
+    "about": {
+      "title": "Інфо",
+      "version": {
+        "title": "Версія",
+        "description": "Поточна версія Phonara"
+      },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
+      "appDataDirectory": {
+        "title": "Папка даних програми",
+        "description": "Розташування даних Phonara"
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
+      "sourceCode": {
+        "title": "Вихідний код",
+        "description": "Переглянути вихідний код та зробити внесок",
+        "button": "Переглянути на GitHub"
+      },
+      "supportDevelopment": {
+        "title": "Підтримати розробку",
+        "description": "Допоможіть нам продовжувати розвивати Phonara",
+        "button": "Підтримати"
+      },
+      "acknowledgments": {
+        "title": "Подяки",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        }
+      }
     }
   },
   "footer": {
@@ -810,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "Завантаження...",

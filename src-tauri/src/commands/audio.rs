@@ -87,14 +87,18 @@ fn get_windows_microphone_permission_status_impl() -> WindowsMicrophonePermissio
     let app_access = read_registry_permission_access(HKEY_CURRENT_USER, MICROPHONE_PATH);
     let desktop_app_access = read_registry_permission_access(HKEY_CURRENT_USER, DESKTOP_APPS_PATH);
 
-    let overall_access = if [device_access, app_access, desktop_app_access]
-        .into_iter()
-        .any(|access| access == PermissionAccess::Denied)
-    {
+    // Phonara is a desktop app, so the NonPackaged key is the relevant user
+    // permission scope. Some privacy tools set the UWP app key to "deny"
+    // without blocking desktop microphone access.
+    let overall_access = if device_access == PermissionAccess::Denied {
         PermissionAccess::Denied
-    } else if [device_access, app_access, desktop_app_access]
-        .into_iter()
-        .all(|access| access == PermissionAccess::Allowed)
+    } else if desktop_app_access == PermissionAccess::Denied {
+        PermissionAccess::Denied
+    } else if desktop_app_access == PermissionAccess::Allowed {
+        PermissionAccess::Allowed
+    } else if app_access == PermissionAccess::Denied {
+        PermissionAccess::Denied
+    } else if device_access == PermissionAccess::Allowed && app_access == PermissionAccess::Allowed
     {
         PermissionAccess::Allowed
     } else {

@@ -258,16 +258,41 @@ function App() {
     setOnboardingStep("done");
   };
 
+  const toaster = (
+    <Toaster
+      theme="system"
+      toastOptions={{
+        unstyled: true,
+        classNames: {
+          toast:
+            "bg-background border border-mid-gray/20 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3 text-sm",
+          title: "font-medium",
+          description: "text-mid-gray",
+        },
+      }}
+    />
+  );
+
   if (onboardingStep === null) {
     return null;
   }
 
   if (onboardingStep === "accessibility") {
-    return <AccessibilityOnboarding onComplete={handleAccessibilityComplete} />;
+    return (
+      <>
+        {toaster}
+        <AccessibilityOnboarding onComplete={handleAccessibilityComplete} />
+      </>
+    );
   }
 
   if (onboardingStep === "model") {
-    return <Onboarding onModelSelected={handleModelSelected} />;
+    return (
+      <>
+        {toaster}
+        <Onboarding onModelSelected={handleModelSelected} />
+      </>
+    );
   }
 
   return (
@@ -275,18 +300,7 @@ function App() {
       dir={direction}
       className="h-screen flex flex-col select-none cursor-default"
     >
-      <Toaster
-        theme="system"
-        toastOptions={{
-          unstyled: true,
-          classNames: {
-            toast:
-              "bg-background border border-mid-gray/20 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3 text-sm",
-            title: "font-medium",
-            description: "text-mid-gray",
-          },
-        }}
-      />
+      {toaster}
       <div className="flex-1 flex overflow-hidden">
         <Sidebar
           activeSection={currentSection}

@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "Personnalisé",
+    "legacy": "Legacy",
     "streaming": "Streaming",
     "active": "Actif",
     "switching": "Changement...",
@@ -162,17 +163,16 @@
     "noModelDownloadRequired": "Aucun Modèle - Téléchargement Requis",
     "deleteModel": "Supprimer {{modelName}}",
     "downloadSpeed": "{{speed}} Mo/s",
-    "capabilities": {
-      "languageSelection": "Prend en charge plusieurs langues d'entrée",
-      "languageCount": "{{total}} languages",
-      "translation": "Peut traduire en anglais",
-      "translate": "Traduire en anglais",
-      "singleLanguage": "Prend en charge uniquement cette langue",
-      "languageOnly": "{{language}} uniquement",
-      "streaming": "Affiche la transcription en direct pendant que vous parlez"
-    },
     "cancel": "Annuler",
     "cancelDownload": "Annuler le téléchargement",
+    "capabilities": {
+      "languageSelection": "Prend en charge plusieurs langues d'entrée",
+      "singleLanguage": "Prend en charge uniquement cette langue",
+      "languageCount": "{{total}} languages",
+      "languageOnly": "{{language}} uniquement",
+      "translation": "Peut traduire en anglais",
+      "translate": "Traduire en anglais"
+    },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
     "switchFailed": "Failed to switch model"
@@ -195,41 +195,6 @@
       "thresholdDescription": "Basculer vers le modèle audio long lorsque l'enregistrement dépasse cette durée.",
       "disabled": "Désactivé",
       "seconds": "{{value}}s"
-    },
-    "models": {
-      "title": "Modèles de Transcription",
-      "description": "Sélectionnez un modèle de transcription ou téléchargez des modèles supplémentaires. Différents modèles offrent différents niveaux de précision et de vitesse.",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Traitement"
-      },
-      "downloaded": "Téléchargés",
-      "available": "Disponibles au Téléchargement",
-      "deleteConfirm": "Êtes-vous sûr de vouloir supprimer {{modelName}} ? Vous devrez le télécharger à nouveau pour l'utiliser.",
-      "deleteActiveConfirm": "{{modelName}} est votre modèle actif. Le supprimer arrêtera les transcriptions jusqu'à ce que vous sélectionniez un nouveau modèle. Êtes-vous sûr ?",
-      "deleteTitle": "Supprimer le modèle",
-      "filters": {
-        "allLanguages": "Toutes les langues"
-      },
-      "noModelsMatch": "Aucun modèle ne correspond à ce filtre.",
-      "yourModels": "Modèles téléchargés",
-      "availableModels": "Disponibles au téléchargement",
-      "processingModels": {
-        "title": "Modèles de traitement",
-        "description": "Enregistrez des modèles LLM pour les utiliser dans les actions de post-traitement.",
-        "noModels": "Aucun modèle de traitement enregistré. Ajoutez-en un pour l'utiliser dans vos actions.",
-        "addModel": "Ajouter un modèle de traitement",
-        "provider": "Fournisseur",
-        "apiKey": "Clé API",
-        "apiKeyPlaceholder": "Entrez la clé API",
-        "model": "Modèle",
-        "modelPlaceholder": "Sélectionner ou saisir un modèle",
-        "save": "Enregistrer",
-        "cancel": "Annuler",
-        "fetchModels": "Récupérer les modèles",
-        "alreadySaved": "Ce modèle est déjà enregistré."
-      },
-      "searchPlaceholder": "Rechercher des modèles..."
     },
     "general": {
       "title": "Général",
@@ -296,6 +261,41 @@
         "audioFiles": "Fichiers audio"
       }
     },
+    "models": {
+      "title": "Modèles de Transcription",
+      "description": "Sélectionnez un modèle de transcription ou téléchargez des modèles supplémentaires. Différents modèles offrent différents niveaux de précision et de vitesse.",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Traitement"
+      },
+      "yourModels": "Modèles téléchargés",
+      "availableModels": "Disponibles au téléchargement",
+      "downloaded": "Téléchargés",
+      "available": "Disponibles au Téléchargement",
+      "deleteConfirm": "Êtes-vous sûr de vouloir supprimer {{modelName}} ? Vous devrez le télécharger à nouveau pour l'utiliser.",
+      "deleteActiveConfirm": "{{modelName}} est votre modèle actif. Le supprimer arrêtera les transcriptions jusqu'à ce que vous sélectionniez un nouveau modèle. Êtes-vous sûr ?",
+      "deleteTitle": "Supprimer le modèle",
+      "filters": {
+        "allLanguages": "Toutes les langues"
+      },
+      "searchPlaceholder": "Rechercher des modèles...",
+      "noModelsMatch": "Aucun modèle ne correspond à ce filtre.",
+      "processingModels": {
+        "title": "Modèles de traitement",
+        "description": "Enregistrez des modèles LLM pour les utiliser dans les actions de post-traitement.",
+        "noModels": "Aucun modèle de traitement enregistré. Ajoutez-en un pour l'utiliser dans vos actions.",
+        "addModel": "Ajouter un modèle de traitement",
+        "provider": "Fournisseur",
+        "apiKey": "Clé API",
+        "apiKeyPlaceholder": "Entrez la clé API",
+        "model": "Modèle",
+        "modelPlaceholder": "Sélectionner ou saisir un modèle",
+        "save": "Enregistrer",
+        "cancel": "Annuler",
+        "fetchModels": "Récupérer les modèles",
+        "alreadySaved": "Ce modèle est déjà enregistré."
+      }
+    },
     "sound": {
       "title": "Son",
       "microphone": {
@@ -303,6 +303,12 @@
         "description": "Sélectionnez votre périphérique d'entrée audio",
         "placeholder": "Sélectionner un microphone...",
         "loading": "Chargement..."
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
       },
       "audioFeedback": {
         "label": "Signal sonore",
@@ -331,12 +337,6 @@
         "clear": "Supprimer le son personnalisé",
         "default": "Par défaut",
         "audioFiles": "Fichiers audio"
-      },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
       }
     },
     "advanced": {
@@ -597,178 +597,6 @@
       "transcribing": "Transcription en cours...",
       "transcriptionFailed": "La transcription a échoué. Vous pouvez re-transcrire en utilisant l'icône de réessai."
     },
-    "debug": {
-      "title": "Débogage",
-      "logDirectory": {
-        "title": "Répertoire des journaux",
-        "description": "Emplacement où les fichiers journaux sont stockés"
-      },
-      "logLevel": {
-        "title": "Niveau de journalisation",
-        "description": "Définir le niveau de détail de la journalisation"
-      },
-      "liveLogs": {
-        "title": "Journaux en direct",
-        "description": "Affichez les journaux de l'application en temps réel pour diagnostiquer les problèmes sans ouvrir le fichier journal. Seuls les journaux émis pendant que ce panneau est ouvert sont affichés ; respecte le réglage Niveau de journalisation ci-dessus.",
-        "live": "En direct",
-        "paused": "En pause",
-        "pause": "Pause",
-        "resume": "Reprendre",
-        "copied": "Copié",
-        "lineCount": "{{count}} lignes",
-        "empty": "En attente de journaux… Les entrées apparaîtront ici au fur et à mesure que l'application les émet."
-      },
-      "updateChecks": {
-        "label": "Vérifier les mises à jour",
-        "description": "Vérifier automatiquement les nouvelles versions de Phonara"
-      },
-      "soundTheme": {
-        "label": "Thème sonore",
-        "description": "Choisir un thème sonore pour les retours de début et de fin d'enregistrement"
-      },
-      "wordCorrectionThreshold": {
-        "title": "Seuil de correction des mots",
-        "description": "Sensibilité pour les corrections de mots personnalisés"
-      },
-      "historyLimit": {
-        "title": "Limite d'historique",
-        "description": "Nombre maximum d'entrées d'historique à conserver",
-        "entries": "entrées"
-      },
-      "recordingRetention": {
-        "title": "Suppression automatique des enregistrements",
-        "description": "Supprimer automatiquement les anciens enregistrements pour économiser de l'espace",
-        "never": "Jamais",
-        "preserveLimit": "Conserver les {{count}} plus récents",
-        "days3": "Après 3 jours",
-        "weeks2": "Après 2 semaines",
-        "months3": "Après 3 mois",
-        "placeholder": "Sélectionner la période de conservation..."
-      },
-      "alwaysOnMicrophone": {
-        "label": "Microphone toujours actif",
-        "description": "Garder le microphone actif pour une réponse plus rapide"
-      },
-      "clamshellMicrophone": {
-        "title": "Microphone en mode fermé",
-        "description": "Microphone à utiliser lorsque le couvercle du portable est fermé"
-      },
-      "postProcessingToggle": {
-        "label": "Post-traitement",
-        "description": "Activer l'affinage du texte par IA après la transcription"
-      },
-      "muteWhileRecording": {
-        "label": "Muet pendant l'enregistrement",
-        "description": "Couper le son du système pendant l'enregistrement"
-      },
-      "appendTrailingSpace": {
-        "label": "Ajouter une espace final",
-        "description": "Ajouter une espace après la transcription collée"
-      },
-      "keyboardImplementation": {
-        "title": "Implémentation clavier",
-        "description": "Choisir le moteur de raccourcis clavier.",
-        "bindingsReset": "Les raccourcis clavier étaient incompatibles et ont été réinitialisés aux valeurs par défaut"
-      },
-      "recordingsDirectory": {
-        "title": "Répertoire des enregistrements",
-        "description": "Choisir un répertoire personnalisé pour stocker les enregistrements audio. Les fichiers existants ne seront pas déplacés.",
-        "default": "Par défaut (Données de l'application)",
-        "choose": "Choisir un dossier",
-        "reset": "Réinitialiser par défaut",
-        "current": "Actuel : {{path}}",
-        "restartNote": "Redémarrez l'application pour appliquer le nouveau répertoire d'enregistrements."
-      },
-      "paths": {
-        "appData": "Données de l'application :",
-        "models": "Modèles :",
-        "settings": "Paramètres :"
-      },
-      "pasteDelay": {
-        "title": "Délai de collage (avant)",
-        "description": "Délai (en millisecondes) après la copie du texte, avant l'envoi de la touche de collage. Augmentez si rien n'est collé."
-      },
-      "pasteDelayAfter": {
-        "title": "Délai de collage (après)",
-        "description": "Délai (en millisecondes) après la touche de collage, avant la restauration de votre presse-papiers précédent. Augmentez si l'ancien contenu du presse-papiers est collé à la place de la transcription."
-      },
-      "recordingBuffer": {
-        "title": "Tampon d'enregistrement supplémentaire",
-        "description": "Temps supplémentaire (en millisecondes) pour continuer l'enregistrement après avoir relâché la touche, pour capturer l'audio restant. 0 = pas de tampon supplémentaire."
-      },
-      "whatsNewPreview": {
-        "title": "Aperçu des nouveautés",
-        "description": "Ouvrir la dernière note de version intégrée sans la marquer comme vue",
-        "button": "Aperçu",
-        "noNotes": "Aucune note de version intégrée trouvée",
-        "error": "Impossible d’afficher l’aperçu des notes de version"
-      }
-    },
-    "appearance": {
-      "title": "Apparence",
-      "themeMode": {
-        "title": "Thème",
-        "description": "Choisir entre le thème clair, sombre ou système",
-        "light": "Clair",
-        "dark": "Sombre",
-        "system": "Système"
-      },
-      "accentColor": {
-        "title": "Couleur d'accentuation",
-        "description": "Choisir la couleur principale de l'interface",
-        "blue": "Bleu",
-        "green": "Vert",
-        "red": "Rouge",
-        "purple": "Violet",
-        "orange": "Orange",
-        "pink": "Rose",
-        "teal": "Sarcelle",
-        "yellow": "Jaune",
-        "system": "Système"
-      },
-      "overlay": "Overlay"
-    },
-    "about": {
-      "title": "À propos",
-      "version": {
-        "title": "Version",
-        "description": "Version actuelle de Phonara"
-      },
-      "appDataDirectory": {
-        "title": "Emplacement des données de l'application",
-        "description": "Emplacement où Phonara stocke ses données"
-      },
-      "exportImport": {
-        "title": "Exporter / Importer les paramètres",
-        "description": "Transférer votre configuration vers un autre ordinateur",
-        "export": "Exporter",
-        "import": "Importer",
-        "exportSuccess": "Paramètres exportés avec succès",
-        "importSuccess": "Paramètres importés avec succès"
-      },
-      "sourceCode": {
-        "title": "Code source",
-        "description": "Voir le code source et contribuer",
-        "button": "Voir sur GitHub"
-      },
-      "supportDevelopment": {
-        "title": "Soutenir le développement",
-        "description": "Aidez-nous à continuer à construire Phonara",
-        "button": "Faire un don"
-      },
-      "acknowledgments": {
-        "title": "Remerciements",
-        "ggml": {
-          "title": "ggml",
-          "description": "Inférence haute performance du modèle de reconnaissance vocale automatique Whisper d'OpenAI",
-          "details": "Phonara utilise Whisper.cpp pour un traitement rapide et local de la parole en texte. Merci au travail incroyable de Georgi Gerganov et des contributeurs."
-        }
-      },
-      "whatsNewUpdates": {
-        "label": "Afficher les nouveautés",
-        "description": "Afficher les notes de version après les mises à jour de Handy"
-      }
-    },
     "gemini": {
       "title": "API Gemini",
       "description": "Utiliser l'API Gemini de Google pour la transcription dans le cloud. Nécessite une clé API.",
@@ -806,6 +634,178 @@
       },
       "save": "Enregistrer",
       "cancel": "Annuler"
+    },
+    "debug": {
+      "title": "Débogage",
+      "logDirectory": {
+        "title": "Répertoire des journaux",
+        "description": "Emplacement où les fichiers journaux sont stockés"
+      },
+      "logLevel": {
+        "title": "Niveau de journalisation",
+        "description": "Définir le niveau de détail de la journalisation"
+      },
+      "liveLogs": {
+        "title": "Journaux en direct",
+        "description": "Affichez les journaux de l'application en temps réel pour diagnostiquer les problèmes sans ouvrir le fichier journal. Seuls les journaux émis pendant que ce panneau est ouvert sont affichés ; respecte le réglage Niveau de journalisation ci-dessus.",
+        "live": "En direct",
+        "paused": "En pause",
+        "pause": "Pause",
+        "resume": "Reprendre",
+        "copied": "Copié",
+        "lineCount": "{{count}} lignes",
+        "empty": "En attente de journaux… Les entrées apparaîtront ici au fur et à mesure que l'application les émet."
+      },
+      "updateChecks": {
+        "label": "Vérifier les mises à jour",
+        "description": "Vérifier automatiquement les nouvelles versions de Phonara"
+      },
+      "whatsNewPreview": {
+        "title": "Aperçu des nouveautés",
+        "description": "Ouvrir la dernière note de version intégrée sans la marquer comme vue",
+        "button": "Aperçu",
+        "noNotes": "Aucune note de version intégrée trouvée",
+        "error": "Impossible d’afficher l’aperçu des notes de version"
+      },
+      "soundTheme": {
+        "label": "Thème sonore",
+        "description": "Choisir un thème sonore pour les retours de début et de fin d'enregistrement"
+      },
+      "wordCorrectionThreshold": {
+        "title": "Seuil de correction des mots",
+        "description": "Sensibilité pour les corrections de mots personnalisés"
+      },
+      "historyLimit": {
+        "title": "Limite d'historique",
+        "description": "Nombre maximum d'entrées d'historique à conserver",
+        "entries": "entrées"
+      },
+      "recordingRetention": {
+        "title": "Suppression automatique des enregistrements",
+        "description": "Supprimer automatiquement les anciens enregistrements pour économiser de l'espace",
+        "never": "Jamais",
+        "preserveLimit": "Conserver les {{count}} plus récents",
+        "days3": "Après 3 jours",
+        "weeks2": "Après 2 semaines",
+        "months3": "Après 3 mois",
+        "placeholder": "Sélectionner la période de conservation..."
+      },
+      "recordingsDirectory": {
+        "title": "Répertoire des enregistrements",
+        "description": "Choisir un répertoire personnalisé pour stocker les enregistrements audio. Les fichiers existants ne seront pas déplacés.",
+        "default": "Par défaut (Données de l'application)",
+        "choose": "Choisir un dossier",
+        "reset": "Réinitialiser par défaut",
+        "current": "Actuel : {{path}}",
+        "restartNote": "Redémarrez l'application pour appliquer le nouveau répertoire d'enregistrements."
+      },
+      "alwaysOnMicrophone": {
+        "label": "Microphone toujours actif",
+        "description": "Garder le microphone actif pour une réponse plus rapide"
+      },
+      "clamshellMicrophone": {
+        "title": "Microphone en mode fermé",
+        "description": "Microphone à utiliser lorsque le couvercle du portable est fermé"
+      },
+      "postProcessingToggle": {
+        "label": "Post-traitement",
+        "description": "Activer l'affinage du texte par IA après la transcription"
+      },
+      "muteWhileRecording": {
+        "label": "Muet pendant l'enregistrement",
+        "description": "Couper le son du système pendant l'enregistrement"
+      },
+      "appendTrailingSpace": {
+        "label": "Ajouter une espace final",
+        "description": "Ajouter une espace après la transcription collée"
+      },
+      "keyboardImplementation": {
+        "title": "Implémentation clavier",
+        "description": "Choisir le moteur de raccourcis clavier.",
+        "bindingsReset": "Les raccourcis clavier étaient incompatibles et ont été réinitialisés aux valeurs par défaut"
+      },
+      "paths": {
+        "appData": "Données de l'application :",
+        "models": "Modèles :",
+        "settings": "Paramètres :"
+      },
+      "pasteDelay": {
+        "title": "Délai de collage (avant)",
+        "description": "Délai (en millisecondes) après la copie du texte, avant l'envoi de la touche de collage. Augmentez si rien n'est collé."
+      },
+      "pasteDelayAfter": {
+        "title": "Délai de collage (après)",
+        "description": "Délai (en millisecondes) après la touche de collage, avant la restauration de votre presse-papiers précédent. Augmentez si l'ancien contenu du presse-papiers est collé à la place de la transcription."
+      },
+      "recordingBuffer": {
+        "title": "Tampon d'enregistrement supplémentaire",
+        "description": "Temps supplémentaire (en millisecondes) pour continuer l'enregistrement après avoir relâché la touche, pour capturer l'audio restant. 0 = pas de tampon supplémentaire."
+      }
+    },
+    "appearance": {
+      "title": "Apparence",
+      "themeMode": {
+        "title": "Thème",
+        "description": "Choisir entre le thème clair, sombre ou système",
+        "light": "Clair",
+        "dark": "Sombre",
+        "system": "Système"
+      },
+      "accentColor": {
+        "title": "Couleur d'accentuation",
+        "description": "Choisir la couleur principale de l'interface",
+        "blue": "Bleu",
+        "green": "Vert",
+        "red": "Rouge",
+        "purple": "Violet",
+        "orange": "Orange",
+        "pink": "Rose",
+        "teal": "Sarcelle",
+        "yellow": "Jaune",
+        "system": "Système"
+      },
+      "overlay": "Overlay"
+    },
+    "about": {
+      "title": "À propos",
+      "version": {
+        "title": "Version",
+        "description": "Version actuelle de Phonara"
+      },
+      "whatsNewUpdates": {
+        "label": "Afficher les nouveautés",
+        "description": "Afficher les notes de version après les mises à jour de Handy"
+      },
+      "appDataDirectory": {
+        "title": "Emplacement des données de l'application",
+        "description": "Emplacement où Phonara stocke ses données"
+      },
+      "exportImport": {
+        "title": "Exporter / Importer les paramètres",
+        "description": "Transférer votre configuration vers un autre ordinateur",
+        "export": "Exporter",
+        "import": "Importer",
+        "exportSuccess": "Paramètres exportés avec succès",
+        "importSuccess": "Paramètres importés avec succès"
+      },
+      "sourceCode": {
+        "title": "Code source",
+        "description": "Voir le code source et contribuer",
+        "button": "Voir sur GitHub"
+      },
+      "supportDevelopment": {
+        "title": "Soutenir le développement",
+        "description": "Aidez-nous à continuer à construire Phonara",
+        "button": "Faire un don"
+      },
+      "acknowledgments": {
+        "title": "Remerciements",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        }
+      }
     }
   },
   "footer": {
@@ -823,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "Chargement...",

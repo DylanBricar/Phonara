@@ -11,12 +11,12 @@
   "sidebar": {
     "general": "일반",
     "models": "모델",
+    "appearance": "Appearance",
     "advanced": "고급",
     "postProcessing": "후처리",
     "history": "히스토리",
     "debug": "디버그",
-    "about": "정보",
-    "appearance": "Appearance"
+    "about": "정보"
   },
   "onboarding": {
     "subtitle": "시작하려면 음성 인식 모델을 선택하세요",
@@ -79,22 +79,6 @@
         "name": "SenseVoice",
         "description": "매우 빠름. 중국어, 영어, 일본어, 한국어, 광둥어."
       },
-      "gigaam-v3-e2e-ctc": {
-        "name": "GigaAM v3",
-        "description": "러시아어 음성 인식. 빠르고 정확함."
-      },
-      "canary-180m-flash": {
-        "name": "Canary 180M Flash",
-        "description": "매우 빠름. 영어, 독일어, 스페인어, 프랑스어. 번역 지원."
-      },
-      "canary-1b-v2": {
-        "name": "Canary 1B v2",
-        "description": "정확한 다국어 지원. 25개 유럽 언어. 번역 지원."
-      },
-      "cohere-int8": {
-        "name": "Cohere",
-        "description": "크고 느리지만 매우 정확한 다국어 모델."
-      },
       "gemini-api": {
         "name": "Gemini API",
         "description": "Cloud-based transcription via Google Gemini. Requires API key and internet."
@@ -114,6 +98,22 @@
       "whisper-distil-fr": {
         "name": "Whisper French Lite",
         "description": "Compact French model. 5.8x faster, half the size. Great accuracy."
+      },
+      "gigaam-v3-e2e-ctc": {
+        "name": "GigaAM v3",
+        "description": "러시아어 음성 인식. 빠르고 정확함."
+      },
+      "canary-180m-flash": {
+        "name": "Canary 180M Flash",
+        "description": "매우 빠름. 영어, 독일어, 스페인어, 프랑스어. 번역 지원."
+      },
+      "canary-1b-v2": {
+        "name": "Canary 1B v2",
+        "description": "정확한 다국어 지원. 25개 유럽 언어. 번역 지원."
+      },
+      "cohere-int8": {
+        "name": "Cohere",
+        "description": "크고 느리지만 매우 정확한 다국어 모델."
       }
     },
     "errors": {
@@ -143,6 +143,7 @@
   },
   "modelSelector": {
     "custom": "사용자 정의",
+    "legacy": "Legacy",
     "streaming": "스트리밍",
     "active": "활성",
     "switching": "전환 중...",
@@ -185,6 +186,16 @@
         "description": "그래픽 카드를 사용하여 더 빠르게 전사합니다. 문제가 발생하면 이 옵션을 비활성화하세요 (예: 일부 AMD GPU에서 Vulkan 드라이버 버그로 인한 깨진 출력). CPU 모드는 느리지만 더 안정적입니다."
       }
     },
+    "longAudioModel": {
+      "title": "Long Audio Model",
+      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
+      "modelLabel": "Model for long recordings",
+      "modelDescription": "Select a model to use for recordings longer than the threshold.",
+      "thresholdLabel": "Duration threshold (seconds)",
+      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
+      "disabled": "Disabled",
+      "seconds": "{{value}}s"
+    },
     "general": {
       "title": "일반",
       "shortcut": {
@@ -194,6 +205,7 @@
         "none": "설정된 단축키 없음",
         "notFound": "단축키를 찾을 수 없음",
         "pressKeys": "키를 눌러주세요...",
+        "clickToSet": "Click to set",
         "bindings": {
           "transcribe": {
             "name": "음성 텍스트 변환 단축키",
@@ -220,8 +232,7 @@
           "restore": "원래 단축키 복원에 실패했습니다",
           "set": "단축키 설정 실패: {{error}}",
           "reset": "단축키를 원래 값으로 재설정하는데 실패했습니다"
-        },
-        "clickToSet": "Click to set"
+        }
       },
       "language": {
         "title": "언어",
@@ -250,6 +261,41 @@
         "audioFiles": "Audio Files"
       }
     },
+    "models": {
+      "title": "음성 인식 모델",
+      "description": "음성 인식 모델을 선택하거나 추가 모델을 다운로드하세요. 모델마다 정확도와 속도가 다릅니다.",
+      "tabs": {
+        "transcription": "Transcription",
+        "processing": "Processing"
+      },
+      "yourModels": "다운로드된 모델",
+      "availableModels": "다운로드 가능",
+      "downloaded": "Downloaded",
+      "available": "Available to Download",
+      "deleteConfirm": "{{modelName}}을(를) 삭제하시겠습니까? 다시 사용하려면 다운로드해야 합니다.",
+      "deleteActiveConfirm": "{{modelName}}은(는) 현재 활성 모델입니다. 삭제하면 새 모델을 선택할 때까지 전사가 중지됩니다. 정말 삭제하시겠습니까?",
+      "deleteTitle": "모델 삭제",
+      "filters": {
+        "allLanguages": "모든 언어"
+      },
+      "searchPlaceholder": "모델 검색...",
+      "noModelsMatch": "이 필터에 맞는 모델이 없습니다.",
+      "processingModels": {
+        "title": "Processing Models",
+        "description": "Save LLM models for use in post-processing actions.",
+        "noModels": "No processing models saved yet. Add one to use in your actions.",
+        "addModel": "Add Processing Model",
+        "provider": "Provider",
+        "apiKey": "API Key",
+        "apiKeyPlaceholder": "Enter API key",
+        "model": "Model",
+        "modelPlaceholder": "Select or type a model",
+        "save": "Save",
+        "cancel": "Cancel",
+        "fetchModels": "Fetch models",
+        "alreadySaved": "This model is already saved."
+      }
+    },
     "sound": {
       "title": "사운드",
       "microphone": {
@@ -257,6 +303,12 @@
         "description": "선호하는 마이크 장치를 선택하세요",
         "placeholder": "마이크 선택...",
         "loading": "로딩 중..."
+      },
+      "channel": {
+        "title": "Input Channel",
+        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
+        "average": "Average all channels",
+        "channel": "Channel {{n}}"
       },
       "audioFeedback": {
         "label": "오디오 피드백",
@@ -272,12 +324,6 @@
         "title": "볼륨",
         "description": "오디오 피드백 사운드의 볼륨 조절"
       },
-      "channel": {
-        "title": "Input Channel",
-        "description": "Select which input channel to record from. Use this if your audio interface has multiple inputs.",
-        "average": "Average all channels",
-        "channel": "Channel {{n}}"
-      },
       "soundTheme": {
         "label": "Sound Theme",
         "description": "Choose a sound theme for recording start and stop feedback",
@@ -291,39 +337,6 @@
         "clear": "Clear custom sound",
         "default": "Default",
         "audioFiles": "Audio Files"
-      }
-    },
-    "models": {
-      "title": "음성 인식 모델",
-      "description": "음성 인식 모델을 선택하거나 추가 모델을 다운로드하세요. 모델마다 정확도와 속도가 다릅니다.",
-      "yourModels": "다운로드된 모델",
-      "availableModels": "다운로드 가능",
-      "deleteConfirm": "{{modelName}}을(를) 삭제하시겠습니까? 다시 사용하려면 다운로드해야 합니다.",
-      "deleteActiveConfirm": "{{modelName}}은(는) 현재 활성 모델입니다. 삭제하면 새 모델을 선택할 때까지 전사가 중지됩니다. 정말 삭제하시겠습니까?",
-      "deleteTitle": "모델 삭제",
-      "filters": {
-        "allLanguages": "모든 언어"
-      },
-      "noModelsMatch": "이 필터에 맞는 모델이 없습니다.",
-      "searchPlaceholder": "모델 검색...",
-      "tabs": {
-        "transcription": "Transcription",
-        "processing": "Processing"
-      },
-      "processingModels": {
-        "title": "Processing Models",
-        "description": "Save LLM models for use in post-processing actions.",
-        "noModels": "No processing models saved yet. Add one to use in your actions.",
-        "addModel": "Add Processing Model",
-        "provider": "Provider",
-        "apiKey": "API Key",
-        "apiKeyPlaceholder": "Enter API key",
-        "model": "Model",
-        "modelPlaceholder": "Select or type a model",
-        "save": "Save",
-        "cancel": "Cancel",
-        "fetchModels": "Fetch models",
-        "alreadySaved": "This model is already saved."
       }
     },
     "advanced": {
@@ -573,163 +586,16 @@
       "unsave": "저장에서 제거",
       "delete": "항목 삭제",
       "deleteError": "항목 삭제에 실패했습니다. 다시 시도해주세요.",
-      "retranscribe": "다시 전사",
-      "retranscribeError": "다시 전사에 실패했습니다. 다시 시도해주세요.",
-      "transcribing": "전사 중...",
-      "transcriptionFailed": "전사에 실패했습니다. 재시도 아이콘을 사용하여 다시 전사할 수 있습니다.",
       "reprocess": "Reprocess with different model",
       "reprocessing": "Reprocessing...",
       "selectModel": "Select model",
       "originalTranscript": "Original",
       "postProcessed": "Post-processed",
-      "action": "Action {{key}}"
-    },
-    "debug": {
-      "title": "디버그",
-      "logDirectory": {
-        "title": "로그 디렉토리",
-        "description": "로그 파일이 저장되는 위치"
-      },
-      "logLevel": {
-        "title": "로그 레벨",
-        "description": "로깅의 상세도 설정"
-      },
-      "liveLogs": {
-        "title": "실시간 로그",
-        "description": "로그 파일을 열지 않고도 문제를 진단할 수 있도록 애플리케이션 로그를 실시간으로 표시합니다. 이 패널이 열려 있는 동안 발생한 로그만 표시되며, 위의 로그 레벨 설정을 따릅니다.",
-        "live": "실시간",
-        "paused": "일시정지됨",
-        "pause": "일시정지",
-        "resume": "재개",
-        "copied": "복사됨",
-        "lineCount": "{{count}}줄",
-        "empty": "로그 대기 중… 앱이 로그를 출력하면 여기에 표시됩니다."
-      },
-      "updateChecks": {
-        "label": "업데이트 확인",
-        "description": "Phonara의 새 버전을 자동으로 확인합니다"
-      },
-      "soundTheme": {
-        "label": "사운드 테마",
-        "description": "녹음 시작 및 정지 피드백을 위한 사운드 테마를 선택하세요"
-      },
-      "wordCorrectionThreshold": {
-        "title": "단어 수정 임계값",
-        "description": "사용자 정의 단어 수정의 민감도"
-      },
-      "historyLimit": {
-        "title": "히스토리 제한",
-        "description": "보관할 최대 히스토리 항목 수",
-        "entries": "항목"
-      },
-      "recordingRetention": {
-        "title": "녹음 자동 삭제",
-        "description": "공간을 절약하기 위해 오래된 녹음을 자동으로 삭제합니다",
-        "never": "안 함",
-        "preserveLimit": "최근 {{count}}개 유지",
-        "days3": "3일 후",
-        "weeks2": "2주 후",
-        "months3": "3개월 후",
-        "placeholder": "보관 기간 선택..."
-      },
-      "alwaysOnMicrophone": {
-        "label": "항상 켜진 마이크",
-        "description": "더 빠른 응답을 위해 마이크를 활성 상태로 유지"
-      },
-      "clamshellMicrophone": {
-        "title": "클램셸 마이크",
-        "description": "노트북 덮개가 닫혀 있을 때 사용할 마이크"
-      },
-      "postProcessingToggle": {
-        "label": "후처리",
-        "description": "텍스트 변환 후 AI 기반 텍스트 개선 활성화"
-      },
-      "muteWhileRecording": {
-        "label": "녹음 중 음소거",
-        "description": "녹음 중 시스템 오디오 음소거"
-      },
-      "appendTrailingSpace": {
-        "label": "끝 공백 추가",
-        "description": "붙여넣은 텍스트 끝에 공백 추가"
-      },
-      "keyboardImplementation": {
-        "title": "키보드 구현",
-        "description": "키보드 단축키 백엔드를 선택하세요.",
-        "bindingsReset": "키보드 단축키가 호환되지 않아 기본값으로 재설정되었습니다"
-      },
-      "pasteDelay": {
-        "title": "붙여넣기 지연 (이전)",
-        "description": "텍스트를 복사한 후 붙여넣기 키 입력을 보내기 전의 지연 시간(밀리초). 아무것도 붙여넣어지지 않으면 늘리세요."
-      },
-      "pasteDelayAfter": {
-        "title": "붙여넣기 지연 (이후)",
-        "description": "붙여넣기 키 입력을 보낸 후 이전 클립보드를 복원하기 전의 지연 시간(밀리초). 전사된 텍스트 대신 이전 클립보드 내용이 붙여넣어지면 늘리세요."
-      },
-      "recordingBuffer": {
-        "title": "추가 녹음 버퍼",
-        "description": "키를 놓은 후 추가로 녹음을 계속하는 시간(밀리초). 후행 오디오를 캡처하기 위함. 0 = 추가 버퍼 없음."
-      },
-      "paths": {
-        "appData": "앱 데이터:",
-        "models": "모델:",
-        "settings": "설정:"
-      },
-      "recordingsDirectory": {
-        "title": "Recordings Directory",
-        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
-        "default": "Default (App Data)",
-        "choose": "Choose Folder",
-        "reset": "Reset to Default",
-        "current": "Current: {{path}}",
-        "restartNote": "Restart the app to apply the new recordings directory."
-      }
-    },
-    "about": {
-      "title": "정보",
-      "version": {
-        "title": "버전",
-        "description": "Phonara의 현재 버전"
-      },
-      "appDataDirectory": {
-        "title": "앱 데이터 디렉토리",
-        "description": "Phonara가 데이터를 저장하는 위치"
-      },
-      "sourceCode": {
-        "title": "소스 코드",
-        "description": "소스 코드 보기 및 기여",
-        "button": "GitHub에서 보기"
-      },
-      "supportDevelopment": {
-        "title": "개발 지원",
-        "description": "Phonara 개발을 계속할 수 있도록 도와주세요",
-        "button": "후원하기"
-      },
-      "acknowledgments": {
-        "title": "감사의 말",
-        "ggml": {
-          "title": "ggml",
-          "description": "OpenAI의 Whisper 자동 음성 인식 모델의 고성능 추론",
-          "details": "Phonara는 빠르고 로컬 음성-텍스트 처리를 위해 Whisper.cpp를 사용합니다. Georgi Gerganov와 기여자들의 놀라운 작업에 감사드립니다."
-        }
-      },
-      "exportImport": {
-        "title": "Export / Import Settings",
-        "description": "Transfer your configuration to another computer",
-        "export": "Export",
-        "import": "Import",
-        "exportSuccess": "Settings exported successfully",
-        "importSuccess": "Settings imported successfully"
-      }
-    },
-    "longAudioModel": {
-      "title": "Long Audio Model",
-      "description": "Automatically switch to a different model when recording duration exceeds the threshold.",
-      "modelLabel": "Model for long recordings",
-      "modelDescription": "Select a model to use for recordings longer than the threshold.",
-      "thresholdLabel": "Duration threshold (seconds)",
-      "thresholdDescription": "Switch to the long audio model when recording exceeds this duration.",
-      "disabled": "Disabled",
-      "seconds": "{{value}}s"
+      "action": "Action {{key}}",
+      "retranscribe": "다시 전사",
+      "retranscribeError": "다시 전사에 실패했습니다. 다시 시도해주세요.",
+      "transcribing": "전사 중...",
+      "transcriptionFailed": "전사에 실패했습니다. 재시도 아이콘을 사용하여 다시 전사할 수 있습니다."
     },
     "gemini": {
       "title": "Gemini API",
@@ -769,6 +635,113 @@
       "save": "Save",
       "cancel": "Cancel"
     },
+    "debug": {
+      "title": "디버그",
+      "logDirectory": {
+        "title": "로그 디렉토리",
+        "description": "로그 파일이 저장되는 위치"
+      },
+      "logLevel": {
+        "title": "로그 레벨",
+        "description": "로깅의 상세도 설정"
+      },
+      "liveLogs": {
+        "title": "실시간 로그",
+        "description": "로그 파일을 열지 않고도 문제를 진단할 수 있도록 애플리케이션 로그를 실시간으로 표시합니다. 이 패널이 열려 있는 동안 발생한 로그만 표시되며, 위의 로그 레벨 설정을 따릅니다.",
+        "live": "실시간",
+        "paused": "일시정지됨",
+        "pause": "일시정지",
+        "resume": "재개",
+        "copied": "복사됨",
+        "lineCount": "{{count}}줄",
+        "empty": "로그 대기 중… 앱이 로그를 출력하면 여기에 표시됩니다."
+      },
+      "updateChecks": {
+        "label": "업데이트 확인",
+        "description": "Phonara의 새 버전을 자동으로 확인합니다"
+      },
+      "whatsNewPreview": {
+        "title": "Preview What's New",
+        "description": "Open the latest bundled release note without marking it as seen",
+        "button": "Preview",
+        "noNotes": "No bundled release notes found",
+        "error": "Failed to preview release notes"
+      },
+      "soundTheme": {
+        "label": "사운드 테마",
+        "description": "녹음 시작 및 정지 피드백을 위한 사운드 테마를 선택하세요"
+      },
+      "wordCorrectionThreshold": {
+        "title": "단어 수정 임계값",
+        "description": "사용자 정의 단어 수정의 민감도"
+      },
+      "historyLimit": {
+        "title": "히스토리 제한",
+        "description": "보관할 최대 히스토리 항목 수",
+        "entries": "항목"
+      },
+      "recordingRetention": {
+        "title": "녹음 자동 삭제",
+        "description": "공간을 절약하기 위해 오래된 녹음을 자동으로 삭제합니다",
+        "never": "안 함",
+        "preserveLimit": "최근 {{count}}개 유지",
+        "days3": "3일 후",
+        "weeks2": "2주 후",
+        "months3": "3개월 후",
+        "placeholder": "보관 기간 선택..."
+      },
+      "recordingsDirectory": {
+        "title": "Recordings Directory",
+        "description": "Choose a custom directory for storing audio recordings. Existing files will not be moved.",
+        "default": "Default (App Data)",
+        "choose": "Choose Folder",
+        "reset": "Reset to Default",
+        "current": "Current: {{path}}",
+        "restartNote": "Restart the app to apply the new recordings directory."
+      },
+      "alwaysOnMicrophone": {
+        "label": "항상 켜진 마이크",
+        "description": "더 빠른 응답을 위해 마이크를 활성 상태로 유지"
+      },
+      "clamshellMicrophone": {
+        "title": "클램셸 마이크",
+        "description": "노트북 덮개가 닫혀 있을 때 사용할 마이크"
+      },
+      "postProcessingToggle": {
+        "label": "후처리",
+        "description": "텍스트 변환 후 AI 기반 텍스트 개선 활성화"
+      },
+      "muteWhileRecording": {
+        "label": "녹음 중 음소거",
+        "description": "녹음 중 시스템 오디오 음소거"
+      },
+      "appendTrailingSpace": {
+        "label": "끝 공백 추가",
+        "description": "붙여넣은 텍스트 끝에 공백 추가"
+      },
+      "keyboardImplementation": {
+        "title": "키보드 구현",
+        "description": "키보드 단축키 백엔드를 선택하세요.",
+        "bindingsReset": "키보드 단축키가 호환되지 않아 기본값으로 재설정되었습니다"
+      },
+      "paths": {
+        "appData": "앱 데이터:",
+        "models": "모델:",
+        "settings": "설정:"
+      },
+      "pasteDelay": {
+        "title": "붙여넣기 지연 (이전)",
+        "description": "텍스트를 복사한 후 붙여넣기 키 입력을 보내기 전의 지연 시간(밀리초). 아무것도 붙여넣어지지 않으면 늘리세요."
+      },
+      "pasteDelayAfter": {
+        "title": "붙여넣기 지연 (이후)",
+        "description": "붙여넣기 키 입력을 보낸 후 이전 클립보드를 복원하기 전의 지연 시간(밀리초). 전사된 텍스트 대신 이전 클립보드 내용이 붙여넣어지면 늘리세요."
+      },
+      "recordingBuffer": {
+        "title": "추가 녹음 버퍼",
+        "description": "키를 놓은 후 추가로 녹음을 계속하는 시간(밀리초). 후행 오디오를 캡처하기 위함. 0 = 추가 버퍼 없음."
+      }
+    },
     "appearance": {
       "title": "Appearance",
       "themeMode": {
@@ -792,6 +765,47 @@
         "system": "System"
       },
       "overlay": "Overlay"
+    },
+    "about": {
+      "title": "정보",
+      "version": {
+        "title": "버전",
+        "description": "Phonara의 현재 버전"
+      },
+      "whatsNewUpdates": {
+        "label": "Show What's New",
+        "description": "Show release notes after Handy updates"
+      },
+      "appDataDirectory": {
+        "title": "앱 데이터 디렉토리",
+        "description": "Phonara가 데이터를 저장하는 위치"
+      },
+      "exportImport": {
+        "title": "Export / Import Settings",
+        "description": "Transfer your configuration to another computer",
+        "export": "Export",
+        "import": "Import",
+        "exportSuccess": "Settings exported successfully",
+        "importSuccess": "Settings imported successfully"
+      },
+      "sourceCode": {
+        "title": "소스 코드",
+        "description": "소스 코드 보기 및 기여",
+        "button": "GitHub에서 보기"
+      },
+      "supportDevelopment": {
+        "title": "개발 지원",
+        "description": "Phonara 개발을 계속할 수 있도록 도와주세요",
+        "button": "후원하기"
+      },
+      "acknowledgments": {
+        "title": "감사의 말",
+        "whisper": {
+          "title": "Whisper.cpp",
+          "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
+          "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        }
+      }
     }
   },
   "footer": {
@@ -809,6 +823,9 @@
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
     "updateInstallFailed": "Failed to install update"
+  },
+  "whatsNew": {
+    "title": "New in Handy v{{version}}"
   },
   "common": {
     "loading": "로딩 중...",

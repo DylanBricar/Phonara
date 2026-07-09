@@ -272,11 +272,17 @@ pub struct DownloadProgress {
     pub percentage: f64,
 }
 
-/// Resolve a Hugging Face model file in the shared HF cache, if already present.
-/// Uses hf-hub's stock location (HF_HOME or ~/.cache/huggingface/hub) so
-/// downloads are shared with other tools.
+fn hf_cache() -> Cache {
+    crate::portable::data_dir()
+        .map(|data_dir| Cache::new(data_dir.join("huggingface").join("hub")))
+        .unwrap_or_else(Cache::from_env)
+}
+
+/// Resolve a Hugging Face model file in the HF cache, if already present.
+/// Portable installs keep the cache under Data/; regular installs keep using
+/// hf-hub's stock location so downloads are shared with other tools.
 fn hf_cached_path(repo_id: &str, revision: &str, filename: &str) -> Option<PathBuf> {
-    Cache::from_env()
+    hf_cache()
         .repo(Repo::with_revision(
             repo_id.to_string(),
             RepoType::Model,
@@ -1545,7 +1551,7 @@ impl ModelManager {
     /// transcribe-cpp recognises are surfaced; arbitrary (e.g. LLM) GGUFs that
     /// share the cache are ignored.
     fn discover_hf_cache_models(available_models: &mut HashMap<String, ModelInfo>) {
-        Self::discover_hf_cache_models_in(Cache::from_env().path(), available_models);
+        Self::discover_hf_cache_models_in(hf_cache().path(), available_models);
     }
 
     /// Scan a Hugging Face cache root (`<cache>/models--*`) for GGUF snapshots.
@@ -1780,6 +1786,7 @@ impl ModelManager {
         let api = ApiBuilder::from_env()
             .with_progress(false)
             .with_max_files(8)
+            .with_cache_dir(hf_cache().path().clone())
             .build()
             .map_err(|e| anyhow::anyhow!("Failed to init Hugging Face API: {}", e))?;
         let repo = api.repo(Repo::with_revision(repo_id, RepoType::Model, revision));
