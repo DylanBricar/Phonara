@@ -248,7 +248,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                 TrayIconEvent::DoubleClick { button, .. } => {
                     if matches!(button, MouseButton::Left) {
                         let app = tray.app_handle();
-                        show_main_window(&app);
+                        show_main_window(app);
                     }
                 }
                 TrayIconEvent::Click {

@@ -113,7 +113,7 @@ fn paste_via_clipboard(
     app_handle: &AppHandle,
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
-    paste_delay_after_ms: u64,
+    _paste_delay_after_ms: u64,
 ) -> Result<(), String> {
     let saved_content = save_clipboard_content();
 

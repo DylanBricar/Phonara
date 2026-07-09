@@ -120,21 +120,16 @@ pub struct SavedProcessingModel {
     pub label: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeMode {
     Light,
     Dark,
+    #[default]
     System,
 }
 
-impl Default for ThemeMode {
-    fn default() -> Self {
-        ThemeMode::System
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AccentColor {
     Blue,
@@ -145,13 +140,8 @@ pub enum AccentColor {
     Pink,
     Teal,
     Yellow,
+    #[default]
     System,
-}
-
-impl Default for AccentColor {
-    fn default() -> Self {
-        AccentColor::System
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Type)]
@@ -1144,7 +1134,7 @@ impl AppSettings {
 
 pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
     let settings = get_settings(app);
-    debug!("Loaded settings: {:?}", settings);
+    debug!("Loaded settings: {:?}", settings.redacted_for_log());
     settings
 }
 

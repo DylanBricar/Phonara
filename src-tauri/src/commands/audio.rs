@@ -90,9 +90,9 @@ fn get_windows_microphone_permission_status_impl() -> WindowsMicrophonePermissio
     // Phonara is a desktop app, so the NonPackaged key is the relevant user
     // permission scope. Some privacy tools set the UWP app key to "deny"
     // without blocking desktop microphone access.
-    let overall_access = if device_access == PermissionAccess::Denied {
-        PermissionAccess::Denied
-    } else if desktop_app_access == PermissionAccess::Denied {
+    let overall_access = if device_access == PermissionAccess::Denied
+        || desktop_app_access == PermissionAccess::Denied
+    {
         PermissionAccess::Denied
     } else if desktop_app_access == PermissionAccess::Allowed {
         PermissionAccess::Allowed
@@ -144,7 +144,7 @@ pub fn open_microphone_privacy_settings() -> Result<(), String> {
             .args(["/C", "start", "", "ms-settings:privacy-microphone"])
             .spawn()
             .map_err(|e| format!("Failed to open Windows microphone privacy settings: {}", e))?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(not(target_os = "windows"))]

@@ -192,6 +192,7 @@ pub async fn is_model_loading(
 
 #[tauri::command]
 #[specta::specta]
+#[allow(dead_code)]
 pub async fn has_any_models_available(
     model_manager: State<'_, Arc<ModelManager>>,
 ) -> Result<bool, String> {
@@ -201,6 +202,7 @@ pub async fn has_any_models_available(
 
 #[tauri::command]
 #[specta::specta]
+#[allow(dead_code)]
 pub async fn has_any_models_or_downloads(
     model_manager: State<'_, Arc<ModelManager>>,
 ) -> Result<bool, String> {

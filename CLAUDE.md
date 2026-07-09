@@ -23,6 +23,9 @@ bun run lint              # ESLint for frontend
 bun run lint:fix          # ESLint with auto-fix
 bun run format            # Prettier + cargo fmt
 bun run format:check      # Check formatting without changes
+bun run quality:check     # translations, secrets, lint, unit coverage, build, Playwright, audit
+bun run quality:rust      # cargo fmt, clippy -D warnings, cargo test
+bun run audit:rust        # RustSec advisory audit (requires cargo-audit)
 ```
 
 **Model Setup (Required for Development):**

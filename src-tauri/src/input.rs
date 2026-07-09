@@ -92,7 +92,7 @@ pub fn send_paste_ctrl_v(enigo: &mut Enigo) -> Result<(), String> {
         let _ = enigo;
         let result = win_sendinput::ctrl_v();
         std::thread::sleep(std::time::Duration::from_millis(100));
-        return result;
+        result
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -125,7 +125,7 @@ pub fn send_paste_ctrl_shift_v(enigo: &mut Enigo) -> Result<(), String> {
         let _ = enigo;
         let result = win_sendinput::ctrl_shift_v();
         std::thread::sleep(std::time::Duration::from_millis(100));
-        return result;
+        result
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -164,7 +164,7 @@ pub fn send_paste_shift_insert(enigo: &mut Enigo) -> Result<(), String> {
         let _ = enigo;
         let result = win_sendinput::shift_insert();
         std::thread::sleep(std::time::Duration::from_millis(100));
-        return result;
+        result
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -195,7 +195,7 @@ pub fn paste_text_direct(enigo: &mut Enigo, text: &str) -> Result<(), String> {
             .text(text)
             .map_err(|e| format!("Failed to send text directly: {}", e));
 
-        return result;
+        result
     }
 
     #[cfg(not(target_os = "windows"))]

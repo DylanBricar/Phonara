@@ -290,7 +290,7 @@ fn get_filler_regexes(lang: &str, custom_words: Option<&[String]>) -> Vec<Regex>
     }
 
     let words = get_filler_words_for_language(lang);
-    let patterns = build_filler_patterns(&words);
+    let patterns = build_filler_patterns(words);
     cache_map.insert(key, patterns.clone());
     patterns
 }

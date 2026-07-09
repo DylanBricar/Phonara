@@ -35,6 +35,25 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
 
+      - name: Check Rust formatting
+        working-directory: src-tauri
+        run: cargo fmt -- --check
+
+      - name: Run Clippy
+        working-directory: src-tauri
+        run: cargo clippy -- -D warnings
+
       - name: Run Rust tests
         working-directory: src-tauri
         run: cargo test
+
+  rust-audit:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions-rust-lang/audit@v1
+        with:
+          file: src-tauri/Cargo.lock

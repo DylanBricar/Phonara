@@ -45,7 +45,7 @@ pub fn add_post_process_action(
     model: Option<String>,
     provider_id: Option<String>,
 ) -> Result<settings::PostProcessAction, String> {
-    if key < 1 || key > 9 {
+    if !(1..=9).contains(&key) {
         return Err("Action key must be between 1 and 9".to_string());
     }
 
@@ -230,7 +230,7 @@ pub fn change_overlay_border_width_setting(app: AppHandle, width: u8) -> Result<
 #[specta::specta]
 pub fn change_overlay_custom_width_setting(app: AppHandle, width: u16) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
-    settings.overlay_custom_width = width.max(120).min(500);
+    settings.overlay_custom_width = width.clamp(120, 500);
     settings::write_settings(&app, settings);
     Ok(())
 }
@@ -239,7 +239,7 @@ pub fn change_overlay_custom_width_setting(app: AppHandle, width: u16) -> Result
 #[specta::specta]
 pub fn change_overlay_custom_height_setting(app: AppHandle, height: u16) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
-    settings.overlay_custom_height = height.max(30).min(80);
+    settings.overlay_custom_height = height.clamp(30, 80);
     settings::write_settings(&app, settings);
     Ok(())
 }
