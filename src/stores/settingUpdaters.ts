@@ -68,7 +68,8 @@ export const settingUpdaters: {
     commands.changeWhisperUseGpuSetting(value as boolean),
   word_correction_threshold: (value) =>
     commands.changeWordCorrectionThresholdSetting(value as number),
-  paste_delay_ms: (value) => commands.changePasteDelayMsSetting(value as number),
+  paste_delay_ms: (value) =>
+    commands.changePasteDelayMsSetting(value as number),
   paste_delay_after_ms: (value) =>
     commands.changePasteDelayAfterMsSetting(value as number),
   paste_method: (value) => commands.changePasteMethodSetting(value as string),

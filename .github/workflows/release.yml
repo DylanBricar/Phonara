@@ -186,6 +186,7 @@ jobs:
       target: ${{ matrix.target }}
       build-args: ${{ matrix.args }}
       sign-binaries: false
+      updater-artifacts: true
       apple_signing: ${{ matrix.apple_signing }}
       asset-prefix: "phonara"
       upload-artifacts: false

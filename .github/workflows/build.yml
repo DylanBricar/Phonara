@@ -32,6 +32,10 @@ on:
         required: false
         type: boolean
         default: false
+      updater-artifacts:
+        required: false
+        type: boolean
+        default: false
       apple_signing:
         required: false
         type: boolean
@@ -208,6 +212,11 @@ jobs:
           sudo apt install vulkan-sdk -y
           sudo apt-get install -y mesa-vulkan-drivers
 
+      - name: Configure transcribe-cpp CMake args (Linux)
+        if: contains(inputs.platform, 'ubuntu')
+        run: |
+          echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> "$GITHUB_ENV"
+
       - name: install frontend dependencies
         if: ${{ !(contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64')) }}
         run: bun install
@@ -244,8 +253,8 @@ jobs:
           echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
           echo "Certificate imported."
 
-      - name: Disable signing and updater artifacts when not signing
-        if: ${{ !inputs.sign-binaries }}
+      - name: Disable updater artifacts when updater signing is unavailable
+        if: ${{ !inputs.updater-artifacts }}
         shell: bash
         run: |
           cd src-tauri
@@ -336,7 +345,14 @@ jobs:
           #     *codegen* ("works on every other compiler"), and clang-cl is LLVM
           #     codegen — so disabling OpenMP is safe here and avoids shipping or
           #     statically linking libomp.
-          echo "TRANSCRIBE_CMAKE_ARGS=-DGGML_NATIVE=OFF -DGGML_OPENMP=OFF" >> $env:GITHUB_ENV
+          echo "TRANSCRIBE_CMAKE_ARGS=-DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
+
+      - name: Expose Vulkan CMake packages (Windows x64)
+        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        shell: pwsh
+        run: |
+          if (-not $env:VULKAN_SDK) { throw "VULKAN_SDK is not set" }
+          echo "CMAKE_PREFIX_PATH=$env:VULKAN_SDK" >> $env:GITHUB_ENV
 
       # Bundle the VC++ runtime app-local so Handy starts on machines without a
       # current Microsoft redistributable. build.rs stages DLLs from these dirs
@@ -504,8 +520,8 @@ jobs:
           AZURE_CLIENT_ID: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_SECRET || '' }}
           AZURE_TENANT_ID: ${{ inputs.sign-binaries && secrets.AZURE_TENANT_ID || '' }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ inputs.sign-binaries && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ (inputs.sign-binaries || inputs.updater-artifacts) && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ (inputs.sign-binaries || inputs.updater-artifacts) && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           tagName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}
           releaseName: ${{ inputs.release-id && format('v{0}', steps.get-version.outputs.version) || '' }}

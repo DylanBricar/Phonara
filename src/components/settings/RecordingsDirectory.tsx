@@ -21,9 +21,7 @@ export const RecordingsDirectory: React.FC<RecordingsDirectoryProps> =
     const [showRestart, setShowRestart] = useState(false);
 
     const customDir = getSetting("custom_recordings_directory") as
-      | string
-      | null
-      | undefined;
+      string | null | undefined;
 
     useEffect(() => {
       const loadPath = async () => {
