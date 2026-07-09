@@ -809,7 +809,7 @@
       },
       "whatsNewUpdates": {
         "label": "Afficher les nouveautés",
-        "description": "Afficher les notes de version après les mises à jour de Handy"
+        "description": "Afficher les notes de version après les mises à jour de Phonara"
       },
       "appDataDirectory": {
         "title": "Emplacement des données de l'application",
@@ -855,15 +855,15 @@
     "installing": "Installation...",
     "preparing": "Préparation...",
     "checkForUpdates": "Rechercher des mises à jour",
-    "portableUpdateTitle": "Manual update required",
-    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
-    "portableUpdateButton": "Open GitHub Releases",
-    "updateCheckFailed": "Failed to check for updates",
-    "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "portableUpdateTitle": "Mise à jour manuelle requise",
+    "portableUpdateMessage": "Les installations portables ne peuvent pas être mises à jour automatiquement. Pour mettre à jour : téléchargez le dernier installateur NSIS depuis GitHub Releases, installez-le dans le même dossier, puis copiez votre dossier Data/ (paramètres, modèles, enregistrements) de l'ancienne version vers la nouvelle.",
+    "portableUpdateButton": "Ouvrir GitHub Releases",
+    "updateCheckFailed": "Impossible de rechercher les mises à jour",
+    "restartFailed": "La mise à jour est installée, mais le redémarrage a échoué",
+    "updateInstallFailed": "Impossible d'installer la mise à jour"
   },
   "whatsNew": {
-    "title": "New in Handy v{{version}}"
+    "title": "New in Phonara v{{version}}"
   },
   "common": {
     "loading": "Chargement...",

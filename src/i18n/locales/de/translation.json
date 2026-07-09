@@ -809,7 +809,7 @@
       },
       "whatsNewUpdates": {
         "label": "Show What's New",
-        "description": "Show release notes after Handy updates"
+        "description": "Show release notes after Phonara updates"
       },
       "appDataDirectory": {
         "title": "App-Datenverzeichnis",
@@ -863,7 +863,7 @@
     "updateInstallFailed": "Failed to install update"
   },
   "whatsNew": {
-    "title": "New in Handy v{{version}}"
+    "title": "New in Phonara v{{version}}"
   },
   "common": {
     "loading": "Wird geladen...",
