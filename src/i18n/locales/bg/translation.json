@@ -569,6 +569,23 @@
           "placeholderWithOptions": "Търсене или избор на модел",
           "placeholderNoOptions": "Въведете име на модел",
           "refreshModels": "Опресняване на моделите"
+        },
+        "account": {
+          "openai": {
+            "title": "ChatGPT account",
+            "description": "OpenAI does not provide a public flow that lets Phonara sign in to a consumer ChatGPT account and receive an API token. Post-processing uses the official API, which requires an API key from the OpenAI Platform.",
+            "action": "Open API keys"
+          },
+          "anthropic": {
+            "title": "Claude account",
+            "description": "Claude consumer sign-in is not exposed as a general app API token. Use an Anthropic Console API key for post-processing.",
+            "action": "Open Console keys"
+          },
+          "gemini": {
+            "title": "Google account",
+            "description": "Gemini supports API keys, and Google Cloud supports OAuth/ADC for some developer flows. Phonara uses the OpenAI-compatible Gemini endpoint here, so configure a Gemini API key from AI Studio.",
+            "action": "Open AI Studio keys"
+          }
         }
       },
       "prompts": {

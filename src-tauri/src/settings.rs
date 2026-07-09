@@ -702,6 +702,15 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             requires_api_key: true,
         },
         PostProcessProvider {
+            id: "gemini".to_string(),
+            label: "Google Gemini".to_string(),
+            base_url: "https://generativelanguage.googleapis.com/v1beta/openai".to_string(),
+            allow_base_url_edit: false,
+            models_endpoint: Some("/models".to_string()),
+            supports_structured_output: false,
+            requires_api_key: true,
+        },
+        PostProcessProvider {
             id: "zai".to_string(),
             label: "Z.AI".to_string(),
             base_url: "https://api.z.ai/api/paas/v4".to_string(),

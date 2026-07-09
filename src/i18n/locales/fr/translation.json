@@ -569,6 +569,23 @@
           "placeholderWithOptions": "Rechercher ou sélectionner un modèle",
           "placeholderNoOptions": "Tapez un nom de modèle",
           "refreshModels": "Actualiser les modèles"
+        },
+        "account": {
+          "openai": {
+            "title": "Compte ChatGPT",
+            "description": "OpenAI ne fournit pas de flux public permettant à Phonara de connecter un compte ChatGPT grand public et de récupérer un token API. Le post-traitement utilise l'API officielle, qui nécessite une clé API OpenAI Platform.",
+            "action": "Ouvrir les clés API"
+          },
+          "anthropic": {
+            "title": "Compte Claude",
+            "description": "La connexion au compte Claude grand public n'est pas exposée comme token API général pour une app tierce. Utilisez une clé API Anthropic Console pour le post-traitement.",
+            "action": "Ouvrir les clés Console"
+          },
+          "gemini": {
+            "title": "Compte Google",
+            "description": "Gemini prend en charge les clés API, et Google Cloud prend en charge OAuth/ADC pour certains flux développeur. Ici Phonara utilise l'endpoint Gemini compatible OpenAI, donc il faut configurer une clé Gemini depuis AI Studio.",
+            "action": "Ouvrir les clés AI Studio"
+          }
         }
       },
       "prompts": {

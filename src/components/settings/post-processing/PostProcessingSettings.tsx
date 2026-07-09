@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCcw } from "lucide-react";
+import { ExternalLink, RefreshCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { commands } from "@/bindings";
 import { useSettings } from "@/hooks/useSettings";
 import {
@@ -68,6 +69,39 @@ export const PostProcessingSettings: React.FC = () => {
     () => availableModels.map((model) => ({ value: model, label: model })),
     [availableModels],
   );
+  const accountAuthInfo = useMemo(() => {
+    switch (selectedProviderId) {
+      case "openai":
+        return {
+          title: t("settings.postProcessing.api.account.openai.title"),
+          description: t(
+            "settings.postProcessing.api.account.openai.description",
+          ),
+          action: t("settings.postProcessing.api.account.openai.action"),
+          url: "https://platform.openai.com/api-keys",
+        };
+      case "anthropic":
+        return {
+          title: t("settings.postProcessing.api.account.anthropic.title"),
+          description: t(
+            "settings.postProcessing.api.account.anthropic.description",
+          ),
+          action: t("settings.postProcessing.api.account.anthropic.action"),
+          url: "https://console.anthropic.com/settings/keys",
+        };
+      case "gemini":
+        return {
+          title: t("settings.postProcessing.api.account.gemini.title"),
+          description: t(
+            "settings.postProcessing.api.account.gemini.description",
+          ),
+          action: t("settings.postProcessing.api.account.gemini.action"),
+          url: "https://aistudio.google.com/apikey",
+        };
+      default:
+        return null;
+    }
+  }, [selectedProviderId, t]);
 
   const activePrompt =
     prompts.find((prompt) => prompt.id === editingPromptId) ?? null;
@@ -279,6 +313,25 @@ export const PostProcessingSettings: React.FC = () => {
                   )}
                   variant="compact"
                 />
+              </SettingContainer>
+            )}
+
+            {accountAuthInfo && (
+              <SettingContainer
+                title={accountAuthInfo.title}
+                description={accountAuthInfo.description}
+                descriptionMode="inline"
+                grouped={true}
+              >
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openUrl(accountAuthInfo.url)}
+                  className="inline-flex items-center gap-2"
+                >
+                  <span>{accountAuthInfo.action}</span>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
               </SettingContainer>
             )}
 
