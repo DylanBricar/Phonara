@@ -16,5 +16,8 @@
         "visible": false
       }
     ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false
   }
 }
