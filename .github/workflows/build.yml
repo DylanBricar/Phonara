@@ -169,6 +169,27 @@ jobs:
           version: 1.4.341.1
           cache: true
 
+      - name: Checkout SPIR-V Headers (Windows x64)
+        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          repository: KhronosGroup/SPIRV-Headers
+          ref: 04f10f650d514df88b76d25e83db360142c7b174 # vulkan-sdk-1.4.341.0
+          path: _vulkan-deps/SPIRV-Headers
+          persist-credentials: false
+
+      - name: Install SPIR-V Headers CMake package (Windows x64)
+        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sourceDir = Join-Path $env:GITHUB_WORKSPACE "_vulkan-deps/SPIRV-Headers"
+          $buildDir = Join-Path $env:RUNNER_TEMP "spirv-headers-build"
+          cmake -S $sourceDir -B $buildDir -DSPIRV_HEADERS_ENABLE_TESTS=OFF -DSPIRV_HEADERS_ENABLE_INSTALL=ON "-DCMAKE_INSTALL_PREFIX=$env:VULKAN_SDK"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to configure SPIR-V Headers" }
+          cmake --install $buildDir --config Release
+          if ($LASTEXITCODE -ne 0) { throw "Failed to install SPIR-V Headers" }
+
       - name: Cache trusted-signing-cli
         if: contains(inputs.platform, 'windows') && inputs.sign-binaries
         id: cache-tsc
@@ -356,6 +377,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:VULKAN_SDK) { throw "VULKAN_SDK is not set" }
+          if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) { throw "glslc is missing from the Vulkan SDK" }
           $spirvHeadersConfig = Get-ChildItem -LiteralPath $env:VULKAN_SDK -Recurse -Filter "SPIRV-HeadersConfig.cmake" | Select-Object -First 1
           if (-not $spirvHeadersConfig) { throw "SPIRV-HeadersConfig.cmake is missing from the Vulkan SDK" }
           $spirvHeadersDir = $spirvHeadersConfig.DirectoryName.Replace('\', '/')
