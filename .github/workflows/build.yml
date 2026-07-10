@@ -166,7 +166,7 @@ jobs:
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
         uses: humbletim/install-vulkan-sdk@30ba978f977e81b72d091fc8888feb1fb26f9aff # v1.2
         with:
-          version: 1.4.309.0
+          version: 1.4.341.1
           cache: true
 
       - name: Cache trusted-signing-cli
@@ -356,8 +356,11 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:VULKAN_SDK) { throw "VULKAN_SDK is not set" }
+          $spirvHeadersConfig = Get-ChildItem -LiteralPath $env:VULKAN_SDK -Recurse -Filter "SPIRV-HeadersConfig.cmake" | Select-Object -First 1
+          if (-not $spirvHeadersConfig) { throw "SPIRV-HeadersConfig.cmake is missing from the Vulkan SDK" }
+          $spirvHeadersDir = $spirvHeadersConfig.DirectoryName.Replace('\', '/')
           echo "CMAKE_PREFIX_PATH=$env:VULKAN_SDK" >> $env:GITHUB_ENV
-          echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
+          echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_USE_SYSTEM_BLAS=OFF -DSPIRV-Headers_DIR=$spirvHeadersDir" >> $env:GITHUB_ENV
 
       # Bundle the VC++ runtime app-local so Handy starts on machines without a
       # current Microsoft redistributable. build.rs stages DLLs from these dirs
