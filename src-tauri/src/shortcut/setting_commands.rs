@@ -31,7 +31,12 @@ pub fn change_whisper_initial_prompt_setting(
 pub fn change_whisper_use_gpu_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let mut settings = settings::get_settings(&app);
     settings.whisper_use_gpu = enabled;
-    settings::write_settings(&app, settings);
+    settings.transcribe_accelerator = if enabled {
+        settings::TranscribeAcceleratorSetting::Gpu
+    } else {
+        settings::TranscribeAcceleratorSetting::Cpu
+    };
+    super::save_accelerator_and_reload_next_use(&app, settings);
     Ok(())
 }
 

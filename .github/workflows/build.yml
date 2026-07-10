@@ -164,7 +164,7 @@ jobs:
       # built there and no Vulkan SDK, headers, or glslc are needed.
       - name: Install Vulkan SDK (Windows x64)
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
-        uses: humbletim/install-vulkan-sdk@v1.2
+        uses: humbletim/install-vulkan-sdk@30ba978f977e81b72d091fc8888feb1fb26f9aff # v1.2
         with:
           version: 1.4.309.0
           cache: true
@@ -355,7 +355,7 @@ jobs:
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
         shell: pwsh
         run: |
-          echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_VULKAN=OFF -DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
+          echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
 
       # Bundle the VC++ runtime app-local so Handy starts on machines without a
       # current Microsoft redistributable. build.rs stages DLLs from these dirs
@@ -804,7 +804,7 @@ jobs:
           # ONNX Runtime is only required when this build configured dynamic ORT staging.
           $requiredStaged = @("msvcp140.dll", "vcruntime140.dll")
           if ("${{ inputs.target }}" -notlike "aarch64*") {
-            $requiredStaged += @("vcomp140.dll")
+            $requiredStaged += @("vcomp140.dll", "ggml-vulkan.dll")
             if (-not ($stagedDlls | Where-Object { $_.Name -like "*transcribe*" })) {
               throw "Staging is missing transcribe runtime DLLs"
             }

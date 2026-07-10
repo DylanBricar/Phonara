@@ -1077,19 +1077,39 @@ impl TranscriptionManager {
         {
             let settings_for_switch = get_settings(&self.app_handle);
             if let Some(ref long_model_id) = settings_for_switch.long_audio_model {
+                let current_model_id = self.get_current_model();
+                let long_model_available = self
+                    .model_manager
+                    .get_model_info(long_model_id)
+                    .is_some_and(|model| model.is_downloaded);
                 if duration_seconds > settings_for_switch.long_audio_threshold_seconds
-                    && self.get_current_model().as_deref() != Some(long_model_id.as_str())
+                    && current_model_id.as_deref() != Some(long_model_id.as_str())
                 {
-                    info!(
-                        "Audio duration {:.1}s exceeds threshold {:.1}s, switching to long audio model: {}",
-                        duration_seconds,
-                        settings_for_switch.long_audio_threshold_seconds,
-                        long_model_id
-                    );
-                    if let Err(e) = self.load_model(long_model_id) {
+                    if long_model_available {
+                        info!(
+                            "Audio duration {:.1}s exceeds threshold {:.1}s, switching to long audio model: {}",
+                            duration_seconds,
+                            settings_for_switch.long_audio_threshold_seconds,
+                            long_model_id
+                        );
+                        if let Err(load_error) = self.load_model(long_model_id) {
+                            warn!(
+                                "Failed to load long audio model '{}': {}. Restoring previous model.",
+                                long_model_id, load_error
+                            );
+                            if let Some(previous_model_id) = current_model_id.as_deref() {
+                                if let Err(restore_error) = self.load_model(previous_model_id) {
+                                    error!(
+                                        "Failed to restore previous model '{}' after long audio model error: {}",
+                                        previous_model_id, restore_error
+                                    );
+                                }
+                            }
+                        }
+                    } else {
                         warn!(
-                            "Failed to load long audio model '{}': {}. Falling back to current model.",
-                            long_model_id, e
+                            "Configured long audio model '{}' is not downloaded or is no longer available; using current model.",
+                            long_model_id
                         );
                     }
                 } else if duration_seconds <= settings_for_switch.long_audio_threshold_seconds

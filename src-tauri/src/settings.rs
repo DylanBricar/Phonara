@@ -561,7 +561,7 @@ fn default_model() -> String {
     "".to_string()
 }
 
-const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 1;
+const CURRENT_SETTINGS_SCHEMA_VERSION: u32 = 2;
 
 fn default_settings_schema_version() -> u32 {
     CURRENT_SETTINGS_SCHEMA_VERSION
@@ -1273,6 +1273,34 @@ fn apply_settings_migrations(
         updated = true;
     }
 
+    if stored_schema_version < 2 {
+        // Before the split transcribe.cpp accelerator setting, `whisper_use_gpu`
+        // was the user's persisted intent. Preserve that intent for upgraded
+        // stores that only have the default Auto accelerator; Auto can bind CPU
+        // on some machines, which makes transcription feel like a regression.
+        let legacy_gpu_enabled = settings_value
+            .get("whisper_use_gpu")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(default_whisper_use_gpu());
+        let stored_gpu_device = settings_value
+            .get("transcribe_gpu_device")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(default_transcribe_gpu_device() as i64);
+        if settings.transcribe_accelerator == TranscribeAcceleratorSetting::Auto
+            && settings.transcribe_gpu_device == default_transcribe_gpu_device()
+            && stored_gpu_device <= 0
+        {
+            settings.transcribe_accelerator = if legacy_gpu_enabled {
+                settings.transcribe_gpu_device = 0;
+                TranscribeAcceleratorSetting::Gpu
+            } else {
+                TranscribeAcceleratorSetting::Cpu
+            };
+        }
+        settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
+        updated = true;
+    }
+
     // One-time overlay migration (only while the new key is absent): the retired
     // overlay_position `none` meant "hide the overlay" → OverlayStyle::None; any
     // other position had it visible → Live. The position enum no longer has a
@@ -1348,7 +1376,7 @@ mod tests {
 
     /// Frozen snapshot of a real v0.9.0-era settings store, as written to
     /// disk. This pins backwards compatibility: it must always parse strictly
-    /// (no salvage) and require no migration rewrite.
+    /// (no salvage) and migrate in place without losing user choices.
     ///
     /// If a schema change breaks this test, do NOT just update the fixture —
     /// it stands in for the stores on users' machines. Add a
@@ -1356,7 +1384,7 @@ mod tests {
     /// `apply_settings_migrations` so old values keep loading, and only extend
     /// the fixture alongside that.
     #[test]
-    fn frozen_v0_9_store_parses_strictly_without_migration() {
+    fn frozen_v0_9_store_parses_strictly_and_migrates() {
         // Note "log_level": 2 — the legacy numeric format, kept deliberately.
         let stored: serde_json::Value = serde_json::from_str(
             r##"{
@@ -1460,8 +1488,19 @@ mod tests {
         assert_eq!(settings.log_level, LogLevel::Debug);
         assert_eq!(settings.sound_theme, SoundTheme::Pop);
 
-        // A current-format store must not be rewritten on every read.
-        assert!(!apply_settings_migrations(&mut settings, &stored));
+        assert!(apply_settings_migrations(&mut settings, &stored));
+        assert_eq!(
+            settings.settings_schema_version,
+            CURRENT_SETTINGS_SCHEMA_VERSION
+        );
+        assert_eq!(
+            settings.transcribe_accelerator,
+            TranscribeAcceleratorSetting::Gpu
+        );
+        assert_eq!(settings.transcribe_gpu_device, 0);
+
+        let migrated = serde_json::to_value(&settings).expect("migrated settings serialize");
+        assert!(!apply_settings_migrations(&mut settings, &migrated));
     }
 
     #[test]
@@ -1641,6 +1680,63 @@ mod tests {
         assert_eq!(
             settings.settings_schema_version,
             CURRENT_SETTINGS_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn legacy_whisper_gpu_setting_promotes_default_auto_transcribe_accelerator() {
+        let mut settings = get_default_settings();
+        settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
+        settings.transcribe_gpu_device = default_transcribe_gpu_device();
+        settings.whisper_use_gpu = true;
+
+        let raw = serde_json::json!({
+            "settings_schema_version": 1,
+            "onboarding_completed": false,
+            "whats_new_last_seen_version": default_whats_new_last_seen_version(),
+            "overlay_style": "live",
+            "whisper_use_gpu": true,
+            "transcribe_accelerator": "auto",
+            "transcribe_gpu_device": -1
+        });
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(
+            settings.transcribe_accelerator,
+            TranscribeAcceleratorSetting::Gpu
+        );
+        assert_eq!(settings.transcribe_gpu_device, 0);
+        assert_eq!(
+            settings.settings_schema_version,
+            CURRENT_SETTINGS_SCHEMA_VERSION
+        );
+    }
+
+    #[test]
+    fn legacy_disabled_whisper_gpu_promotes_cpu_transcribe_accelerator() {
+        let mut settings = get_default_settings();
+        settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
+        settings.transcribe_gpu_device = default_transcribe_gpu_device();
+        settings.whisper_use_gpu = false;
+
+        let raw = serde_json::json!({
+            "settings_schema_version": 1,
+            "onboarding_completed": false,
+            "whats_new_last_seen_version": default_whats_new_last_seen_version(),
+            "overlay_style": "live",
+            "whisper_use_gpu": false,
+            "transcribe_accelerator": "auto",
+            "transcribe_gpu_device": -1
+        });
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(
+            settings.transcribe_accelerator,
+            TranscribeAcceleratorSetting::Cpu
+        );
+        assert_eq!(
+            settings.transcribe_gpu_device,
+            default_transcribe_gpu_device()
         );
     }
 

@@ -8,6 +8,10 @@ import type {
   TranscribeAcceleratorSetting,
   OrtAcceleratorSetting,
 } from "@/bindings";
+import {
+  decodeTranscribeValue,
+  encodeTranscribeValue,
+} from "@/lib/utils/acceleration";
 
 const ORT_LABELS: Record<OrtAcceleratorSetting, string> = {
   auto: "Auto",
@@ -29,27 +33,6 @@ interface AccelerationSelectorProps {
  *   "gpu:0"  → accelerator=gpu,   gpu_device=0
  *   "gpu:1"  → accelerator=gpu,   gpu_device=1
  */
-function encodeTranscribeValue(
-  accelerator: TranscribeAcceleratorSetting,
-  gpuDevice: number,
-): string {
-  if (accelerator === "cpu") return "cpu";
-  if (accelerator === "gpu" && gpuDevice >= 0) return `gpu:${gpuDevice}`;
-  return "auto";
-}
-
-function decodeTranscribeValue(value: string): {
-  accelerator: TranscribeAcceleratorSetting;
-  gpuDevice: number;
-} {
-  if (value === "cpu") return { accelerator: "cpu", gpuDevice: -1 };
-  if (value.startsWith("gpu:")) {
-    const id = parseInt(value.slice(4), 10);
-    return { accelerator: "gpu", gpuDevice: id };
-  }
-  return { accelerator: "auto", gpuDevice: -1 };
-}
-
 export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
   descriptionMode = "tooltip",
   grouped = false,
@@ -70,9 +53,14 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
           value: "auto",
           label: t("settings.advanced.acceleration.gpuDevice.auto"),
         },
+        {
+          value: "gpu:0",
+          label: `GPU (${t("settings.advanced.acceleration.gpuDevice.auto")})`,
+        },
       ];
 
       for (const dev of available.gpu_devices) {
+        if (dev.id === 0) continue;
         const vramLabel =
           dev.total_vram_mb >= 1024
             ? `${(dev.total_vram_mb / 1024).toFixed(1)} GB`

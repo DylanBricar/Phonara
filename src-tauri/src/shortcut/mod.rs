@@ -1257,6 +1257,7 @@ pub fn change_transcribe_accelerator_setting(
 ) -> Result<(), String> {
     let mut s = settings::get_settings(&app);
     s.transcribe_accelerator = accelerator;
+    s.whisper_use_gpu = accelerator != settings::TranscribeAcceleratorSetting::Cpu;
     save_accelerator_and_reload_next_use(&app, s);
     Ok(())
 }

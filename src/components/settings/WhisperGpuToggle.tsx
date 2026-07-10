@@ -11,15 +11,24 @@ interface WhisperGpuToggleProps {
 export const WhisperGpuToggle: React.FC<WhisperGpuToggleProps> = React.memo(
   ({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
-    const { getSetting, updateSetting, isUpdating } = useSettings();
+    const { getSetting, updateSetting, isUpdating, refreshSettings } =
+      useSettings();
 
-    const whisperUseGpu = getSetting("whisper_use_gpu") ?? true;
+    const accelerator = getSetting("transcribe_accelerator") ?? "auto";
+    const handleChange = async (enabled: boolean) => {
+      await updateSetting("transcribe_accelerator", enabled ? "gpu" : "cpu");
+      await updateSetting("transcribe_gpu_device", enabled ? 0 : -1);
+      await refreshSettings();
+    };
 
     return (
       <ToggleSwitch
-        checked={whisperUseGpu}
-        onChange={(enabled) => updateSetting("whisper_use_gpu", enabled)}
-        isUpdating={isUpdating("whisper_use_gpu")}
+        checked={accelerator !== "cpu"}
+        onChange={handleChange}
+        isUpdating={
+          isUpdating("transcribe_accelerator") ||
+          isUpdating("transcribe_gpu_device")
+        }
         label={t("settings.modelSettings.gpuAcceleration.label")}
         description={t("settings.modelSettings.gpuAcceleration.description")}
         descriptionMode={descriptionMode}
