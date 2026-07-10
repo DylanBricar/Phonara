@@ -1,8 +1,8 @@
 name: "Main Branch Build"
 
-# Runs macOS builds on every push to main so breakage is caught before a
-# manual release is triggered. macOS is the only platform we support at 100%
-# right now; other targets are available via the build-test workflow.
+# Runs the primary desktop builds on every push to main so breakage is caught
+# before a manual release is triggered. Other targets remain available via the
+# build-test workflow.
 # Artifacts are kept for 30 days so any commit on main has a downloadable,
 # testable build.
 
@@ -30,6 +30,9 @@ jobs:
           - platform: "macos-latest"
             args: "--target x86_64-apple-darwin"
             target: "x86_64-apple-darwin"
+          - platform: "windows-latest"
+            args: ""
+            target: "x86_64-pc-windows-msvc"
 
     uses: ./.github/workflows/build.yml
     with:
