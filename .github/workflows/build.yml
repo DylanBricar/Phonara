@@ -355,6 +355,8 @@ jobs:
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
         shell: pwsh
         run: |
+          if (-not $env:VULKAN_SDK) { throw "VULKAN_SDK is not set" }
+          echo "CMAKE_PREFIX_PATH=$env:VULKAN_SDK" >> $env:GITHUB_ENV
           echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_USE_SYSTEM_BLAS=OFF" >> $env:GITHUB_ENV
 
       # Bundle the VC++ runtime app-local so Handy starts on machines without a
