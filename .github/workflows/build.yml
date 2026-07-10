@@ -166,7 +166,7 @@ jobs:
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
         uses: humbletim/install-vulkan-sdk@30ba978f977e81b72d091fc8888feb1fb26f9aff # v1.2
         with:
-          version: 1.4.341.1
+          version: 1.4.309.0
           cache: true
 
       - name: Checkout SPIR-V Headers (Windows x64)
@@ -174,7 +174,7 @@ jobs:
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           repository: KhronosGroup/SPIRV-Headers
-          ref: 04f10f650d514df88b76d25e83db360142c7b174 # vulkan-sdk-1.4.341.0
+          ref: 09913f088a1197aba4aefd300a876b2ebbaa3391 # vulkan-sdk-1.4.309.0
           path: _vulkan-deps/SPIRV-Headers
           persist-credentials: false
 
@@ -378,6 +378,8 @@ jobs:
         run: |
           if (-not $env:VULKAN_SDK) { throw "VULKAN_SDK is not set" }
           if (-not (Get-Command glslc -ErrorAction SilentlyContinue)) { throw "glslc is missing from the Vulkan SDK" }
+          if (-not (Test-Path -LiteralPath (Join-Path $env:VULKAN_SDK "Include/vulkan/vulkan.h"))) { throw "Vulkan headers are missing from the SDK" }
+          if (-not (Test-Path -LiteralPath (Join-Path $env:VULKAN_SDK "Lib/vulkan-1.lib"))) { throw "Vulkan import library is missing from the SDK" }
           $spirvHeadersConfig = Get-ChildItem -LiteralPath $env:VULKAN_SDK -Recurse -Filter "SPIRV-HeadersConfig.cmake" | Select-Object -First 1
           if (-not $spirvHeadersConfig) { throw "SPIRV-HeadersConfig.cmake is missing from the Vulkan SDK" }
           $spirvHeadersDir = $spirvHeadersConfig.DirectoryName.Replace('\', '/')
