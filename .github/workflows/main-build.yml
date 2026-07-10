@@ -19,7 +19,7 @@ concurrency:
 jobs:
   build:
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -42,4 +42,3 @@ jobs:
       upload-artifacts: true
       sign-binaries: false
       apple_signing: false
-    secrets: inherit
