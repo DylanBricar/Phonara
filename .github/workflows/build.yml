@@ -50,7 +50,7 @@ on:
       ref:
         required: false
         type: string
-        default: ${{ github.ref }}
+        default: ${{ github.sha }}
       is-debug-build:
         required: false
         type: boolean
@@ -59,14 +59,54 @@ on:
         required: false
         type: boolean
         default: false
+      build-environment:
+        required: false
+        type: string
+        default: "ci"
+    secrets:
+      APPLE_CERTIFICATE:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_ID_PASSWORD:
+        required: false
+      APPLE_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      AZURE_CLIENT_ID:
+        required: false
+      AZURE_CLIENT_SECRET:
+        required: false
+      AZURE_TENANT_ID:
+        required: false
+      KEYCHAIN_PASSWORD:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   TSC_VERSION: "0.9.0"
+  VULKAN_SDK_VERSION: "1.4.309.0"
+  VULKAN_SDK_WINDOWS_SHA256: "48b132169b64fe65cdb0f20970195335a65354e73f1ea5373032c2a8bbad4297"
+  ORT_VERSION: "1.24.2"
+  ORT_MACOS_X64_SHA256: "590cee05699047b85e4a8115b4cec792073c2972ce78de383356a552a296a9c4"
+  ORT_LINUX_X64_SHA256: "7e8062d5cda514fe3e31d805f9aabd50bed42d331994f66753d2dd697294b976"
+  APPIMAGETOOL_X86_64_SHA256: "b90f4a8b18967545fda78a445b27680a1642f1ef9488ced28b65398f2be7add2"
+  APPIMAGETOOL_AARCH64_SHA256: "a48972e5ae91c944c5a7c80214e7e0a42dd6aa3ae979d8756203512a74ff574d"
+  RUSTUP_VERSION: "1.29.0"
+  RUSTUP_MACOS_X86_64_SHA256: "33cf85df9142bc6d29cbc62fa5ca1d4c29622cddb55213a4c1a43c457fb9b2d7"
+  RUSTUP_MACOS_AARCH64_SHA256: "aeb4105778ca1bd3c6b0e75768f581c656633cd51368fa61289b6a71696ac7e1"
 
 jobs:
   build:
     runs-on: ${{ inputs.platform }}
+    environment: ${{ inputs.build-environment }}
     steps:
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
@@ -77,11 +117,12 @@ jobs:
           git config --system core.longpaths true
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Get version from tauri.conf.json
         id: get-version
@@ -94,8 +135,10 @@ jobs:
       - name: Determine build profile
         id: build-profile
         shell: bash
+        env:
+          IS_DEBUG_BUILD: ${{ inputs.is-debug-build }}
         run: |
-          if [[ "${{ inputs.is-debug-build }}" == "true" ]]; then
+          if [[ "$IS_DEBUG_BUILD" == "true" ]]; then
             echo "profile=debug" >> "$GITHUB_OUTPUT"
             echo "Build profile: debug"
           else
@@ -104,10 +147,10 @@ jobs:
           fi
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
           # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ contains(inputs.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -115,9 +158,9 @@ jobs:
       - name: Rust cache
         # Release builds skip the cache (no-cache: true) so the artifact is
         # always compiled clean — no risk of a stale cached native lib being
-        # linked. PR/test builds keep caching for speed.
+        # linked. Trusted main builds keep caching for speed.
         if: ${{ !inputs.no-cache }}
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           workspaces: "./src-tauri -> target"
           key: ${{ inputs.platform }}-${{ inputs.target }}
@@ -160,12 +203,52 @@ jobs:
       # x86_64 only — Windows-on-ARM links transcribe-cpp statically CPU-only
       # (no `vulkan` feature; see src-tauri/Cargo.toml), so ggml-vulkan is never
       # built there and no Vulkan SDK, headers, or glslc are needed.
-      - name: Install Vulkan SDK (Windows x64)
-        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
-        uses: humbletim/install-vulkan-sdk@30ba978f977e81b72d091fc8888feb1fb26f9aff # v1.2
+      - name: Cache Vulkan SDK installer (Windows x64)
+        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64') && !inputs.no-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          version: 1.4.309.0
-          cache: true
+          path: ${{ runner.temp }}/VulkanSDK-${{ env.VULKAN_SDK_VERSION }}-Installer.exe
+          key: vulkan-sdk-windows-x64-${{ env.VULKAN_SDK_VERSION }}-${{ env.VULKAN_SDK_WINDOWS_SHA256 }}
+
+      - name: Install verified Vulkan SDK (Windows x64)
+        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installerName = "VulkanSDK-$env:VULKAN_SDK_VERSION-Installer.exe"
+          $installer = Join-Path $env:RUNNER_TEMP $installerName
+          $download = "$installer.download"
+          $url = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_SDK_VERSION/windows/$installerName"
+
+          if (Test-Path -LiteralPath $installer) {
+            $cachedHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($cachedHash -ne $env:VULKAN_SDK_WINDOWS_SHA256) {
+              Write-Warning "Discarding Vulkan SDK installer with an invalid cached hash"
+              Remove-Item -LiteralPath $installer -Force
+            }
+          }
+
+          if (-not (Test-Path -LiteralPath $installer)) {
+            Remove-Item -LiteralPath $download -Force -ErrorAction SilentlyContinue
+            & curl.exe --fail --location --retry 3 --output $download $url
+            if ($LASTEXITCODE -ne 0) { throw "Failed to download Vulkan SDK from LunarG" }
+            Move-Item -LiteralPath $download -Destination $installer -Force
+          }
+
+          $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:VULKAN_SDK_WINDOWS_SHA256) {
+            Remove-Item -LiteralPath $installer -Force
+            throw "Vulkan SDK SHA-256 mismatch: expected $env:VULKAN_SDK_WINDOWS_SHA256, got $actualHash"
+          }
+
+          $sdkDir = Join-Path $env:GITHUB_WORKSPACE "VULKAN_SDK"
+          New-Item -ItemType Directory -Force -Path $sdkDir | Out-Null
+          & 7z x $installer -aoa "-o$sdkDir"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to extract the verified Vulkan SDK" }
+
+          "VULKAN_SDK=$sdkDir" >> $env:GITHUB_ENV
+          "VK_SDK_PATH=$sdkDir" >> $env:GITHUB_ENV
+          (Join-Path $sdkDir "Bin") >> $env:GITHUB_PATH
 
       - name: Checkout SPIR-V Headers (Windows x64)
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
@@ -191,14 +274,15 @@ jobs:
       - name: Cache trusted-signing-cli
         if: contains(inputs.platform, 'windows') && inputs.sign-binaries
         id: cache-tsc
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.cargo/bin/trusted-signing-cli*
           key: trusted-signing-cli-${{ env.TSC_VERSION }}-${{ runner.os }}-${{ runner.arch }}
 
       - name: Install trusted-signing-cli
         if: contains(inputs.platform, 'windows') && inputs.sign-binaries && steps.cache-tsc.outputs.cache-hit != 'true'
-        run: cargo install trusted-signing-cli@${{ env.TSC_VERSION }}
+        shell: bash
+        run: cargo install "trusted-signing-cli@$TSC_VERSION"
 
       - name: Prepare Vulkan SDK for Ubuntu 24.04
         if: contains(inputs.platform, 'ubuntu-24.04') && !contains(inputs.platform, 'arm')
@@ -211,10 +295,10 @@ jobs:
 
       - name: Prepare Vulkan SDK for Ubuntu ARM64
         if: contains(inputs.platform, 'ubuntu') && contains(inputs.platform, 'arm')
-        uses: jakoch/install-vulkan-sdk-action@v1
+        uses: jakoch/install-vulkan-sdk-action@37effcfa045411f8bfbbda26df2fd1b3bf3436fa # v1
         with:
           vulkan_version: 1.4.335.0
-          cache: true
+          cache: ${{ !inputs.no-cache }}
 
       - name: Install Vulkan runtime libraries (Ubuntu ARM64)
         if: contains(inputs.platform, 'ubuntu') && contains(inputs.platform, 'arm')
@@ -238,15 +322,18 @@ jobs:
 
       - name: install frontend dependencies
         if: ${{ !(contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64')) }}
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: install frontend dependencies (Windows ARM64)
         if: ${{ contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64') }}
-        run: bun install --cpu=arm64
+        run: bun install --frozen-lockfile --cpu=arm64
 
       - name: rustup install target
         if: ${{ inputs.target != '' && !contains(inputs.target, 'x86_64-unknown-linux-gnu') && !contains(inputs.target, 'aarch64-unknown-linux-gnu') && !contains(inputs.target, 'x86_64-pc-windows-msvc') }}
-        run: rustup target add ${{ inputs.target }}
+        shell: bash
+        env:
+          BUILD_TARGET: ${{ inputs.target }}
+        run: rustup target add "$BUILD_TARGET"
 
       - name: import Apple Developer Certificate
         if: contains(inputs.platform, 'macos') && inputs.apple_signing
@@ -255,7 +342,7 @@ jobs:
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
@@ -269,15 +356,16 @@ jobs:
         run: |
           CERT_INFO=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application")
           CERT_ID=$(echo "$CERT_INFO" | awk -F'"' '{print $2}')
-          echo "CERT_ID=$CERT_ID" >> $GITHUB_ENV
+          echo "CERT_ID=$CERT_ID" >> "$GITHUB_ENV"
           echo "Certificate imported."
 
       - name: Disable updater artifacts when updater signing is unavailable
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          UPDATER_ARTIFACTS: ${{ inputs.updater-artifacts }}
         run: |
-          if [[ "${{ inputs.updater-artifacts }}" == "true" && -n "${TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK:-}" ]]; then
+          if [[ "$UPDATER_ARTIFACTS" == "true" && -n "${TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK:-}" ]]; then
             exit 0
           fi
           cd src-tauri
@@ -291,20 +379,29 @@ jobs:
         id: patch-release-name
         shell: bash
         if: ${{ inputs.release-id != '' && inputs.asset-name-pattern != '' }}
+        env:
+          ASSET_NAME_PATTERN: ${{ inputs.asset-name-pattern }}
+          ASSET_PREFIX: ${{ inputs.asset-prefix }}
+          BUILD_PLATFORM: ${{ inputs.platform }}
         run: |
-          platform="${{ inputs.platform }}"
-          replacement="$(echo ${platform} | sed -E 's/-latest//')"
-          patched_platform=$(echo '${{ inputs.asset-name-pattern }}' | sed -E "s/\[platform\]/${replacement}/")
-          if [[ -n "${{ inputs.asset-prefix }}" ]]; then
-            patched_platform="${{ inputs.asset-prefix }}_${patched_platform}"
+          replacement="$(printf '%s\n' "$BUILD_PLATFORM" | sed -E 's/-latest//')"
+          patched_platform="$(printf '%s\n' "$ASSET_NAME_PATTERN" | sed -E "s/\[platform\]/${replacement}/")"
+          if [[ -n "$ASSET_PREFIX" ]]; then
+            patched_platform="${ASSET_PREFIX}_${patched_platform}"
           fi
-          echo "platform=${patched_platform}" >> $GITHUB_OUTPUT
+          echo "platform=${patched_platform}" >> "$GITHUB_OUTPUT"
 
       - name: Patch version in project files
         if: ${{ inputs.version != '' }}
         shell: bash
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
+          VERSION="$RELEASE_VERSION"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION" >&2
+            exit 1
+          fi
           echo "Patching version to $VERSION"
           # Use jq for JSON files (cross-platform, no sed -i issues on macOS)
           jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
@@ -384,13 +481,15 @@ jobs:
           echo "CMAKE_PREFIX_PATH=$env:VULKAN_SDK" >> $env:GITHUB_ENV
           echo "TRANSCRIBE_CMAKE_ARGS=-DTRANSCRIBE_USE_SYSTEM_BLAS=OFF -DSPIRV-Headers_DIR=$spirvHeadersDir" >> $env:GITHUB_ENV
 
-      # Bundle the VC++ runtime app-local so Handy starts on machines without a
+      # Bundle the VC++ runtime app-local so Phonara starts on machines without a
       # current Microsoft redistributable. build.rs stages DLLs from these dirs
       # into transcribe-libs/, using the same VS install that compiled the code.
       # x64 also needs vcomp140.dll for ggml OpenMP; ARM64 disables OpenMP.
       - name: Locate VC++ runtime redist for app-local bundling (Windows)
         if: contains(inputs.platform, 'windows')
         shell: pwsh
+        env:
+          BUILD_TARGET: ${{ inputs.target }}
         run: |
           $ErrorActionPreference = 'Stop'
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -398,7 +497,7 @@ jobs:
           if (-not $vsRoot) { throw "vswhere found no Visual Studio installation" }
           $versionFile = Join-Path $vsRoot "VC\Auxiliary\Build\Microsoft.VCRedistVersion.default.txt"
           $redistVersion = (Get-Content $versionFile).Trim()
-          $arch = if ("${{ inputs.target }}" -like "aarch64*") { "arm64" } else { "x64" }
+          $arch = if ($env:BUILD_TARGET -like "aarch64*") { "arm64" } else { "x64" }
           $archDir = Join-Path $vsRoot "VC\Redist\MSVC\$redistVersion\$arch"
           if (-not (Test-Path $archDir)) { throw "VC++ redist arch dir not found: $archDir" }
           # Glob the VC generation folder; the runtime DLL names stay ABI-stable.
@@ -447,12 +546,12 @@ jobs:
         if: inputs.target == 'x86_64-apple-darwin'
         shell: bash
         run: |
-          ORT_VERSION="1.24.2"
-          curl -L -o ort.tgz "https://blob.handy.computer/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
+          curl --fail --location --retry 3 -o ort.tgz "https://blob.handy.computer/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
+          printf '%s  %s\n' "$ORT_MACOS_X64_SHA256" ort.tgz | shasum -a 256 --check
           tar xzf ort.tgz
           ORT_DIR="$(pwd)/onnxruntime-osx-x86_64-${ORT_VERSION}"
-          echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> $GITHUB_ENV
-          echo "ORT_PREFER_DYNAMIC_LINK=1" >> $GITHUB_ENV
+          echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> "$GITHUB_ENV"
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
           # Bundle the versioned dylib (matches the install name @rpath/libonnxruntime.1.24.2.dylib)
           jq --arg lib "$ORT_DIR/lib/libonnxruntime.${ORT_VERSION}.dylib" \
             '.bundle.macOS.frameworks = [$lib]' \
@@ -462,12 +561,12 @@ jobs:
         if: contains(inputs.platform, 'ubuntu-22.04') && inputs.target == 'x86_64-unknown-linux-gnu'
         shell: bash
         run: |
-          ORT_VERSION="1.24.2"
-          curl -L -o ort.tgz "https://blob.handy.computer/onnxruntime-linux-x86_64-${ORT_VERSION}.tgz"
+          curl --fail --location --retry 3 -o ort.tgz "https://blob.handy.computer/onnxruntime-linux-x86_64-${ORT_VERSION}.tgz"
+          printf '%s  %s\n' "$ORT_LINUX_X64_SHA256" ort.tgz | shasum -a 256 --check
           tar xzf ort.tgz
           ORT_DIR="$(pwd)/onnxruntime-linux-x86_64-${ORT_VERSION}"
-          echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> $GITHUB_ENV
-          echo "ORT_PREFER_DYNAMIC_LINK=1" >> $GITHUB_ENV
+          echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> "$GITHUB_ENV"
+          echo "ORT_PREFER_DYNAMIC_LINK=1" >> "$GITHUB_ENV"
           # Resolve symlinks so the deb bundler gets real files (not broken symlinks)
           for f in "$ORT_DIR"/lib/libonnxruntime.so*; do
             if [ -L "$f" ]; then
@@ -485,6 +584,8 @@ jobs:
       - name: Ensure cargo is the real cargo (macOS only)
         if: contains(inputs.platform, 'macos')
         shell: bash
+        env:
+          BUILD_TARGET: ${{ inputs.target }}
         run: |
           # macos-latest ships a rustup-init shim that hijacks both `cargo`
           # AND `rustup`, so `cargo metadata` and `rustup default` both fail
@@ -499,15 +600,35 @@ jobs:
           (command -v cargo && file "$(command -v cargo)") || echo "no cargo on PATH"
           (command -v rustup && file "$(command -v rustup)") || echo "no rustup on PATH"
 
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-            | sh -s -- -y --default-toolchain stable --profile minimal --no-modify-path
+          case "$(uname -m)" in
+            arm64|aarch64)
+              RUSTUP_HOST="aarch64-apple-darwin"
+              RUSTUP_SHA256="$RUSTUP_MACOS_AARCH64_SHA256"
+              ;;
+            x86_64)
+              RUSTUP_HOST="x86_64-apple-darwin"
+              RUSTUP_SHA256="$RUSTUP_MACOS_X86_64_SHA256"
+              ;;
+            *)
+              echo "Unsupported macOS architecture: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          RUSTUP_INIT="$RUNNER_TEMP/rustup-init"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            -o "$RUSTUP_INIT" \
+            "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${RUSTUP_HOST}/rustup-init"
+          printf '%s  %s\n' "$RUSTUP_SHA256" "$RUSTUP_INIT" | shasum -a 256 --check
+          chmod +x "$RUSTUP_INIT"
+          "$RUSTUP_INIT" -y --default-toolchain stable --profile minimal --no-modify-path
+          rm -f "$RUSTUP_INIT"
 
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
 
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
-          if [[ -n "${{ inputs.target }}" ]]; then
-            rustup target add "${{ inputs.target }}" || true
+          if [[ -n "$BUILD_TARGET" ]]; then
+            rustup target add "$BUILD_TARGET" || true
           fi
 
           echo "--- after fix ---"
@@ -518,7 +639,7 @@ jobs:
 
       - name: Build with Tauri (signed)
         if: ${{ inputs.sign-binaries && inputs.apple_signing }}
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -544,7 +665,7 @@ jobs:
 
       - name: Build with Tauri (unsigned)
         if: ${{ !inputs.sign-binaries || !inputs.apple_signing }}
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_CLIENT_ID: ${{ inputs.sign-binaries && secrets.AZURE_CLIENT_ID || '' }}
@@ -563,16 +684,16 @@ jobs:
         if: inputs.target == 'x86_64-apple-darwin'
         shell: bash
         run: |
-          APP=$(find src-tauri/target -name "*.app" -type d | head -1)
-          BIN=$(find "$APP/Contents/MacOS" -maxdepth 1 -type f -perm +111 | head -1)
+          APP=$(find src-tauri/target -name "*.app" -type d -print -quit)
+          BIN=$(find "$APP/Contents/MacOS" -maxdepth 1 -type f -perm +111 -print -quit)
           echo "Inspecting binary: $BIN"
           echo "=== Frameworks contents ==="
-          ls -la "$APP/Contents/Frameworks/" | grep onnx || true
+          find "$APP/Contents/Frameworks" -maxdepth 1 -iname '*onnx*' -print
           echo "=== Binary linked libs ==="
           otool -L "$BIN" | grep onnx || true
           echo "=== Checking all @rpath deps are satisfied ==="
           # Extract every @rpath lib the binary needs
-          otool -L "$BIN" | grep '@rpath/' | awk '{print $1}' | while read dep; do
+          otool -L "$BIN" | grep '@rpath/' | awk '{print $1}' | while read -r dep; do
             libname=$(basename "$dep")
             if [ ! -f "$APP/Contents/Frameworks/$libname" ]; then
               echo "MISSING: $libname not found in Frameworks/"
@@ -584,7 +705,7 @@ jobs:
 
       - name: Upload artifacts (macOS)
         if: inputs.upload-artifacts && contains(inputs.platform, 'macos')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |
@@ -600,9 +721,11 @@ jobs:
 
       - name: Remove libwayland-client.so from AppImage
         if: contains(inputs.platform, 'ubuntu')
+        env:
+          BUILD_PROFILE: ${{ steps.build-profile.outputs.profile }}
         run: |
           # Find the AppImage file
-          APPIMAGE_PATH=$(find src-tauri/target/${{ steps.build-profile.outputs.profile }}/bundle/appimage -name "*.AppImage" | head -1)
+          APPIMAGE_PATH=$(find "src-tauri/target/${BUILD_PROFILE}/bundle/appimage" -name "*.AppImage" -print -quit)
 
           if [ -n "$APPIMAGE_PATH" ]; then
             echo "Processing AppImage: $APPIMAGE_PATH"
@@ -621,12 +744,10 @@ jobs:
             echo "Removing libwayland-client.so files..."
             find squashfs-root -name "libwayland-client.so*" -type f -delete
 
-            # List what was removed for verification
-            echo "Files remaining in lib directories:"
-            find squashfs-root -name "lib*" -type d | head -5 | while read dir; do
-              echo "Contents of $dir:"
-              ls "$dir" | grep -E "(wayland|fuse)" || echo "  No wayland/fuse libraries found"
-            done || true
+            if find squashfs-root -name "libwayland-client.so*" -type f -print -quit | grep -q .; then
+              echo "Failed to remove bundled libwayland-client.so" >&2
+              exit 1
+            fi
 
             # Co-locate transcribe-cpp's dynamic backends in the AppImage.
             # linuxdeploy bundles the NEEDED libtranscribe.so (resolved at build
@@ -644,11 +765,16 @@ jobs:
             # Detect architecture and get appropriate appimagetool
             if [[ "$(uname -m)" == "aarch64" ]]; then
               APPIMAGETOOL_ARCH="aarch64"
+              APPIMAGETOOL_SHA256="$APPIMAGETOOL_AARCH64_SHA256"
             else
               APPIMAGETOOL_ARCH="x86_64"
+              APPIMAGETOOL_SHA256="$APPIMAGETOOL_X86_64_SHA256"
             fi
 
-            wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
+            APPIMAGETOOL="appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
+            curl --fail --location --retry 3 -o "$APPIMAGETOOL" \
+              "https://github.com/AppImage/AppImageKit/releases/download/continuous/$APPIMAGETOOL"
+            printf '%s  %s\n' "$APPIMAGETOOL_SHA256" "$APPIMAGETOOL" | sha256sum --check
             chmod +x "appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
 
             # Repackage AppImage with no-appstream to avoid warnings
@@ -665,6 +791,10 @@ jobs:
       - name: Audit Linux package runtime contents
         if: contains(inputs.platform, 'ubuntu')
         shell: bash
+        env:
+          BUILD_PROFILE: ${{ steps.build-profile.outputs.profile }}
+          BUILD_PLATFORM: ${{ inputs.platform }}
+          BUILD_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
 
@@ -683,7 +813,7 @@ jobs:
             sudo apt-get install -y xvfb
           fi
 
-          PROFILE="${{ steps.build-profile.outputs.profile }}"
+          PROFILE="$BUILD_PROFILE"
           BUNDLE_DIR="src-tauri/target/${PROFILE}/bundle"
 
           require_pattern() {
@@ -742,7 +872,7 @@ jobs:
               if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
                 require_dynamic_transcribe_listing "$listing"
               fi
-              if [[ "${{ inputs.platform }}" == *"ubuntu-22.04"* && "${{ inputs.target }}" == "x86_64-unknown-linux-gnu" ]]; then
+              if [[ "$BUILD_PLATFORM" == *"ubuntu-22.04"* && "$BUILD_TARGET" == "x86_64-unknown-linux-gnu" ]]; then
                 require_pattern "$listing" 'usr/lib/libonnxruntime\.so' "ONNX Runtime library"
               fi
               root="$(mktemp -d)"
@@ -790,7 +920,7 @@ jobs:
 
       - name: Upload artifacts (Linux)
         if: inputs.upload-artifacts && contains(inputs.platform, 'ubuntu')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.platform }}-${{ inputs.target }}
           path: |
@@ -811,10 +941,14 @@ jobs:
       - name: Audit Windows package runtime contents
         if: contains(inputs.platform, 'windows')
         shell: pwsh
+        env:
+          BUILD_PROFILE: ${{ steps.build-profile.outputs.profile }}
+          BUILD_TARGET: ${{ inputs.target }}
+          WINDOWS_BUNDLE_BASE: ${{ steps.win-bundle-path.outputs.base }}
         run: |
-          $profile = "${{ steps.build-profile.outputs.profile }}"
-          $target = "${{ inputs.target }}"
-          $base = "${{ steps.win-bundle-path.outputs.base }}"
+          $profile = $env:BUILD_PROFILE
+          $target = $env:BUILD_TARGET
+          $base = $env:WINDOWS_BUNDLE_BASE
           if ($target -and $target -ne "x86_64-pc-windows-msvc") {
             $bundleBase = Join-Path $base (Join-Path $target (Join-Path $profile "bundle"))
           } else {
@@ -830,7 +964,7 @@ jobs:
           # x64 ships dynamic transcribe/ggml DLLs; ARM64 is otherwise static.
           # ONNX Runtime is only required when this build configured dynamic ORT staging.
           $requiredStaged = @("msvcp140.dll", "vcruntime140.dll")
-          if ("${{ inputs.target }}" -notlike "aarch64*") {
+          if ($target -notlike "aarch64*") {
             $requiredStaged += @("vcomp140.dll", "ggml-vulkan.dll")
             if (-not ($stagedDlls | Where-Object { $_.Name -like "*transcribe*" })) {
               throw "Staging is missing transcribe runtime DLLs"
@@ -909,7 +1043,7 @@ jobs:
 
       - name: Upload artifacts (Windows)
         if: inputs.upload-artifacts && contains(inputs.platform, 'windows')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |

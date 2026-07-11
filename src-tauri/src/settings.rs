@@ -1,15 +1,19 @@
 use log::{debug, warn};
+use once_cell::sync::Lazy;
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use specta::Type;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::{Mutex, MutexGuard};
 use tauri::AppHandle;
 use tauri_plugin_store::StoreExt;
 
 pub const APPLE_INTELLIGENCE_PROVIDER_ID: &str = "apple_intelligence";
 pub const APPLE_INTELLIGENCE_DEFAULT_MODEL_ID: &str = "Apple Intelligence";
 pub const CUSTOM_LLM_BASE_URL_ENV: &str = "PHONARA_CUSTOM_LLM_BASE_URL";
+
+static SETTINGS_MUTATION_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "lowercase")]
@@ -1139,6 +1143,18 @@ pub fn load_or_create_app_settings(app: &AppHandle) -> AppSettings {
 }
 
 pub fn get_settings(app: &AppHandle) -> AppSettings {
+    let _guard = lock_settings_mutation();
+    get_settings_unlocked(app)
+}
+
+fn lock_settings_mutation() -> MutexGuard<'static, ()> {
+    SETTINGS_MUTATION_LOCK.lock().unwrap_or_else(|poisoned| {
+        warn!("Settings mutation lock was poisoned, recovering");
+        poisoned.into_inner()
+    })
+}
+
+fn get_settings_unlocked(app: &AppHandle) -> AppSettings {
     let store = app
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
@@ -1156,20 +1172,7 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
                 }
             };
 
-        if apply_settings_migrations(&mut settings, &settings_value) {
-            updated = true;
-        }
-
-        // Merge in any bindings added since this store was written.
-        for (key, value) in get_default_settings().bindings {
-            if let std::collections::hash_map::Entry::Vacant(entry) = settings.bindings.entry(key) {
-                debug!("Adding missing binding: {}", entry.key());
-                entry.insert(value);
-                updated = true;
-            }
-        }
-
-        if ensure_post_process_defaults(&mut settings) {
+        if normalize_settings(&mut settings, &settings_value) {
             updated = true;
         }
 
@@ -1191,6 +1194,32 @@ pub fn get_settings(app: &AppHandle) -> AppSettings {
     };
 
     settings
+}
+
+fn normalize_settings(settings: &mut AppSettings, raw: &serde_json::Value) -> bool {
+    let mut updated = apply_settings_migrations(settings, raw);
+
+    // Merge in any bindings added since this document was written.
+    for (key, value) in get_default_settings().bindings {
+        if let std::collections::hash_map::Entry::Vacant(entry) = settings.bindings.entry(key) {
+            debug!("Adding missing binding: {}", entry.key());
+            entry.insert(value);
+            updated = true;
+        }
+    }
+
+    updated |= ensure_post_process_defaults(settings);
+    updated
+}
+
+/// Deserialize an imported settings document while preserving the raw legacy
+/// keys needed by one-time migrations.
+pub fn deserialize_settings_for_import(
+    raw: &serde_json::Value,
+) -> Result<AppSettings, serde_json::Error> {
+    let mut settings = serde_json::from_value::<AppSettings>(raw.clone())?;
+    normalize_settings(&mut settings, raw);
+    Ok(settings)
 }
 
 /// Rebuilds settings from a store value that failed to deserialize as a whole.
@@ -1260,14 +1289,65 @@ fn apply_settings_migrations(
         .get("settings_schema_version")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
+
+    // Phonara v0.9.x persisted these fields under their original Whisper
+    // names. They are unknown to the current struct and would otherwise fall
+    // back to Auto/-1 before the `whisper_use_gpu` migration below forces GPU.
+    // Prefer the current keys when both are present (for downgrade/upgrade
+    // cycles), and normalize ambiguous positive legacy GPU ordinals in the
+    // schema-0 migration immediately afterwards.
+    let has_current_transcribe_accelerator = settings_value.get("transcribe_accelerator").is_some();
+    let legacy_whisper_accelerator = settings_value
+        .get("whisper_accelerator")
+        .and_then(|v| v.as_str());
+    let has_legacy_whisper_accelerator =
+        !has_current_transcribe_accelerator && legacy_whisper_accelerator.is_some();
+    if has_legacy_whisper_accelerator {
+        let legacy_gpu_device = settings_value
+            .get("whisper_gpu_device")
+            .and_then(|v| v.as_i64())
+            .and_then(|v| i32::try_from(v).ok())
+            .unwrap_or(default_transcribe_gpu_device());
+
+        match legacy_whisper_accelerator {
+            Some("auto") => {
+                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
+                settings.transcribe_gpu_device = default_transcribe_gpu_device();
+                updated = true;
+            }
+            Some("cpu") => {
+                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Cpu;
+                settings.transcribe_gpu_device = default_transcribe_gpu_device();
+                updated = true;
+            }
+            Some("gpu") if legacy_gpu_device >= 0 => {
+                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Gpu;
+                settings.transcribe_gpu_device = legacy_gpu_device;
+                updated = true;
+            }
+            Some("gpu") => {
+                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
+                settings.transcribe_gpu_device = default_transcribe_gpu_device();
+                updated = true;
+            }
+            _ => {}
+        }
+    }
+
     if stored_schema_version < 1 {
         // `transcribe_gpu_device` used to be a UI ordinal; it is now a
         // transcribe.cpp registry index. A positive legacy value can point at a
         // different GPU after CPU/accelerator/backend devices are included in
-        // the registry, so reset ambiguous explicit selections to Auto once.
+        // the registry. Preserve an explicit GPU preference while normalizing
+        // its ambiguous ordinal to the first GPU; other inconsistent pairs
+        // fall back to Auto.
         if settings.transcribe_gpu_device > 0 {
-            settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
-            settings.transcribe_gpu_device = default_transcribe_gpu_device();
+            if settings.transcribe_accelerator == TranscribeAcceleratorSetting::Gpu {
+                settings.transcribe_gpu_device = 0;
+            } else {
+                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
+                settings.transcribe_gpu_device = default_transcribe_gpu_device();
+            }
         }
         settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
         updated = true;
@@ -1286,7 +1366,8 @@ fn apply_settings_migrations(
             .get("transcribe_gpu_device")
             .and_then(|v| v.as_i64())
             .unwrap_or(default_transcribe_gpu_device() as i64);
-        if settings.transcribe_accelerator == TranscribeAcceleratorSetting::Auto
+        if !has_legacy_whisper_accelerator
+            && settings.transcribe_accelerator == TranscribeAcceleratorSetting::Auto
             && settings.transcribe_gpu_device == default_transcribe_gpu_device()
             && stored_gpu_device <= 0
         {
@@ -1322,7 +1403,14 @@ fn apply_settings_migrations(
     updated
 }
 
-pub fn write_settings(app: &AppHandle, settings: AppSettings) {
+/// Replace the complete settings document. Regular field mutations must use
+/// [`update_settings`] or [`try_update_settings`] to avoid stale-snapshot loss.
+pub fn replace_settings(app: &AppHandle, settings: AppSettings) {
+    let _guard = lock_settings_mutation();
+    write_settings_unlocked(app, settings);
+}
+
+fn write_settings_unlocked(app: &AppHandle, settings: AppSettings) {
     let store = app
         .store(crate::portable::store_path(SETTINGS_STORE_PATH))
         .expect("Failed to initialize store");
@@ -1331,6 +1419,28 @@ pub fn write_settings(app: &AppHandle, settings: AppSettings) {
         "settings",
         serde_json::to_value(&settings).expect("AppSettings must be serializable"),
     );
+}
+
+/// Mutate and persist settings as one transaction so concurrent commands do
+/// not overwrite fields changed by another read-modify-write operation.
+pub fn update_settings<R>(app: &AppHandle, update: impl FnOnce(&mut AppSettings) -> R) -> R {
+    let _guard = lock_settings_mutation();
+    let mut settings = get_settings_unlocked(app);
+    let result = update(&mut settings);
+    write_settings_unlocked(app, settings);
+    result
+}
+
+/// Fallible variant of [`update_settings`]. Failed mutations are not persisted.
+pub fn try_update_settings<R, E>(
+    app: &AppHandle,
+    update: impl FnOnce(&mut AppSettings) -> Result<R, E>,
+) -> Result<R, E> {
+    let _guard = lock_settings_mutation();
+    let mut settings = get_settings_unlocked(app);
+    let result = update(&mut settings)?;
+    write_settings_unlocked(app, settings);
+    Ok(result)
 }
 
 pub fn get_bindings(app: &AppHandle) -> HashMap<String, ShortcutBinding> {
@@ -1388,7 +1498,6 @@ mod tests {
         // Note "log_level": 2 — the legacy numeric format, kept deliberately.
         let stored: serde_json::Value = serde_json::from_str(
             r##"{
-            "settings_schema_version": 1,
             "bindings": {
                 "transcribe": {
                     "id": "transcribe",
@@ -1470,15 +1579,27 @@ mod tests {
             "typing_tool": "auto",
             "external_script_path": null,
             "custom_filler_words": null,
-            "transcribe_accelerator": "gpu",
+            "whisper_accelerator": "gpu",
             "ort_accelerator": "auto",
-            "transcribe_gpu_device": 0,
+            "whisper_gpu_device": 0,
             "extra_recording_buffer_ms": 0,
             "vad_enabled": true,
             "overlay_style": "live"
         }"##,
         )
         .expect("fixture is valid JSON");
+
+        let imported = deserialize_settings_for_import(&stored)
+            .expect("the frozen v0.9 settings backup must import");
+        assert_eq!(
+            imported.transcribe_accelerator,
+            TranscribeAcceleratorSetting::Gpu
+        );
+        assert_eq!(imported.transcribe_gpu_device, 0);
+        assert_eq!(
+            imported.settings_schema_version,
+            CURRENT_SETTINGS_SCHEMA_VERSION
+        );
 
         let mut settings: AppSettings = serde_json::from_value(stored.clone())
             .expect("a stored v0.9.0 settings object must keep parsing strictly");
@@ -1658,7 +1779,7 @@ mod tests {
     }
 
     #[test]
-    fn gpu_device_migration_resets_legacy_positive_selection_to_auto() {
+    fn gpu_device_migration_preserves_forced_gpu_with_safe_device() {
         let mut settings = get_default_settings();
         settings.transcribe_accelerator = TranscribeAcceleratorSetting::Gpu;
         settings.transcribe_gpu_device = 2;
@@ -1671,16 +1792,62 @@ mod tests {
         assert!(apply_settings_migrations(&mut settings, &raw));
         assert_eq!(
             settings.transcribe_accelerator,
-            TranscribeAcceleratorSetting::Auto
+            TranscribeAcceleratorSetting::Gpu
         );
-        assert_eq!(
-            settings.transcribe_gpu_device,
-            default_transcribe_gpu_device()
-        );
+        assert_eq!(settings.transcribe_gpu_device, 0);
         assert_eq!(
             settings.settings_schema_version,
             CURRENT_SETTINGS_SCHEMA_VERSION
         );
+    }
+
+    #[test]
+    fn released_v0_9_acceleration_settings_migrate_without_changing_intent() {
+        let cases = [
+            (
+                "auto",
+                -1,
+                TranscribeAcceleratorSetting::Auto,
+                default_transcribe_gpu_device(),
+            ),
+            (
+                "cpu",
+                -1,
+                TranscribeAcceleratorSetting::Cpu,
+                default_transcribe_gpu_device(),
+            ),
+            ("gpu", 0, TranscribeAcceleratorSetting::Gpu, 0),
+            ("gpu", 2, TranscribeAcceleratorSetting::Gpu, 0),
+        ];
+
+        for (legacy_accelerator, legacy_device, expected_accelerator, expected_device) in cases {
+            let raw = serde_json::json!({
+                "onboarding_completed": true,
+                "whats_new_last_seen_version": "0.9.1",
+                "overlay_style": "live",
+                "whisper_accelerator": legacy_accelerator,
+                "whisper_gpu_device": legacy_device
+            });
+            let mut settings: AppSettings = serde_json::from_value(raw.clone())
+                .expect("released v0.9 acceleration settings must deserialize");
+
+            assert!(apply_settings_migrations(&mut settings, &raw));
+            assert_eq!(
+                settings.transcribe_accelerator, expected_accelerator,
+                "legacy accelerator {legacy_accelerator}"
+            );
+            assert_eq!(
+                settings.transcribe_gpu_device, expected_device,
+                "legacy accelerator {legacy_accelerator}"
+            );
+            assert_eq!(
+                settings.settings_schema_version,
+                CURRENT_SETTINGS_SCHEMA_VERSION
+            );
+
+            let migrated = serde_json::to_value(&settings).expect("migrated settings serialize");
+            assert!(!apply_settings_migrations(&mut settings, &migrated));
+        }
     }
 
     #[test]

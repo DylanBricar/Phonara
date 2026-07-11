@@ -70,6 +70,7 @@ interface ModelCardProps {
   onDownload?: (modelId: string) => void;
   onDelete?: (modelId: string) => void;
   onCancel?: (modelId: string) => void;
+  cancelPending?: boolean;
   downloadProgress?: number;
   downloadSpeed?: number;
   showRecommended?: boolean;
@@ -85,6 +86,7 @@ const ModelCard: React.FC<ModelCardProps> = ({
   onDownload,
   onDelete,
   onCancel,
+  cancelPending = false,
   downloadProgress,
   downloadSpeed,
   showRecommended = true,
@@ -150,7 +152,8 @@ const ModelCard: React.FC<ModelCardProps> = ({
         }
       }}
       role={isClickable ? "button" : undefined}
-      tabIndex={isClickable ? 0 : undefined}
+      aria-disabled={isClickable && disabled ? true : undefined}
+      tabIndex={isClickable && !disabled ? 0 : undefined}
       className={[
         baseClasses,
         getVariantClasses(),
@@ -304,8 +307,13 @@ const ModelCard: React.FC<ModelCardProps> = ({
                     e.stopPropagation();
                     onCancel(model.id);
                   }}
+                  disabled={cancelPending}
+                  aria-busy={cancelPending}
                   aria-label={t("modelSelector.cancelDownload")}
                 >
+                  {cancelPending && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  )}
                   {t("modelSelector.cancel")}
                 </Button>
               )}

@@ -2,14 +2,15 @@ import { create } from "zustand";
 import { subscribeWithSelector } from "zustand/middleware";
 import { listen } from "@tauri-apps/api/event";
 import type {
-  AppSettings as Settings,
   AudioDevice,
   TranscribeAcceleratorSetting,
   OrtAcceleratorSetting,
 } from "@/bindings";
 import { commands } from "@/bindings";
 import { settingUpdaters } from "./settingUpdaters";
-import type { SettingsStore } from "./settingsStoreTypes";
+import type { Settings, SettingsStore } from "./settingsStoreTypes";
+import { asRuntimeSettings } from "./runtimeSettings";
+import { updateTranscribeAccelerationAtomically } from "./transcribeAccelerationUpdate";
 
 const DEFAULT_AUDIO_DEVICE: AudioDevice = {
   index: "default",
@@ -55,14 +56,14 @@ export const useSettingsStore = create<SettingsStore>()(
         const result = await commands.getAppSettings();
         if (result.status === "ok") {
           const settings = result.data;
-          const normalizedSettings: Settings = {
+          const normalizedSettings = asRuntimeSettings({
             ...settings,
             always_on_microphone: settings.always_on_microphone ?? false,
             selected_microphone: settings.selected_microphone ?? "Default",
             clamshell_microphone: settings.clamshell_microphone ?? "Default",
             selected_output_device:
               settings.selected_output_device ?? "Default",
-          };
+          });
           set({ settings: normalizedSettings, isLoading: false });
         } else {
           set({ isLoading: false });
@@ -154,6 +155,24 @@ export const useSettingsStore = create<SettingsStore>()(
       } finally {
         setUpdating(updateKey, false);
       }
+    },
+
+    updateTranscribeAcceleration: async (accelerator, gpuDevice) => {
+      const { settings, setUpdating, isUpdatingKey } = get();
+      return updateTranscribeAccelerationAtomically({
+        settings,
+        accelerator,
+        gpuDevice,
+        updateSettings: (updater) =>
+          set((state) => ({ settings: updater(state.settings) })),
+        setUpdating,
+        isUpdating: isUpdatingKey,
+        persist: async (nextAccelerator, nextGpuDevice) =>
+          commands.changeTranscribeAccelerationSetting(
+            nextAccelerator,
+            nextGpuDevice,
+          ),
+      });
     },
 
     resetSetting: async (key) => {
@@ -391,7 +410,7 @@ export const useSettingsStore = create<SettingsStore>()(
       try {
         const result = await commands.getDefaultSettings();
         if (result.status === "ok") {
-          set({ defaultSettings: result.data });
+          set({ defaultSettings: asRuntimeSettings(result.data) });
         }
       } catch {}
     },

@@ -113,9 +113,9 @@ pub async fn retry_history_entry_transcription(
 #[tauri::command]
 #[specta::specta]
 pub async fn update_history_limit(app: AppHandle, limit: usize) -> Result<(), String> {
-    let mut settings = crate::settings::get_settings(&app);
-    settings.history_limit = limit;
-    crate::settings::write_settings(&app, settings);
+    crate::settings::update_settings(&app, |settings| {
+        settings.history_limit = limit;
+    });
 
     Ok(())
 }
@@ -186,9 +186,9 @@ pub async fn update_recording_retention_period(
         _ => return Err(format!("Invalid retention period: {}", period)),
     };
 
-    let mut settings = crate::settings::get_settings(&app);
-    settings.recording_retention_period = retention_period;
-    crate::settings::write_settings(&app, settings);
+    crate::settings::update_settings(&app, |settings| {
+        settings.recording_retention_period = retention_period;
+    });
 
     Ok(())
 }

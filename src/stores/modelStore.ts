@@ -201,8 +201,6 @@ export const useModelStore = create<ModelsStore>()(
               delete state.downloadStats[modelId];
             }),
           );
-
-          await get().loadModels();
           return true;
         } else {
           set({ error: `Failed to cancel download: ${result.error}` });

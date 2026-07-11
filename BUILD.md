@@ -34,16 +34,29 @@ ORT_LIB_LOCATION=$(brew --prefix onnxruntime)/lib ORT_PREFER_DYNAMIC_LINK=1 bun 
 
 #### Windows
 
-- Microsoft C++ Build Tools
-- Visual Studio 2019/2022 with C++ development tools
-- Or Visual Studio Build Tools 2019/2022
+- Microsoft C++ Build Tools: Visual Studio 2019/2022 with C++ development
+  tools, or Visual Studio Build Tools 2019/2022
+- [CMake](https://cmake.org/download/) on `PATH`:
+
+  ```powershell
+  winget install Kitware.CMake
+  ```
+
+- [Vulkan SDK](https://vulkan.lunarg.com/sdk/home) from LunarG, required for
+  the Vulkan GPU backend and its shader generator:
+
+  ```powershell
+  winget install KhronosGroup.VulkanSDK
+  ```
+
+  Open a new terminal afterward so `VULKAN_SDK` is available.
 
 > [!IMPORTANT]
-> Windows' 260-character path limit can break the native build (the Vulkan
-> shader generator nests very deep). If `bun run tauri build` fails with
-> `MSB3491` / "path exceeds the OS max path limit", see
-> [Windows build fails with `MSB3491`](#windows-build-fails-with-msb3491--path-exceeds-260-characters)
-> in Troubleshooting.
+> Windows' 260-character path limit can break the nested Vulkan build. Before
+> the first build, enable long paths and set a short `CARGO_TARGET_DIR` as
+> described in
+> [Windows path-limit errors](#windows-path-limit-errors-msb3491--ftk1011--msb6003).
+> Neither measure is sufficient on its own for every MSVC tool.
 
 #### Linux
 
@@ -111,15 +124,18 @@ cd /tmp
 ar x /path/to/Phonara/src-tauri/target/release/bundle/deb/Phonara_*_amd64.deb data.tar.gz
 tar xzf data.tar.gz
 sudo cp usr/bin/phonara /usr/bin/
-sudo cp -r usr/lib/Phonara /usr/lib/
+sudo cp -a usr/lib/. /usr/lib/
 sudo cp -r usr/share/icons/hicolor/* /usr/share/icons/hicolor/
 sudo cp usr/share/applications/Phonara.desktop /usr/share/applications/
+sudo ldconfig
 ```
 
 After subsequent rebuilds, copy the binary and any refreshed runtime libraries:
 
 ```bash
 sudo cp src-tauri/target/release/phonara /usr/bin/
+sudo cp -a src-tauri/transcribe-libs/. /usr/lib/
+sudo ldconfig
 ```
 
 Resources only need re-copying if they change upstream (new icons, sounds, models, etc.).
@@ -153,13 +169,24 @@ bun run tauri build -- --bundles deb
 
 Then install using the deb extraction method above.
 
-### Windows build fails with `MSB3491` / path exceeds 260 characters
+### Windows path-limit errors (`MSB3491` / `FTK1011` / `MSB6003`)
 
-On Windows the native build can fail partway through with an error like:
+These errors share the same root cause:
 
 ```
 error MSB3491: Could not write lines to file "...VCTargetsPath.tlog\VCTargetsPath.lastbuildstate".
 Path: ... exceeds the OS max path limit. The fully qualified file name must be less than 260 characters.
+```
+
+```
+FileTracker : error FTK1011: could not create the new file tracking log file:
+...\vulkan-shaders-gen-build\...\cmTC_xxxxx.tlog\link.write.1.tlog.
+The system cannot find the path specified.
+```
+
+```
+error MSB6003: The specified task executable "CL.exe" could not be run.
+System.IO.DirectoryNotFoundException: Could not find a part of the path ...
 ```
 
 This is **not** a code or toolchain problem — it's Windows' legacy 260-character
@@ -167,29 +194,42 @@ path limit (`MAX_PATH`). The Vulkan shader generator builds as a nested CMake
 sub-project (`...\vulkan-shaders-gen-prefix\src\vulkan-shaders-gen-build\...`),
 which alone adds ~140 characters on top of Cargo's already-deep
 `target\release\build\<crate>-<hash>\out\build\...` directory. If your checkout
-isn't very shallow, MSBuild's `.tlog` write overflows the limit. (CI doesn't hit
-this because it builds from a short root such as `D:\a\Handy`.)
+isn't very shallow, the build overflows the limit.
 
-Either fix works; the first is the most reliable:
+You need both fixes. MSBuild's native `FileTracker` ignores the long-path flag,
+while other path operations can still overflow from a short root if long paths
+are disabled.
 
-**1. Build with a shorter target directory** (no admin, fixes it immediately):
-
-```powershell
-$env:CARGO_TARGET_DIR = "C:\h"
-bun run tauri build
-```
-
-Artifacts then land in `C:\h\release\...` instead of the repo's `src-tauri\target\`.
-Alternatively, clone the repo to a short root (e.g. `C:\Handy`).
-
-**2. Enable Windows long paths** (one-time, machine-wide; needs an Administrator
-PowerShell, and modern Visual Studio 2022). This removes the limit for every
-build, not just Handy:
+**1. Enable Windows long paths** in an Administrator PowerShell:
 
 ```powershell
-Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' LongPathsEnabled 1
+Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -Type DWord
 git config --global core.longpaths true
 ```
 
-Restart your shell (or reboot) afterward so the change takes effect. If a build
-still trips on the limit, fall back to option 1.
+**2. Use a short target directory:**
+
+```powershell
+$env:CARGO_TARGET_DIR = "C:\p"
+
+# Optional: persist it for future terminals. This redirects every Rust
+# project's build output, not only Phonara's.
+[Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', 'C:\p', 'User')
+```
+
+Artifacts then land under `C:\p\release`. Open a new terminal after changing
+the registry or a persistent environment variable.
+
+### Windows bundling fails with `program not found`
+
+If compilation succeeds but bundling fails while running a custom signing
+command, the release-only signing tool is unavailable locally. Development does
+not require it:
+
+```powershell
+# Development
+bun run tauri dev
+
+# Optimized binary without installer signing
+bun run tauri build --no-bundle
+```

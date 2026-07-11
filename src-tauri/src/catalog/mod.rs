@@ -13,7 +13,7 @@
 //! `GgufHeaderProber` is the same shape with `None` where a header omits a key,
 //! which is why the two are interchangeable (the catalog is a baked probe).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use once_cell::sync::Lazy;
 use serde::Deserialize;
@@ -105,6 +105,32 @@ pub static CATALOG: Lazy<Vec<ModelDescriptor>> = Lazy::new(|| {
     root.models.into_iter().map(ModelDescriptor::from).collect()
 });
 
+static CATALOG_IDS: Lazy<HashSet<String>> = Lazy::new(|| {
+    CATALOG
+        .iter()
+        .map(|descriptor| descriptor.id.clone())
+        .collect()
+});
+
+/// Whether a registry id belongs to the bundled catalog.
+pub fn is_catalog_model(model_id: &str) -> bool {
+    CATALOG_IDS.contains(model_id)
+}
+
+/// Exact byte length declared for a catalog artifact.
+pub fn expected_file_size(model_id: &str, filename: &str) -> Option<u64> {
+    CATALOG
+        .iter()
+        .find(|descriptor| descriptor.id == model_id)
+        .and_then(|descriptor| {
+            descriptor
+                .files
+                .iter()
+                .find(|file| file.filename == filename)
+        })
+        .map(|file| file.size_bytes)
+}
+
 /// Editorial recommended rank keyed by descriptor id (the same id the model
 /// registry uses). Built once from the catalog.
 static RANK_BY_ID: Lazy<HashMap<String, u32>> = Lazy::new(|| {
@@ -138,6 +164,37 @@ mod tests {
         let before = ids.len();
         ids.dedup();
         assert_eq!(before, ids.len(), "catalog descriptor ids must be unique");
+    }
+
+    #[test]
+    fn catalog_id_lookup_is_scoped_to_catalog_entries() {
+        for descriptor in CATALOG.iter() {
+            assert!(is_catalog_model(&descriptor.id));
+        }
+        assert!(!is_catalog_model("someorg/some-repo/some-file.gguf"));
+        assert!(!is_catalog_model("small"));
+    }
+
+    #[test]
+    fn catalog_default_filenames_are_unique_and_have_sizes() {
+        let mut owners = HashMap::<&str, &str>::new();
+        for descriptor in CATALOG.iter() {
+            let filename = descriptor
+                .id
+                .rsplit_once('/')
+                .map(|(_, filename)| filename)
+                .expect("catalog ids include their default filename");
+            assert!(
+                expected_file_size(&descriptor.id, filename).is_some(),
+                "{} must declare the byte size for {}",
+                descriptor.id,
+                filename
+            );
+            assert!(
+                owners.insert(filename, &descriptor.id).is_none(),
+                "catalog default filename {filename} has multiple owners"
+            );
+        }
     }
 
     #[test]

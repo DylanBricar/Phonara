@@ -4,7 +4,10 @@ pub mod models;
 pub mod openai;
 pub mod transcription;
 
-use crate::settings::{get_settings, write_settings, AppSettings, LogLevel};
+use crate::settings::{
+    deserialize_settings_for_import, get_settings, replace_settings, update_settings, AppSettings,
+    LogLevel,
+};
 use crate::utils::cancel_current_operation;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_opener::OpenerExt;
@@ -62,9 +65,9 @@ pub fn set_log_level(app: AppHandle, level: LogLevel) -> Result<(), String> {
         std::sync::atomic::Ordering::Relaxed,
     );
 
-    let mut settings = get_settings(&app);
-    settings.log_level = level;
-    write_settings(&app, settings);
+    update_settings(&app, |settings| {
+        settings.log_level = level;
+    });
 
     Ok(())
 }
@@ -136,9 +139,12 @@ pub fn export_settings(app: AppHandle, path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn import_settings(app: AppHandle, path: String) -> Result<(), String> {
     let json = std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-    let settings: AppSettings =
+    let raw: serde_json::Value =
         serde_json::from_str(&json).map_err(|e| format!("Invalid settings file: {}", e))?;
-    write_settings(&app, settings);
+    let settings = deserialize_settings_for_import(&raw)
+        .map_err(|e| format!("Invalid settings file: {}", e))?;
+    // Import intentionally replaces the entire settings document.
+    replace_settings(&app, settings);
     log::info!("Settings imported from {}", path);
     Ok(())
 }

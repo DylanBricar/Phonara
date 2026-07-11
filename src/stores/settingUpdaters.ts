@@ -1,11 +1,11 @@
 import type {
-  AppSettings as Settings,
   TextReplacement,
   LogLevel,
   OrtAcceleratorSetting,
   TranscribeAcceleratorSetting,
 } from "@/bindings";
 import { commands } from "@/bindings";
+import type { Settings } from "./settingsStoreTypes";
 
 export const settingUpdaters: {
   [K in keyof Settings]?: (value: Settings[K]) => Promise<unknown>;

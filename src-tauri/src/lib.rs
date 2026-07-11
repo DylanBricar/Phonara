@@ -636,6 +636,7 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
             shortcut::change_show_tray_icon_setting,
+            shortcut::change_transcribe_acceleration_setting,
             shortcut::change_transcribe_accelerator_setting,
             shortcut::change_ort_accelerator_setting,
             shortcut::change_transcribe_gpu_device,
@@ -735,13 +736,29 @@ pub fn run(cli_args: CliArgs) {
             managers::transcription::StreamPhaseEvent,
         ]);
 
-    #[cfg(debug_assertions)] // <- Only export on non-release builds
-    specta_builder
-        .export(
-            Typescript::default().bigint(BigIntExportBehavior::Number),
-            "../src/bindings.ts",
-        )
-        .expect("Failed to export typescript bindings");
+    #[cfg(debug_assertions)]
+    {
+        let bindings_path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts");
+        specta_builder
+            .export(
+                Typescript::default().bigint(BigIntExportBehavior::Number),
+                &bindings_path,
+            )
+            .expect("Failed to export typescript bindings");
+
+        // Specta can emit spaces before a newline around documented types.
+        // Normalize generated output so diff checks remain deterministic.
+        let bindings = std::fs::read_to_string(&bindings_path)
+            .expect("Failed to read exported typescript bindings");
+        let normalized = bindings
+            .lines()
+            .map(str::trim_end)
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(bindings_path, format!("{normalized}\n"))
+            .expect("Failed to normalize exported typescript bindings");
+    }
 
     let invoke_handler = specta_builder.invoke_handler();
 
@@ -1015,7 +1032,9 @@ pub fn run(cli_args: CliArgs) {
             // Teardown transcribe.cpp before exit
             tauri::RunEvent::Exit => {
                 if let Some(tm) = app.try_state::<Arc<TranscriptionManager>>() {
-                    let _ = tm.unload_model();
+                    if let Err(error) = tm.shutdown() {
+                        log::warn!("Transcription shutdown did not finish cleanly: {error}");
+                    }
                 }
             }
             _ => {}

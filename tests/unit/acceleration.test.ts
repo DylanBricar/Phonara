@@ -30,4 +30,13 @@ describe("transcribe accelerator values", () => {
       gpuDevice: 3,
     });
   });
+
+  test("rejects malformed or negative GPU device selections", () => {
+    for (const value of ["gpu:", "gpu:-1", "gpu:1.5", "gpu:not-a-number"]) {
+      expect(decodeTranscribeValue(value)).toEqual({
+        accelerator: "auto",
+        gpuDevice: -1,
+      });
+    }
+  });
 });

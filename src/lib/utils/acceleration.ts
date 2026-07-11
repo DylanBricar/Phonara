@@ -15,8 +15,11 @@ export function decodeTranscribeValue(value: string): {
 } {
   if (value === "cpu") return { accelerator: "cpu", gpuDevice: -1 };
   if (value.startsWith("gpu:")) {
-    const id = parseInt(value.slice(4), 10);
-    return { accelerator: "gpu", gpuDevice: id };
+    const rawId = value.slice(4);
+    const id = Number(rawId);
+    if (/^\d+$/.test(rawId) && Number.isSafeInteger(id)) {
+      return { accelerator: "gpu", gpuDevice: id };
+    }
   }
   return { accelerator: "auto", gpuDevice: -1 };
 }

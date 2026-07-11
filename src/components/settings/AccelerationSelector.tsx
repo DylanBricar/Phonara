@@ -38,7 +38,13 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
   grouped = false,
 }) => {
   const { t } = useTranslation();
-  const { getSetting, updateSetting, isUpdating } = useSettings();
+  const {
+    getSetting,
+    updateSetting,
+    updateTranscribeAcceleration,
+    isUpdating,
+    isLoading,
+  } = useSettings();
 
   const [transcribeOptions, setTranscribeOptions] = useState<DropdownOption[]>(
     [],
@@ -97,8 +103,7 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
 
   const handleTranscribeChange = async (value: string) => {
     const { accelerator, gpuDevice } = decodeTranscribeValue(value);
-    await updateSetting("transcribe_accelerator", accelerator);
-    await updateSetting("transcribe_gpu_device", gpuDevice);
+    await updateTranscribeAcceleration(accelerator, gpuDevice);
   };
 
   return (
@@ -115,6 +120,7 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
           selectedValue={currentTranscribe}
           onSelect={handleTranscribeChange}
           disabled={
+            isLoading ||
             isUpdating("transcribe_accelerator") ||
             isUpdating("transcribe_gpu_device")
           }
@@ -134,7 +140,7 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
             onSelect={(value) =>
               updateSetting("ort_accelerator", value as OrtAcceleratorSetting)
             }
-            disabled={isUpdating("ort_accelerator")}
+            disabled={isLoading || isUpdating("ort_accelerator")}
           />
         </SettingContainer>
       )}

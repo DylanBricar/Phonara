@@ -7,6 +7,11 @@ import type { ModelCardStatus } from "./ModelCard";
 import ModelCard, { isLegacySource } from "./ModelCard";
 import PhonaraTextLogo from "../icons/PhonaraTextLogo";
 import { useModelStore } from "../../stores/modelStore";
+import {
+  canCancelOnboardingDownload,
+  selectedModelAfterCancellation,
+  shouldStartOnboardingSelection,
+} from "./onboardingDownloadState";
 
 interface OnboardingProps {
   onModelSelected: () => void;
@@ -23,10 +28,17 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
     extractingModels,
     downloadProgress,
     downloadStats,
+    cancelDownload,
   } = useModelStore();
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [cancellingModelId, setCancellingModelId] = useState<string | null>(
+    null,
+  );
   const [showAll, setShowAll] = useState(false);
   const hasStartedSelection = useRef(false);
+  const selectionAttempt = useRef(0);
+  const selectionState = useRef({ selectedModelId, cancellingModelId });
+  selectionState.current = { selectedModelId, cancellingModelId };
 
   const isBusy = selectedModelId !== null;
 
@@ -60,6 +72,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
   // Watch for the selected model to finish downloading + verifying + extracting
   useEffect(() => {
     if (!selectedModelId) {
+      selectionAttempt.current += 1;
       hasStartedSelection.current = false;
       return;
     }
@@ -70,16 +83,29 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
     const stillExtracting = selectedModelId in extractingModels;
 
     if (
-      model?.is_downloaded &&
-      !stillDownloading &&
-      !stillVerifying &&
-      !stillExtracting &&
-      !hasStartedSelection.current
+      shouldStartOnboardingSelection({
+        selectedModelId,
+        cancellingModelId,
+        isDownloaded: model?.is_downloaded ?? false,
+        isDownloading: stillDownloading,
+        isVerifying: stillVerifying,
+        isExtracting: stillExtracting,
+        hasStarted: hasStartedSelection.current,
+      })
     ) {
       hasStartedSelection.current = true;
+      const attempt = ++selectionAttempt.current;
 
       // Model is ready — select it and transition
       selectModel(selectedModelId).then((success) => {
+        const current = selectionState.current;
+        if (
+          selectionAttempt.current !== attempt ||
+          current.selectedModelId !== selectedModelId ||
+          current.cancellingModelId === selectedModelId
+        ) {
+          return;
+        }
         if (success) {
           onModelSelected();
         } else {
@@ -95,6 +121,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
     downloadingModels,
     verifyingModels,
     extractingModels,
+    cancellingModelId,
     selectModel,
     onModelSelected,
     t,
@@ -108,6 +135,29 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
     const success = await downloadModel(modelId);
     if (!success) {
       setSelectedModelId(null);
+    }
+  };
+
+  const handleCancelDownload = async (modelId: string) => {
+    if (cancellingModelId !== null) return;
+
+    selectionAttempt.current += 1;
+    hasStartedSelection.current = false;
+    setCancellingModelId(modelId);
+    try {
+      const success = await cancelDownload(modelId);
+      if (success) {
+        setSelectedModelId((current) =>
+          selectedModelAfterCancellation(current, modelId, true),
+        );
+      } else {
+        toast.error(t("modelSelector.cancelDownload"), {
+          description:
+            useModelStore.getState().error ?? t("modelSelector.modelError"),
+        });
+      }
+    } finally {
+      setCancellingModelId((current) => (current === modelId ? null : current));
     }
   };
 
@@ -134,6 +184,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
   const getModelDownloadSpeed = (modelId: string): number | undefined => {
     return downloadStats[modelId]?.speed;
   };
+
+  const canCancelModel = (modelId: string): boolean =>
+    canCancelOnboardingDownload(selectedModelId, modelId) &&
+    (cancellingModelId === null || cancellingModelId === modelId);
 
   return (
     <div className="h-screen w-screen flex flex-col p-6 gap-4 inset-0">
@@ -185,6 +239,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                   disabled={isBusy}
                   onSelect={handleDownloadModel}
                   onDownload={handleDownloadModel}
+                  onCancel={
+                    canCancelModel(model.id) ? handleCancelDownload : undefined
+                  }
+                  cancelPending={cancellingModelId === model.id}
                   downloadProgress={getModelDownloadProgress(model.id)}
                   downloadSpeed={getModelDownloadSpeed(model.id)}
                   showRecommended={false}
@@ -199,6 +257,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                   disabled={isBusy}
                   onSelect={handleDownloadModel}
                   onDownload={handleDownloadModel}
+                  onCancel={
+                    canCancelModel(model.id) ? handleCancelDownload : undefined
+                  }
+                  cancelPending={cancellingModelId === model.id}
                   downloadProgress={getModelDownloadProgress(model.id)}
                   downloadSpeed={getModelDownloadSpeed(model.id)}
                   showRecommended={false}
@@ -233,6 +295,12 @@ const Onboarding: React.FC<OnboardingProps> = ({ onModelSelected }) => {
                     disabled={isBusy}
                     onSelect={handleDownloadModel}
                     onDownload={handleDownloadModel}
+                    onCancel={
+                      canCancelModel(model.id)
+                        ? handleCancelDownload
+                        : undefined
+                    }
+                    cancelPending={cancellingModelId === model.id}
                     downloadProgress={getModelDownloadProgress(model.id)}
                     downloadSpeed={getModelDownloadSpeed(model.id)}
                     showRecommended={false}

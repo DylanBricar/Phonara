@@ -1,4 +1,7 @@
-import type { AppSettings as Settings, AudioDevice } from "@/bindings";
+import type { AudioDevice, TranscribeAcceleratorSetting } from "@/bindings";
+import type { RuntimeSettings as Settings } from "./runtimeSettings";
+
+export type { RuntimeSettings as Settings } from "./runtimeSettings";
 
 export interface SettingsStore {
   settings: Settings | null;
@@ -18,6 +21,10 @@ export interface SettingsStore {
     key: K,
     value: Settings[K],
   ) => Promise<void>;
+  updateTranscribeAcceleration: (
+    accelerator: TranscribeAcceleratorSetting,
+    gpuDevice: number,
+  ) => Promise<boolean>;
   resetSetting: (key: keyof Settings) => Promise<void>;
   refreshSettings: () => Promise<void>;
   refreshAudioDevices: () => Promise<void>;

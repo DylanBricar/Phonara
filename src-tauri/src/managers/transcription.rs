@@ -36,6 +36,7 @@ use transcribe_rs::{
 
 const STREAM_PERF_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const STREAM_FINALIZE_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+const ENGINE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelStateEvent {
@@ -171,25 +172,149 @@ enum LoadedEngine {
     Cohere(CohereModel),
 }
 
-/// RAII guard that clears the `is_loading` flag and notifies waiters on drop.
-/// Ensures the loading flag is always reset, even on early returns or panics.
-pub struct LoadingGuard {
-    is_loading: Arc<Mutex<bool>>,
-    loading_condvar: Arc<Condvar>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EngineAccess {
+    Idle,
+    Loading,
+    Leased,
 }
 
-impl Drop for LoadingGuard {
+/// Exclusive access token shared by model loads and engine users. A load can
+/// never replace an engine while batch or streaming inference owns it.
+struct EngineAccessGuard {
+    state: Arc<Mutex<EngineAccess>>,
+    condvar: Arc<Condvar>,
+    held: EngineAccess,
+}
+
+impl Drop for EngineAccessGuard {
     fn drop(&mut self) {
-        if let Ok(mut is_loading) = self.is_loading.lock() {
-            *is_loading = false;
-            self.loading_condvar.notify_all();
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        if *state == self.held {
+            *state = EngineAccess::Idle;
         } else {
-            // Mutex poisoned - still try to notify waiters via poison recovery
-            let mut is_loading = self.is_loading.lock().unwrap_or_else(|e| e.into_inner());
-            *is_loading = false;
-            self.loading_condvar.notify_all();
+            warn!(
+                "Engine access state changed unexpectedly from {:?} while holding {:?}",
+                *state, self.held
+            );
+            *state = EngineAccess::Idle;
+        }
+        self.condvar.notify_all();
+    }
+}
+
+/// RAII guard that serializes model loads with every engine lease.
+pub struct LoadingGuard {
+    _access: EngineAccessGuard,
+}
+
+impl LoadingGuard {
+    fn into_engine_lease(mut self, generation: &Arc<AtomicU64>) -> EngineLeaseGuard {
+        {
+            let mut state = self
+                ._access
+                .state
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            debug_assert_eq!(*state, EngineAccess::Loading);
+            *state = EngineAccess::Leased;
+        }
+        self._access.held = EngineAccess::Leased;
+        EngineLeaseGuard {
+            generation: generation.load(Ordering::Acquire),
+            _access: self._access,
         }
     }
+}
+
+struct EngineLeaseGuard {
+    generation: u64,
+    _access: EngineAccessGuard,
+}
+
+fn claim_engine_access(
+    state: &Arc<Mutex<EngineAccess>>,
+    condvar: &Arc<Condvar>,
+    desired: EngineAccess,
+    wait_for_slot: bool,
+) -> Option<EngineAccessGuard> {
+    let mut current = state.lock().unwrap_or_else(|e| e.into_inner());
+    while *current != EngineAccess::Idle {
+        if !wait_for_slot {
+            return None;
+        }
+        current = condvar.wait(current).unwrap_or_else(|e| e.into_inner());
+    }
+    *current = desired;
+
+    Some(EngineAccessGuard {
+        state: Arc::clone(state),
+        condvar: Arc::clone(condvar),
+        held: desired,
+    })
+}
+
+fn claim_loading_slot(
+    state: &Arc<Mutex<EngineAccess>>,
+    condvar: &Arc<Condvar>,
+    wait_for_slot: bool,
+) -> Option<LoadingGuard> {
+    claim_engine_access(state, condvar, EngineAccess::Loading, wait_for_slot)
+        .map(|access| LoadingGuard { _access: access })
+}
+
+fn claim_loading_slot_with_timeout(
+    state: &Arc<Mutex<EngineAccess>>,
+    condvar: &Arc<Condvar>,
+    timeout: Duration,
+) -> Option<LoadingGuard> {
+    let deadline = Instant::now() + timeout;
+    let mut current = state.lock().unwrap_or_else(|error| error.into_inner());
+    while *current != EngineAccess::Idle {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return None;
+        }
+        let (next, wait_result) = condvar
+            .wait_timeout(current, remaining)
+            .unwrap_or_else(|error| error.into_inner());
+        current = next;
+        if wait_result.timed_out() && *current != EngineAccess::Idle {
+            return None;
+        }
+    }
+    *current = EngineAccess::Loading;
+
+    Some(LoadingGuard {
+        _access: EngineAccessGuard {
+            state: Arc::clone(state),
+            condvar: Arc::clone(condvar),
+            held: EngineAccess::Loading,
+        },
+    })
+}
+
+#[cfg(test)]
+fn claim_engine_lease(
+    state: &Arc<Mutex<EngineAccess>>,
+    condvar: &Arc<Condvar>,
+    generation: &Arc<AtomicU64>,
+) -> EngineLeaseGuard {
+    let access = claim_engine_access(state, condvar, EngineAccess::Leased, true)
+        .expect("blocking engine-lease claim must return a guard");
+    EngineLeaseGuard {
+        generation: generation.load(Ordering::Acquire),
+        _access: access,
+    }
+}
+
+fn should_return_engine(
+    current_model_id: Option<&str>,
+    current_generation: u64,
+    expected_model_id: &str,
+    expected_generation: u64,
+) -> bool {
+    current_model_id == Some(expected_model_id) && current_generation == expected_generation
 }
 
 /// RAII guard that clears the streaming worker/lease flags on any worker exit -
@@ -232,8 +357,9 @@ pub struct TranscriptionManager {
     last_activity: Arc<AtomicU64>,
     shutdown_signal: Arc<AtomicBool>,
     watcher_handle: Arc<Mutex<Option<thread::JoinHandle<()>>>>,
-    is_loading: Arc<Mutex<bool>>,
-    loading_condvar: Arc<Condvar>,
+    engine_access: Arc<Mutex<EngineAccess>>,
+    engine_access_condvar: Arc<Condvar>,
+    engine_generation: Arc<AtomicU64>,
     reload_model_on_next_use: Arc<AtomicBool>,
     /// Routes real-time audio frames to the active streaming worker; see
     /// [`StreamRouter`]. Shared with the audio recorder so per-frame feeds skip
@@ -268,8 +394,9 @@ impl TranscriptionManager {
             last_activity: Arc::new(AtomicU64::new(Self::now_ms())),
             shutdown_signal: Arc::new(AtomicBool::new(false)),
             watcher_handle: Arc::new(Mutex::new(None)),
-            is_loading: Arc::new(Mutex::new(false)),
-            loading_condvar: Arc::new(Condvar::new()),
+            engine_access: Arc::new(Mutex::new(EngineAccess::Idle)),
+            engine_access_condvar: Arc::new(Condvar::new()),
+            engine_generation: Arc::new(AtomicU64::new(0)),
             reload_model_on_next_use: Arc::new(AtomicBool::new(false)),
             router: Arc::new(StreamRouter::new()),
             stream_active: Arc::new(AtomicBool::new(false)),
@@ -361,9 +488,16 @@ impl TranscriptionManager {
     }
 
     pub fn is_model_loaded(&self) -> bool {
-        // The engine may be leased out to the streaming worker (taken out of
-        // the mutex). It's still loaded, just in use, so report true.
-        self.lock_engine().is_some() || self.active_engine_lease.load(Ordering::Acquire) != 0
+        // Hold the access state through the engine check so a returning lease
+        // cannot move Leased -> Idle between two independent observations.
+        let access = self
+            .engine_access
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if *access == EngineAccess::Leased {
+            return true;
+        }
+        self.lock_engine().is_some()
     }
 
     /// Return the backend string for the loaded engine, if any.
@@ -389,6 +523,10 @@ impl TranscriptionManager {
 
     /// Begin a live streaming transcription on the held engine's session.
     pub fn start_stream(&self) {
+        if self.shutdown_signal.load(Ordering::Acquire) {
+            warn!("Ignoring start_stream during transcription manager shutdown");
+            return;
+        }
         if self.router.is_open() || self.active_stream_worker.load(Ordering::Acquire) != 0 {
             warn!("start_stream called while a stream worker is already active");
             return;
@@ -405,6 +543,21 @@ impl TranscriptionManager {
         let rx = self.router.open();
         self.stream_active.store(false, Ordering::Release);
 
+        // Shutdown may have started after the first check but before the
+        // router became visible to cancel_stream(). Roll back the reservation
+        // here; after this check, a concurrent shutdown can queue Cancel on the
+        // published router and the worker will consume it.
+        if self.shutdown_signal.load(Ordering::Acquire) {
+            self.router.clear();
+            let _ = self.active_stream_worker.compare_exchange(
+                worker_id,
+                0,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            );
+            return;
+        }
+
         let manager = self.clone();
         thread::spawn(move || manager.run_stream_worker(rx, worker_id));
     }
@@ -417,13 +570,23 @@ impl TranscriptionManager {
             stream_active: Arc::clone(&self.stream_active),
         };
 
-        {
-            let mut is_loading = self.is_loading.lock().unwrap();
-            while *is_loading {
-                is_loading = self.loading_condvar.wait(is_loading).unwrap();
-            }
+        if self.shutdown_signal.load(Ordering::Acquire) {
+            self.router.clear();
+            return;
         }
 
+        let loading_guard = self.start_loading();
+        if let Err(error) = self.reload_model_if_requested_while_loading() {
+            warn!(
+                "Live preview: failed to reload the transcription model: {}",
+                error
+            );
+            self.router.clear();
+            drain_until_finalize(rx);
+            return;
+        }
+
+        let engine_lease = loading_guard.into_engine_lease(&self.engine_generation);
         let model_id = self.get_current_model().unwrap_or_default();
         if self
             .active_engine_lease
@@ -484,7 +647,8 @@ impl TranscriptionManager {
         };
 
         if !supports_streaming {
-            self.return_engine(engine, &model_id);
+            self.return_engine(engine, &model_id, engine_lease.generation);
+            drop(engine_lease);
             self.router.clear();
             drain_until_finalize(rx);
             return;
@@ -597,12 +761,14 @@ impl TranscriptionManager {
         };
 
         if !stream_started {
-            self.return_engine(engine, &model_id);
+            self.return_engine(engine, &model_id, engine_lease.generation);
+            drop(engine_lease);
             drain_until_finalize(rx);
             return;
         }
 
-        self.return_engine(engine, &model_id);
+        self.return_engine(engine, &model_id, engine_lease.generation);
+        drop(engine_lease);
         if let (Some(reply), Some(result)) = (finalize_reply, finalize_result) {
             let _ = reply.send(result);
         }
@@ -614,6 +780,29 @@ impl TranscriptionManager {
             let _ = tx.send(StreamCmd::Cancel);
         }
         self.stream_active.store(false, Ordering::Release);
+    }
+
+    /// Stop live work and unload without allowing application shutdown to wait
+    /// forever on a native inference call or an abandoned stream worker.
+    pub fn shutdown(&self) -> Result<()> {
+        self.shutdown_signal.store(true, Ordering::Release);
+        self.cancel_stream();
+
+        let loading_guard = claim_loading_slot_with_timeout(
+            &self.engine_access,
+            &self.engine_access_condvar,
+            ENGINE_SHUTDOWN_TIMEOUT,
+        )
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Timed out after {:?} waiting for the transcription engine to stop",
+                ENGINE_SHUTDOWN_TIMEOUT
+            )
+        })?;
+
+        let result = self.unload_model_while_loading();
+        drop(loading_guard);
+        result
     }
 
     /// Flush the active stream and return its final, post-filtered text.
@@ -662,16 +851,29 @@ impl TranscriptionManager {
         .emit(&self.app_handle);
     }
 
-    /// Return the leased engine to the mutex unless the selected model changed.
-    fn return_engine(&self, engine: LoadedEngine, expected_model_id: &str) {
-        let still_current =
-            self.current_model_id.lock().unwrap().as_deref() == Some(expected_model_id);
-        if still_current {
+    /// Return a leased engine only if neither the model nor its generation was
+    /// replaced. The generation check is a defensive backstop around the access
+    /// guard, preventing stale engines from ever overwriting a newer load.
+    fn return_engine(
+        &self,
+        engine: LoadedEngine,
+        expected_model_id: &str,
+        expected_generation: u64,
+    ) {
+        let current_model = self.current_model_id.lock().unwrap();
+        let current_generation = self.engine_generation.load(Ordering::Acquire);
+        if should_return_engine(
+            current_model.as_deref(),
+            current_generation,
+            expected_model_id,
+            expected_generation,
+        ) {
+            drop(current_model);
             *self.lock_engine() = Some(engine);
         } else {
             info!(
-                "Model changed/unloaded during transcription; dropping stale engine (was '{}')",
-                expected_model_id
+                "Model changed/unloaded during transcription; dropping stale engine '{}' generation {} (current generation {})",
+                expected_model_id, expected_generation, current_generation
             );
         }
     }
@@ -683,25 +885,66 @@ impl TranscriptionManager {
         self.reload_model_on_next_use.store(true, Ordering::Release);
     }
 
+    fn start_loading(&self) -> LoadingGuard {
+        claim_loading_slot(&self.engine_access, &self.engine_access_condvar, true)
+            .expect("blocking model-load claim must return a guard")
+    }
+
+    fn reload_model_if_requested_while_loading(&self) -> Result<()> {
+        if !self.reload_model_on_next_use.load(Ordering::Acquire) {
+            return Ok(());
+        }
+
+        let model_id = self
+            .get_current_model()
+            .filter(|id| !id.is_empty())
+            .unwrap_or_else(|| get_settings(&self.app_handle).selected_model);
+        if model_id.is_empty() {
+            return Err(anyhow::anyhow!(
+                "Cannot reload transcription acceleration without a selected model"
+            ));
+        }
+
+        info!(
+            "Reloading transcription model '{}' with updated acceleration settings",
+            model_id
+        );
+        self.load_model_with_device_while_loading(&model_id, None)
+    }
+
     /// Atomically check whether a model load is in progress and, if not, mark
     /// one as starting. Returns a [`LoadingGuard`] whose [`Drop`] impl will
     /// clear the flag and wake waiters. Returns `None` if a load is already in
     /// progress.
     pub fn try_start_loading(&self) -> Option<LoadingGuard> {
-        let mut is_loading = self.is_loading.lock().unwrap();
-        if *is_loading {
-            return None;
-        }
-        *is_loading = true;
-        Some(LoadingGuard {
-            is_loading: self.is_loading.clone(),
-            loading_condvar: self.loading_condvar.clone(),
-        })
+        claim_loading_slot(&self.engine_access, &self.engine_access_condvar, false)
     }
 
     pub fn unload_model(&self) -> Result<()> {
+        let _loading_guard = self.start_loading();
+        self.unload_model_while_loading()
+    }
+
+    /// Hold the shared engine loading slot for the entire model deletion. The
+    /// currently loaded engine is checked only after the slot is acquired, so
+    /// a concurrent load or long-audio switch cannot race file removal.
+    pub fn delete_model_exclusively<T>(
+        &self,
+        model_id: &str,
+        delete: impl FnOnce() -> Result<T>,
+    ) -> Result<T> {
+        let _loading_guard = self.start_loading();
+        if self.get_current_model().as_deref() == Some(model_id) {
+            self.unload_model_while_loading()?;
+        }
+        delete()
+    }
+
+    fn unload_model_while_loading(&self) -> Result<()> {
         let unload_start = std::time::Instant::now();
         debug!("Starting to unload model");
+
+        self.engine_generation.fetch_add(1, Ordering::AcqRel);
 
         {
             let mut engine = self.lock_engine();
@@ -771,6 +1014,33 @@ impl TranscriptionManager {
         model_id: &str,
         device_index: Option<usize>,
     ) -> Result<()> {
+        let _loading_guard = self.start_loading();
+        self.load_model_with_device_while_loading(model_id, device_index)
+    }
+
+    /// Load while the caller owns this manager's loading slot.
+    pub(crate) fn load_model_while_loading(&self, model_id: &str) -> Result<()> {
+        self.load_model_with_device_while_loading(model_id, None)
+    }
+
+    fn load_model_with_device_while_loading(
+        &self,
+        model_id: &str,
+        device_index: Option<usize>,
+    ) -> Result<()> {
+        let consumed_reload = self.reload_model_on_next_use.swap(false, Ordering::AcqRel);
+        let result = self.load_model_with_device_inner(model_id, device_index);
+        if result.is_err() && consumed_reload {
+            self.reload_model_on_next_use.store(true, Ordering::Release);
+        }
+        result
+    }
+
+    fn load_model_with_device_inner(
+        &self,
+        model_id: &str,
+        device_index: Option<usize>,
+    ) -> Result<()> {
         apply_accelerator_settings(&self.app_handle);
 
         let load_start = std::time::Instant::now();
@@ -812,6 +1082,7 @@ impl TranscriptionManager {
         // frees the previous native context first — avoids holding two models at
         // once (peak memory on large GGUFs). Clear the id too: if the new load
         // fails, status should read "no loaded model", not the dropped engine.
+        self.engine_generation.fetch_add(1, Ordering::AcqRel);
         {
             let mut engine = self.lock_engine();
             *engine = None;
@@ -1019,7 +1290,7 @@ impl TranscriptionManager {
             // Guard is moved into the thread — dropped when the thread exits (even on panic)
             let _guard = guard;
             let settings = get_settings(&self_clone.app_handle);
-            if let Err(e) = self_clone.load_model(&settings.selected_model) {
+            if let Err(e) = self_clone.load_model_while_loading(&settings.selected_model) {
                 error!("Failed to load model: {}", e);
             }
         });
@@ -1071,6 +1342,12 @@ impl TranscriptionManager {
             return Ok(String::new());
         }
 
+        // Wait for any background pre-load before selecting a duration-based
+        // model, consume accelerator changes, and hand the prepared engine to
+        // this transcription without an Idle gap another caller could steal.
+        let loading_guard = self.start_loading();
+        self.reload_model_if_requested_while_loading()?;
+
         // Duration-based model switching: if the audio exceeds the configured
         // threshold and a long-audio model is set, swap models before loading.
         let duration_seconds = audio.len() as f32 / WHISPER_SAMPLE_RATE as f32;
@@ -1092,13 +1369,17 @@ impl TranscriptionManager {
                             settings_for_switch.long_audio_threshold_seconds,
                             long_model_id
                         );
-                        if let Err(load_error) = self.load_model(long_model_id) {
+                        if let Err(load_error) =
+                            self.load_model_with_device_while_loading(long_model_id, None)
+                        {
                             warn!(
                                 "Failed to load long audio model '{}': {}. Restoring previous model.",
                                 long_model_id, load_error
                             );
                             if let Some(previous_model_id) = current_model_id.as_deref() {
-                                if let Err(restore_error) = self.load_model(previous_model_id) {
+                                if let Err(restore_error) = self
+                                    .load_model_with_device_while_loading(previous_model_id, None)
+                                {
                                     error!(
                                         "Failed to restore previous model '{}' after long audio model error: {}",
                                         previous_model_id, restore_error
@@ -1123,7 +1404,10 @@ impl TranscriptionManager {
                         settings_for_switch.long_audio_threshold_seconds,
                         settings_for_switch.selected_model
                     );
-                    if let Err(e) = self.load_model(&settings_for_switch.selected_model) {
+                    if let Err(e) = self.load_model_with_device_while_loading(
+                        &settings_for_switch.selected_model,
+                        None,
+                    ) {
                         warn!(
                             "Failed to restore default model '{}': {}",
                             settings_for_switch.selected_model, e
@@ -1133,19 +1417,15 @@ impl TranscriptionManager {
             }
         }
 
-        // Check if model is loaded, if not try to load it
+        // Check that the selected model finished loading successfully.
         {
-            // If the model is loading, wait for it to complete.
-            let mut is_loading = self.is_loading.lock().unwrap();
-            while *is_loading {
-                is_loading = self.loading_condvar.wait(is_loading).unwrap();
-            }
-
             let engine_guard = self.lock_engine();
             if engine_guard.is_none() {
                 return Err(anyhow::anyhow!("Model is not loaded for transcription."));
             }
         }
+
+        let engine_lease = loading_guard.into_engine_lease(&self.engine_generation);
 
         // Get current settings for configuration
         let settings = get_settings(&self.app_handle);
@@ -1365,10 +1645,11 @@ impl TranscriptionManager {
                 Ok(inner_result) => {
                     // Success or normal error: return the engine unless a model
                     // switch/unload invalidated it while it was in use.
-                    self.return_engine(engine, &active_model);
+                    self.return_engine(engine, &active_model, engine_lease.generation);
                     inner_result?
                 }
                 Err(panic_payload) => {
+                    self.engine_generation.fetch_add(1, Ordering::AcqRel);
                     // Engine panicked — do NOT put it back (it's in an unknown state).
                     // The engine is dropped here, effectively unloading it.
                     let panic_msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
@@ -1415,6 +1696,7 @@ impl TranscriptionManager {
         // family). We don't pass a prompt to non-whisper models (it requires the
         // whisper-kind run extension), so they still get fuzzy correction here,
         // same as the ONNX engines.
+        drop(engine_lease);
         let filtered_result = post_process_transcription_text(result, &settings, model_is_whisper);
 
         let et = std::time::Instant::now();
@@ -1908,12 +2190,141 @@ pub fn get_available_accelerators() -> AvailableAccelerators {
     }
 }
 
+impl Drop for TranscriptionManager {
+    fn drop(&mut self) {
+        // Skip shutdown unless this is the very last clone. TranscriptionManager
+        // is cloned by initiate_model_load() and the watcher thread - those
+        // clones dropping must not kill the watcher. The watcher thread holds
+        // its own clone, so engine's strong_count is always >= 2 while the
+        // watcher is alive. When it reaches 1, only this instance remains
+        // and we can safely shut down.
+        if Arc::strong_count(&self.engine) > 1 {
+            return;
+        }
+
+        self.shutdown_signal.store(true, Ordering::Relaxed);
+
+        // Avoid unwrap in Drop: a second panic while unwinding would abort.
+        let mut guard = match self.watcher_handle.lock() {
+            Ok(guard) => guard,
+            Err(error) => {
+                warn!("Recovered poisoned watcher_handle mutex during TranscriptionManager drop");
+                error.into_inner()
+            }
+        };
+        if let Some(handle) = guard.take() {
+            if let Err(error) = handle.join() {
+                warn!("Failed to join idle watcher thread: {:?}", error);
+            } else {
+                debug!("Idle watcher thread joined successfully");
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc;
 
     fn languages(codes: &[&str]) -> Vec<String> {
         codes.iter().map(|code| (*code).to_string()).collect()
+    }
+
+    #[test]
+    fn loading_slot_serializes_waiting_loads() {
+        let access = Arc::new(Mutex::new(EngineAccess::Idle));
+        let condvar = Arc::new(Condvar::new());
+        let first = claim_loading_slot(&access, &condvar, false).unwrap();
+        assert!(claim_loading_slot(&access, &condvar, false).is_none());
+
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+        let thread_access = Arc::clone(&access);
+        let thread_condvar = Arc::clone(&condvar);
+        let waiter = thread::spawn(move || {
+            let second = claim_loading_slot(&thread_access, &thread_condvar, true).unwrap();
+            acquired_tx.send(()).unwrap();
+            second
+        });
+
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(25)).is_err());
+        drop(first);
+        acquired_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        drop(waiter.join().unwrap());
+        assert_eq!(*access.lock().unwrap(), EngineAccess::Idle);
+    }
+
+    #[test]
+    fn prepared_model_transitions_to_lease_without_idle_gap() {
+        let access = Arc::new(Mutex::new(EngineAccess::Idle));
+        let condvar = Arc::new(Condvar::new());
+        let generation = Arc::new(AtomicU64::new(11));
+        let loading = claim_loading_slot(&access, &condvar, false).unwrap();
+
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+        let thread_access = Arc::clone(&access);
+        let thread_condvar = Arc::clone(&condvar);
+        let waiter = thread::spawn(move || {
+            let next = claim_loading_slot(&thread_access, &thread_condvar, true).unwrap();
+            acquired_tx.send(()).unwrap();
+            next
+        });
+
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(25)).is_err());
+        let lease = loading.into_engine_lease(&generation);
+        assert_eq!(lease.generation, 11);
+        assert_eq!(*access.lock().unwrap(), EngineAccess::Leased);
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(25)).is_err());
+
+        drop(lease);
+        acquired_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        drop(waiter.join().unwrap());
+        assert_eq!(*access.lock().unwrap(), EngineAccess::Idle);
+    }
+
+    #[test]
+    fn reload_waits_for_active_engine_lease() {
+        let access = Arc::new(Mutex::new(EngineAccess::Idle));
+        let condvar = Arc::new(Condvar::new());
+        let generation = Arc::new(AtomicU64::new(7));
+        let lease = claim_engine_lease(&access, &condvar, &generation);
+        assert_eq!(lease.generation, 7);
+
+        let (acquired_tx, acquired_rx) = mpsc::channel();
+        let thread_access = Arc::clone(&access);
+        let thread_condvar = Arc::clone(&condvar);
+        let waiter = thread::spawn(move || {
+            let loading = claim_loading_slot(&thread_access, &thread_condvar, true).unwrap();
+            acquired_tx.send(()).unwrap();
+            loading
+        });
+
+        assert!(acquired_rx.recv_timeout(Duration::from_millis(25)).is_err());
+        drop(lease);
+        acquired_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        drop(waiter.join().unwrap());
+        assert_eq!(*access.lock().unwrap(), EngineAccess::Idle);
+    }
+
+    #[test]
+    fn shutdown_loading_claim_times_out_on_stuck_lease() {
+        let access = Arc::new(Mutex::new(EngineAccess::Idle));
+        let condvar = Arc::new(Condvar::new());
+        let generation = Arc::new(AtomicU64::new(3));
+        let lease = claim_engine_lease(&access, &condvar, &generation);
+
+        assert!(
+            claim_loading_slot_with_timeout(&access, &condvar, Duration::from_millis(10)).is_none()
+        );
+        drop(lease);
+        assert_eq!(*access.lock().unwrap(), EngineAccess::Idle);
+    }
+
+    #[test]
+    fn stale_engine_generation_is_never_returned() {
+        assert!(should_return_engine(Some("turbo"), 4, "turbo", 4));
+        assert!(!should_return_engine(Some("turbo"), 5, "turbo", 4));
+        assert!(!should_return_engine(Some("small"), 4, "turbo", 4));
     }
 
     #[test]
@@ -1950,40 +2361,5 @@ mod tests {
         assert!(matches!(plan.task, Task::Transcribe));
         assert_eq!(plan.language.as_deref(), Some("es"));
         assert_eq!(plan.target_language, None);
-    }
-}
-
-impl Drop for TranscriptionManager {
-    fn drop(&mut self) {
-        // Skip shutdown unless this is the very last clone. TranscriptionManager
-        // is cloned by initiate_model_load() and the watcher thread — those
-        // clones dropping must not kill the watcher. The watcher thread holds
-        // its own clone, so engine's strong_count is always >= 2 while the
-        // watcher is alive. When it reaches 1, only this instance remains
-        // and we can safely shut down.
-        if Arc::strong_count(&self.engine) > 1 {
-            return;
-        }
-
-        // Signal the watcher thread to shutdown
-        self.shutdown_signal.store(true, Ordering::Relaxed);
-
-        // Wait for the thread to finish gracefully.
-        // Use match instead of unwrap to avoid panicking if the mutex is
-        // poisoned — a panic inside Drop calls abort().
-        let mut guard = match self.watcher_handle.lock() {
-            Ok(g) => g,
-            Err(e) => {
-                warn!("Recovered poisoned watcher_handle mutex during TranscriptionManager drop — a panic occurred earlier this session");
-                e.into_inner()
-            }
-        };
-        if let Some(handle) = guard.take() {
-            if let Err(e) = handle.join() {
-                warn!("Failed to join idle watcher thread: {:?}", e);
-            } else {
-                debug!("Idle watcher thread joined successfully");
-            }
-        }
     }
 }

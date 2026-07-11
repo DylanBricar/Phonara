@@ -64,7 +64,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVCRTczMDVDRkI2NjU4ODYKUldTR1dHYjdYRERuVytTUFRCMXYvaXhVdUpzMitvRDl4M0xRdTUwSWtnb1VBbFJZSG9oZVRGcSsK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc0NEIzNjg1MkRGMjE2OTEKUldTUkZ2SXRoVFpMZEdWTnBKb1lXZW0vZkNZcHVQTjlBclBmWkVZY1N6b0NJSTBVSUdPQkdsN3IK",
       "endpoints": [
         "https://github.com/DylanBricar/Phonara/releases/latest/download/latest.json"
       ]

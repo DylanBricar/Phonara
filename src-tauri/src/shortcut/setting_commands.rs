@@ -8,9 +8,9 @@ pub fn update_text_replacements(
     app: AppHandle,
     replacements: Vec<settings::TextReplacement>,
 ) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.text_replacements = replacements;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.text_replacements = replacements;
+    });
     Ok(())
 }
 
@@ -20,24 +20,27 @@ pub fn change_whisper_initial_prompt_setting(
     app: AppHandle,
     prompt: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.whisper_initial_prompt = prompt;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.whisper_initial_prompt = prompt;
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_whisper_use_gpu_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.whisper_use_gpu = enabled;
-    settings.transcribe_accelerator = if enabled {
+    let accelerator = if enabled {
         settings::TranscribeAcceleratorSetting::Gpu
     } else {
         settings::TranscribeAcceleratorSetting::Cpu
     };
-    super::save_accelerator_and_reload_next_use(&app, settings);
-    Ok(())
+    super::update_accelerator_and_reload_next_use(&app, |current| {
+        super::apply_transcribe_acceleration_settings(
+            current,
+            accelerator,
+            if enabled { 0 } else { -1 },
+        )
+    })
 }
 
 #[tauri::command]
@@ -54,23 +57,22 @@ pub fn add_post_process_action(
         return Err("Action key must be between 1 and 9".to_string());
     }
 
-    let mut settings = settings::get_settings(&app);
+    settings::try_update_settings(&app, |settings| {
+        if settings.post_process_actions.iter().any(|a| a.key == key) {
+            return Err(format!("Action with key {} already exists", key));
+        }
 
-    if settings.post_process_actions.iter().any(|a| a.key == key) {
-        return Err(format!("Action with key {} already exists", key));
-    }
+        let action = settings::PostProcessAction {
+            key,
+            name,
+            prompt,
+            model: model.filter(|m| !m.trim().is_empty()),
+            provider_id: provider_id.filter(|p| !p.trim().is_empty()),
+        };
 
-    let action = settings::PostProcessAction {
-        key,
-        name,
-        prompt,
-        model: model.filter(|m| !m.trim().is_empty()),
-        provider_id: provider_id.filter(|p| !p.trim().is_empty()),
-    };
-
-    settings.post_process_actions.push(action.clone());
-    settings::write_settings(&app, settings);
-    Ok(action)
+        settings.post_process_actions.push(action.clone());
+        Ok(action)
+    })
 }
 
 #[tauri::command]
@@ -83,38 +85,36 @@ pub fn update_post_process_action(
     model: Option<String>,
     provider_id: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-
-    if let Some(action) = settings
-        .post_process_actions
-        .iter_mut()
-        .find(|a| a.key == key)
-    {
-        action.name = name;
-        action.prompt = prompt;
-        action.model = model.filter(|m| !m.trim().is_empty());
-        action.provider_id = provider_id.filter(|p| !p.trim().is_empty());
-        settings::write_settings(&app, settings);
-        Ok(())
-    } else {
-        Err(format!("Action with key {} not found", key))
-    }
+    settings::try_update_settings(&app, |settings| {
+        if let Some(action) = settings
+            .post_process_actions
+            .iter_mut()
+            .find(|a| a.key == key)
+        {
+            action.name = name;
+            action.prompt = prompt;
+            action.model = model.filter(|m| !m.trim().is_empty());
+            action.provider_id = provider_id.filter(|p| !p.trim().is_empty());
+            Ok(())
+        } else {
+            Err(format!("Action with key {} not found", key))
+        }
+    })
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn delete_post_process_action(app: AppHandle, key: u8) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
+    settings::try_update_settings(&app, |settings| {
+        let original_len = settings.post_process_actions.len();
+        settings.post_process_actions.retain(|a| a.key != key);
 
-    let original_len = settings.post_process_actions.len();
-    settings.post_process_actions.retain(|a| a.key != key);
+        if settings.post_process_actions.len() == original_len {
+            return Err(format!("Action with key {} not found", key));
+        }
 
-    if settings.post_process_actions.len() == original_len {
-        return Err(format!("Action with key {} not found", key));
-    }
-
-    settings::write_settings(&app, settings);
-    Ok(())
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -125,55 +125,55 @@ pub fn add_saved_processing_model(
     model_id: String,
     label: String,
 ) -> Result<settings::SavedProcessingModel, String> {
-    let mut settings = settings::get_settings(&app);
-    let id = format!("{}:{}", provider_id, model_id);
+    settings::try_update_settings(&app, |settings| {
+        let id = format!("{}:{}", provider_id, model_id);
 
-    if settings.saved_processing_models.iter().any(|m| m.id == id) {
-        return Err(format!("Model '{}' is already saved", label));
-    }
+        if settings.saved_processing_models.iter().any(|m| m.id == id) {
+            return Err(format!("Model '{}' is already saved", label));
+        }
 
-    let model = settings::SavedProcessingModel {
-        id,
-        provider_id,
-        model_id,
-        label,
-    };
+        let model = settings::SavedProcessingModel {
+            id,
+            provider_id,
+            model_id,
+            label,
+        };
 
-    settings.saved_processing_models.push(model.clone());
-    settings::write_settings(&app, settings);
-    Ok(model)
+        settings.saved_processing_models.push(model.clone());
+        Ok(model)
+    })
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn delete_saved_processing_model(app: AppHandle, id: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    let original_len = settings.saved_processing_models.len();
-    settings.saved_processing_models.retain(|m| m.id != id);
+    settings::try_update_settings(&app, |settings| {
+        let original_len = settings.saved_processing_models.len();
+        settings.saved_processing_models.retain(|m| m.id != id);
 
-    if settings.saved_processing_models.len() == original_len {
-        return Err(format!("Saved model '{}' not found", id));
-    }
-
-    for action in &mut settings.post_process_actions {
-        let matches = action.provider_id.as_deref() == Some(id.split(':').next().unwrap_or(""))
-            && action.model.as_deref() == id.split(':').nth(1);
-        if matches {
-            action.model = None;
-            action.provider_id = None;
+        if settings.saved_processing_models.len() == original_len {
+            return Err(format!("Saved model '{}' not found", id));
         }
-    }
 
-    settings::write_settings(&app, settings);
-    Ok(())
+        for action in &mut settings.post_process_actions {
+            let matches = action.provider_id.as_deref() == Some(id.split(':').next().unwrap_or(""))
+                && action.model.as_deref() == id.split(':').nth(1);
+            if matches {
+                action.model = None;
+                action.provider_id = None;
+            }
+        }
+
+        Ok(())
+    })
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_overlay_high_visibility_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.overlay_high_visibility = enabled;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.overlay_high_visibility = enabled;
+    });
     Ok(())
 }
 
@@ -183,18 +183,18 @@ pub fn change_long_audio_model_setting(
     app: AppHandle,
     model_id: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.long_audio_model = model_id;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.long_audio_model = model_id;
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_long_audio_threshold_setting(app: AppHandle, threshold: f32) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.long_audio_threshold_seconds = threshold;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.long_audio_threshold_seconds = threshold;
+    });
     Ok(())
 }
 
@@ -204,9 +204,9 @@ pub fn change_overlay_border_color_setting(
     app: AppHandle,
     color: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.overlay_border_color = color;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.overlay_border_color = color;
+    });
     Ok(())
 }
 
@@ -216,36 +216,36 @@ pub fn change_overlay_background_color_setting(
     app: AppHandle,
     color: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.overlay_background_color = color;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.overlay_background_color = color;
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_overlay_border_width_setting(app: AppHandle, width: u8) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.overlay_border_width = width.min(10);
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.overlay_border_width = width.min(10);
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_overlay_custom_width_setting(app: AppHandle, width: u16) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.overlay_custom_width = width.clamp(120, 500);
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.overlay_custom_width = width.clamp(120, 500);
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_overlay_custom_height_setting(app: AppHandle, height: u16) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.overlay_custom_height = height.clamp(30, 80);
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.overlay_custom_height = height.clamp(30, 80);
+    });
     Ok(())
 }
 
@@ -259,36 +259,36 @@ pub fn preview_overlay_settings(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub fn change_theme_mode_setting(app: AppHandle, mode: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    let parsed = match mode.as_str() {
-        "light" => settings::ThemeMode::Light,
-        "dark" => settings::ThemeMode::Dark,
-        "system" => settings::ThemeMode::System,
-        _ => settings::ThemeMode::System,
-    };
-    settings.theme_mode = parsed;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        let parsed = match mode.as_str() {
+            "light" => settings::ThemeMode::Light,
+            "dark" => settings::ThemeMode::Dark,
+            "system" => settings::ThemeMode::System,
+            _ => settings::ThemeMode::System,
+        };
+        settings.theme_mode = parsed;
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn change_accent_color_setting(app: AppHandle, color: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    let parsed = match color.as_str() {
-        "blue" => settings::AccentColor::Blue,
-        "green" => settings::AccentColor::Green,
-        "red" => settings::AccentColor::Red,
-        "purple" => settings::AccentColor::Purple,
-        "orange" => settings::AccentColor::Orange,
-        "pink" => settings::AccentColor::Pink,
-        "teal" => settings::AccentColor::Teal,
-        "yellow" => settings::AccentColor::Yellow,
-        "system" => settings::AccentColor::System,
-        _ => settings::AccentColor::System,
-    };
-    settings.accent_color = parsed;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        let parsed = match color.as_str() {
+            "blue" => settings::AccentColor::Blue,
+            "green" => settings::AccentColor::Green,
+            "red" => settings::AccentColor::Red,
+            "purple" => settings::AccentColor::Purple,
+            "orange" => settings::AccentColor::Orange,
+            "pink" => settings::AccentColor::Pink,
+            "teal" => settings::AccentColor::Teal,
+            "yellow" => settings::AccentColor::Yellow,
+            "system" => settings::AccentColor::System,
+            _ => settings::AccentColor::System,
+        };
+        settings.accent_color = parsed;
+    });
     Ok(())
 }
 
@@ -306,18 +306,18 @@ pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), Stri
     if !dir.is_dir() {
         return Err(format!("Directory does not exist: {}", path));
     }
-    let mut settings = settings::get_settings(&app);
-    settings.custom_recordings_directory = Some(path);
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.custom_recordings_directory = Some(path);
+    });
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn clear_recordings_directory(app: AppHandle) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.custom_recordings_directory = None;
-    settings::write_settings(&app, settings);
+    settings::update_settings(&app, |settings| {
+        settings.custom_recordings_directory = None;
+    });
     Ok(())
 }
 
@@ -332,25 +332,25 @@ pub fn set_custom_sound_path(
     if !file.is_file() {
         return Err(format!("File does not exist: {}", path));
     }
-    let mut settings = settings::get_settings(&app);
-    match sound_type.as_str() {
-        "start" => settings.custom_start_sound = Some(path),
-        "stop" => settings.custom_stop_sound = Some(path),
-        _ => return Err(format!("Invalid sound type: {}", sound_type)),
-    }
-    settings::write_settings(&app, settings);
-    Ok(())
+    settings::try_update_settings(&app, |settings| {
+        match sound_type.as_str() {
+            "start" => settings.custom_start_sound = Some(path),
+            "stop" => settings.custom_stop_sound = Some(path),
+            _ => return Err(format!("Invalid sound type: {}", sound_type)),
+        }
+        Ok(())
+    })
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn clear_custom_sound_path(app: AppHandle, sound_type: String) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    match sound_type.as_str() {
-        "start" => settings.custom_start_sound = None,
-        "stop" => settings.custom_stop_sound = None,
-        _ => return Err(format!("Invalid sound type: {}", sound_type)),
-    }
-    settings::write_settings(&app, settings);
-    Ok(())
+    settings::try_update_settings(&app, |settings| {
+        match sound_type.as_str() {
+            "start" => settings.custom_start_sound = None,
+            "stop" => settings.custom_stop_sound = None,
+            _ => return Err(format!("Invalid sound type: {}", sound_type)),
+        }
+        Ok(())
+    })
 }

@@ -11,20 +11,22 @@ interface WhisperGpuToggleProps {
 export const WhisperGpuToggle: React.FC<WhisperGpuToggleProps> = React.memo(
   ({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
-    const { getSetting, updateSetting, isUpdating, refreshSettings } =
+    const { getSetting, updateTranscribeAcceleration, isUpdating, isLoading } =
       useSettings();
 
     const accelerator = getSetting("transcribe_accelerator") ?? "auto";
     const handleChange = async (enabled: boolean) => {
-      await updateSetting("transcribe_accelerator", enabled ? "gpu" : "cpu");
-      await updateSetting("transcribe_gpu_device", enabled ? 0 : -1);
-      await refreshSettings();
+      await updateTranscribeAcceleration(
+        enabled ? "gpu" : "cpu",
+        enabled ? 0 : -1,
+      );
     };
 
     return (
       <ToggleSwitch
         checked={accelerator !== "cpu"}
         onChange={handleChange}
+        disabled={isLoading}
         isUpdating={
           isUpdating("transcribe_accelerator") ||
           isUpdating("transcribe_gpu_device")

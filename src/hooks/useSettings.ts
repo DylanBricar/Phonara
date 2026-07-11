@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/settingsStore";
-import type { AppSettings as Settings, AudioDevice } from "@/bindings";
+import type { AudioDevice, TranscribeAcceleratorSetting } from "@/bindings";
+import type { Settings } from "../stores/settingsStoreTypes";
 
 interface UseSettingsReturn {
   settings: Settings | null;
@@ -15,6 +16,10 @@ interface UseSettingsReturn {
     key: K,
     value: Settings[K],
   ) => Promise<void>;
+  updateTranscribeAcceleration: (
+    accelerator: TranscribeAcceleratorSetting,
+    gpuDevice: number,
+  ) => Promise<boolean>;
   resetSetting: (key: keyof Settings) => Promise<void>;
   refreshSettings: () => Promise<void>;
   refreshAudioDevices: () => Promise<void>;
@@ -45,6 +50,7 @@ export const useSettings = (): UseSettingsReturn => {
       outputDevices: state.outputDevices,
       postProcessModelOptions: state.postProcessModelOptions,
       updateSetting: state.updateSetting,
+      updateTranscribeAcceleration: state.updateTranscribeAcceleration,
       resetSetting: state.resetSetting,
       refreshSettings: state.refreshSettings,
       refreshAudioDevices: state.refreshAudioDevices,
@@ -76,6 +82,7 @@ export const useSettings = (): UseSettingsReturn => {
     audioFeedbackEnabled: store.settings?.audio_feedback || false,
     postProcessModelOptions: store.postProcessModelOptions,
     updateSetting: store.updateSetting,
+    updateTranscribeAcceleration: store.updateTranscribeAcceleration,
     resetSetting: store.resetSetting,
     refreshSettings: store.refreshSettings,
     refreshAudioDevices: store.refreshAudioDevices,

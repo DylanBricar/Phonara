@@ -9,6 +9,9 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+permissions:
+  contents: read
+
 # Cancel earlier Release runs on the same ref when a newer push lands so the
 # release matrix doesn't queue up duplicates. Distinct group from Main Branch
 # Build so the two workflows run in parallel on push.
@@ -19,77 +22,146 @@ concurrency:
 jobs:
   verify-updater-signing:
     runs-on: ubuntu-latest
+    environment: release
     outputs:
       has-signing-key: ${{ steps.check-signing-key.outputs.has-signing-key }}
     steps:
       - name: Check updater signing key
         id: check-signing-key
         env:
+          RELEASE_REF: ${{ github.ref }}
           TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          EVENT_NAME: ${{ github.event_name }}
         run: |
+          if [[ "$RELEASE_REF" != "refs/heads/main" ]]; then
+            echo "::error::Releases may only be dispatched from the main branch."
+            exit 1
+          fi
           if [[ -z "${TAURI_SIGNING_PRIVATE_KEY_FOR_CHECK:-}" ]]; then
             echo "has-signing-key=false" >> "$GITHUB_OUTPUT"
-            if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
-              echo "::error::TAURI_SIGNING_PRIVATE_KEY is required for release builds because Phonara's updater expects signed artifacts and latest.json."
-              exit 1
-            fi
-            echo "::notice::TAURI_SIGNING_PRIVATE_KEY is not configured; skipping automatic release publishing for this push."
-            exit 0
+            echo "::error::TAURI_SIGNING_PRIVATE_KEY is required because Phonara's updater expects signed artifacts and latest.json."
+            exit 1
           fi
           echo "has-signing-key=true" >> "$GITHUB_OUTPUT"
+
+  release-quality:
+    if: needs.verify-updater-signing.outputs.has-signing-key == 'true'
+    needs: verify-updater-signing
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+
+      - name: Install native test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev libssl-dev libgtk-layer-shell-dev libvulkan-dev glslc spirv-headers
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate frontend
+        run: |
+          bun run check:translations
+          bun run check:secrets
+          bun run lint
+          bun run test:unit
+          bun run build
+          bun audit
+
+      - name: Run Playwright tests
+        run: |
+          bunx playwright install --with-deps chromium
+          bun run test:playwright
+
+      - name: Validate Rust
+        working-directory: src-tauri
+        run: |
+          cargo fmt -- --check
+          cargo clippy -- -D warnings
+          cargo test
+
+      - name: Audit Rust dependencies
+        uses: actions-rust-lang/audit@72c09e02f132669d52284a3323acdb503cfc1a24 # v1
+        with:
+          file: src-tauri/Cargo.lock
+          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
 
   create-release:
     if: needs.verify-updater-signing.outputs.has-signing-key == 'true'
     permissions:
+      # Required to create the draft release and its tag.
       contents: write
-    needs: verify-updater-signing
+    needs: [verify-updater-signing, release-quality]
     runs-on: ubuntu-latest
     outputs:
       release-id: ${{ steps.create-release.outputs.result }}
       version: ${{ steps.get-version.outputs.version }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Compute next version
         id: get-version
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           result-encoding: string
           script: |
-            const { data: releases } = await github.rest.repos.listReleases({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 100
-            });
-            const tags = releases
-              .map(r => r.tag_name)
-              .filter(t => /^v\d+\.\d+\.\d+$/.test(t))
-              .sort((a, b) => {
-                const pa = a.slice(1).split('.').map(Number);
-                const pb = b.slice(1).split('.').map(Number);
-                return pa[0] - pb[0] || pa[1] - pb[1] || pa[2] - pb[2];
-              });
-            let next;
-            if (tags.length === 0) {
-              next = '0.1.0';
-            } else {
-              const latest = tags[tags.length - 1].slice(1).split('.').map(Number);
-              latest[2] += 1;
-              next = latest.join('.');
+            const fs = require('fs');
+            const packageVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
+            if (!/^\d+\.\d+\.\d+$/.test(packageVersion)) {
+              throw new Error(`Invalid package version: ${packageVersion}`);
             }
+
+            const [releases, repositoryTags] = await Promise.all([
+              github.paginate(github.rest.repos.listReleases, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              }),
+              github.paginate(github.rest.repos.listTags, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100
+              })
+            ]);
+            const versions = [
+              packageVersion,
+              ...releases.map(release => release.tag_name.replace(/^v/, '')),
+              ...repositoryTags.map(tag => tag.name.replace(/^v/, ''))
+            ]
+              .filter(version => /^\d+\.\d+\.\d+$/.test(version))
+              .map(version => version.split('.').map(Number))
+              .sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+            const latest = versions.at(-1) || [0, 0, 0];
+            latest[2] += 1;
+            const next = latest.join('.');
             core.info(`Next version: ${next}`);
             core.setOutput('version', next);
             return next;
 
       - name: Generate changelog
         id: changelog
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          RELEASE_VERSION: ${{ steps.get-version.outputs.version }}
         with:
           result-encoding: string
           script: |
-            const version = '${{ steps.get-version.outputs.version }}';
+            const version = process.env.RELEASE_VERSION;
 
             // Find previous release tag
             const { data: releases } = await github.rest.repos.listReleases({
@@ -106,30 +178,33 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 base: prevTag,
-                head: 'main'
+                head: context.sha
               });
               commits = comparison.commits.map(c => c.commit.message.split('\n')[0]);
             }
 
             // Group by type
             const groups = {
-              '🚀 Features': [],
-              '🐛 Bug Fixes': [],
-              '🔧 Improvements': [],
-              '📦 CI / Build': [],
-              '📝 Other': []
+              'Features': [],
+              'Bug Fixes': [],
+              'Improvements': [],
+              'CI / Build': [],
+              'Other': []
             };
 
             for (const msg of commits) {
-              if (msg.startsWith('feat')) groups['🚀 Features'].push(msg);
-              else if (msg.startsWith('fix')) groups['🐛 Bug Fixes'].push(msg);
-              else if (msg.startsWith('refactor') || msg.startsWith('perf') || msg.startsWith('chore')) groups['🔧 Improvements'].push(msg);
-              else if (msg.startsWith('ci') || msg.startsWith('build')) groups['📦 CI / Build'].push(msg);
-              else if (!msg.startsWith('merge') && !msg.startsWith('Merge')) groups['📝 Other'].push(msg);
+              if (msg.startsWith('feat')) groups['Features'].push(msg);
+              else if (msg.startsWith('fix')) groups['Bug Fixes'].push(msg);
+              else if (msg.startsWith('refactor') || msg.startsWith('perf') || msg.startsWith('chore')) groups['Improvements'].push(msg);
+              else if (msg.startsWith('ci') || msg.startsWith('build')) groups['CI / Build'].push(msg);
+              else if (!msg.startsWith('merge') && !msg.startsWith('Merge')) groups['Other'].push(msg);
             }
 
             // Build markdown
             let body = `## What's new in v${version}\n\n`;
+            if (version === '0.9.2') {
+              body += '> Existing Phonara v0.7.x installations use the former Parler signing key, whose private key is unavailable to this fork. Install v0.9.2 manually once; automatic updates work again from this release onward.\n\n';
+            }
             for (const [title, items] of Object.entries(groups)) {
               if (items.length === 0) continue;
               body += `### ${title}\n`;
@@ -141,14 +216,14 @@ jobs:
             }
 
             if (prevTag) {
-              body += `**Full Changelog**: https://github.com/${{ github.repository }}/compare/${prevTag}...v${version}\n`;
+              body += `**Full Changelog**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/compare/${prevTag}...v${version}\n`;
             }
 
             return body;
 
       - name: Create Draft Release
         id: create-release
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           RELEASE_VERSION: ${{ steps.get-version.outputs.version }}
           RELEASE_BODY: ${{ steps.changelog.outputs.result }}
@@ -163,12 +238,14 @@ jobs:
               name: `v${version}`,
               body: body,
               draft: true,
-              prerelease: false
+              prerelease: false,
+              target_commitish: context.sha
             })
             return data.id
 
   publish-tauri:
     permissions:
+      # Tauri uploads signed updater assets to the draft release.
       contents: write
     needs: create-release
     strategy:
@@ -216,16 +293,32 @@ jobs:
       upload-artifacts: false
       release-id: ${{ needs.create-release.outputs.release-id }}
       version: ${{ needs.create-release.outputs.version }}
-    secrets: inherit
+      ref: ${{ github.sha }}
+      no-cache: true
+      build-environment: release
+    secrets:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
   publish-updater-manifest:
     permissions:
+      # Required to upload latest.json to the draft release.
       contents: write
     needs: [create-release, publish-tauri]
     runs-on: ubuntu-latest
     steps:
       - name: Build and upload latest.json
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           RELEASE_ID: ${{ needs.create-release.outputs.release-id }}
           RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
@@ -319,17 +412,24 @@ jobs:
 
   publish-release:
     permissions:
+      # Required to publish the fully validated draft release.
       contents: write
     needs: [create-release, publish-tauri, publish-updater-manifest]
     runs-on: ubuntu-latest
     steps:
       - name: Publish Release
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          RELEASE_ID: ${{ needs.create-release.outputs.release-id }}
         with:
           script: |
+            const releaseId = Number(process.env.RELEASE_ID);
+            if (!Number.isSafeInteger(releaseId) || releaseId <= 0) {
+              throw new Error('Invalid release ID');
+            }
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              release_id: ${{ needs.create-release.outputs.release-id }},
+              release_id: releaseId,
               draft: false
             })
