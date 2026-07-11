@@ -588,6 +588,20 @@
           }
         }
       },
+      "cli": {
+        "account": {
+          "title": "Compte connecté",
+          "description": "Utilise l'authentification du CLI officiel enregistrée sur cet appareil. Phonara ne lit et ne stocke jamais le jeton du compte. Le texte à traiter est envoyé au fournisseur sélectionné."
+        },
+        "signIn": "Se connecter",
+        "install": "Installer le CLI",
+        "refresh": "Actualiser l'état",
+        "connected": "Compte connecté",
+        "statusError": "Impossible de vérifier l'état du CLI",
+        "authError": "Échec de la connexion au compte",
+        "modelDescription": "Identifiant de modèle facultatif. Laissez vide pour utiliser le modèle par défaut du CLI.",
+        "modelPlaceholder": "Modèle par défaut du CLI"
+      },
       "prompts": {
         "title": "Prompt",
         "selectedPrompt": {

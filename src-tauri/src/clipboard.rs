@@ -699,11 +699,19 @@ fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), Str
     Ok(())
 }
 
-fn should_send_auto_submit(auto_submit: bool, paste_method: PasteMethod) -> bool {
-    auto_submit && paste_method != PasteMethod::None
+fn should_send_auto_submit(
+    auto_submit: bool,
+    allow_auto_submit: bool,
+    paste_method: PasteMethod,
+) -> bool {
+    auto_submit && allow_auto_submit && paste_method != PasteMethod::None
 }
 
-pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
+pub fn paste_with_auto_submit(
+    text: String,
+    app_handle: AppHandle,
+    allow_auto_submit: bool,
+) -> Result<(), String> {
     let settings = get_settings(&app_handle);
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;
@@ -775,7 +783,9 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     };
 
     // Don't submit when the paste itself failed — there is nothing to submit.
-    if clipboard_paste_error.is_none() && should_send_auto_submit(auto_submit, paste_method) {
+    if clipboard_paste_error.is_none()
+        && should_send_auto_submit(auto_submit, allow_auto_submit, paste_method)
+    {
         std::thread::sleep(Duration::from_millis(50));
         send_return_key(&mut enigo, submit_key)?;
     }
@@ -801,20 +811,29 @@ mod tests {
 
     #[test]
     fn auto_submit_requires_setting_enabled() {
-        assert!(!should_send_auto_submit(false, PasteMethod::CtrlV));
-        assert!(!should_send_auto_submit(false, PasteMethod::Direct));
+        assert!(!should_send_auto_submit(false, true, PasteMethod::CtrlV));
+        assert!(!should_send_auto_submit(false, true, PasteMethod::Direct));
+    }
+
+    #[test]
+    fn auto_submit_can_be_blocked_for_untrusted_output() {
+        assert!(!should_send_auto_submit(true, false, PasteMethod::CtrlV));
     }
 
     #[test]
     fn auto_submit_skips_none_paste_method() {
-        assert!(!should_send_auto_submit(true, PasteMethod::None));
+        assert!(!should_send_auto_submit(true, true, PasteMethod::None));
     }
 
     #[test]
     fn auto_submit_runs_for_active_paste_methods() {
-        assert!(should_send_auto_submit(true, PasteMethod::CtrlV));
-        assert!(should_send_auto_submit(true, PasteMethod::Direct));
-        assert!(should_send_auto_submit(true, PasteMethod::CtrlShiftV));
-        assert!(should_send_auto_submit(true, PasteMethod::ShiftInsert));
+        assert!(should_send_auto_submit(true, true, PasteMethod::CtrlV));
+        assert!(should_send_auto_submit(true, true, PasteMethod::Direct));
+        assert!(should_send_auto_submit(true, true, PasteMethod::CtrlShiftV));
+        assert!(should_send_auto_submit(
+            true,
+            true,
+            PasteMethod::ShiftInsert
+        ));
     }
 }

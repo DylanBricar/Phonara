@@ -47,13 +47,14 @@ rusqlite_migration = "2.3"
 tauri-plugin-fs = "~2.4.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tempfile = "3"
 cpal = "0.16.0"
 anyhow = "1.0.95"
 rubato = "0.16.2"
 hound = "3.5.1"
 log = "0.4.25"
 env_filter = "0.1.0"
-tokio = { version = "1.43.0", features = ["time", "rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.43.0", features = ["time", "rt", "rt-multi-thread", "macros", "process", "io-util", "sync"] }
 vad-rs = { git = "https://github.com/cjpais/vad-rs", default-features = false }
 enigo = "0.6.1"
 arboard = "3.6"
@@ -102,6 +103,9 @@ windows = { version = "0.61.3", features = [
   "Win32_System_Com_StructuredStorage",
   "Win32_System_Variant",
   "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_TextServices",
@@ -150,9 +154,6 @@ tauri = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-runtime-wry = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
-
-[dev-dependencies]
-tempfile = "3"
 
 [profile.release]
 lto = "thin"

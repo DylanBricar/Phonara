@@ -588,6 +588,20 @@
           }
         }
       },
+      "cli": {
+        "account": {
+          "title": "Connected account",
+          "description": "Uses the official CLI authentication stored on this device. Phonara never reads or stores the account token. Post-processing text is sent to the selected provider."
+        },
+        "signIn": "Sign in",
+        "install": "Install CLI",
+        "refresh": "Refresh status",
+        "connected": "Account connected",
+        "statusError": "Could not check CLI status",
+        "authError": "Account connection failed",
+        "modelDescription": "Optional model identifier. Leave empty to use the CLI default.",
+        "modelPlaceholder": "Use CLI default"
+      },
       "prompts": {
         "title": "प्रम्प्ट",
         "selectedPrompt": {

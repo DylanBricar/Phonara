@@ -163,6 +163,13 @@ pub struct PostProcessProvider {
     pub requires_api_key: bool,
 }
 
+pub const CODEX_CLI_PROVIDER_ID: &str = "codex_cli";
+pub const CLAUDE_CLI_PROVIDER_ID: &str = "claude_cli";
+
+pub fn is_cli_post_process_provider(provider_id: &str) -> bool {
+    matches!(provider_id, CODEX_CLI_PROVIDER_ID | CLAUDE_CLI_PROVIDER_ID)
+}
+
 fn default_requires_api_key() -> bool {
     true
 }
@@ -686,6 +693,24 @@ fn default_post_process_provider_id() -> String {
 
 fn default_post_process_providers() -> Vec<PostProcessProvider> {
     let mut providers = vec![
+        PostProcessProvider {
+            id: CODEX_CLI_PROVIDER_ID.to_string(),
+            label: "ChatGPT via Codex CLI".to_string(),
+            base_url: "cli://codex".to_string(),
+            allow_base_url_edit: false,
+            models_endpoint: None,
+            supports_structured_output: true,
+            requires_api_key: false,
+        },
+        PostProcessProvider {
+            id: CLAUDE_CLI_PROVIDER_ID.to_string(),
+            label: "Claude via Claude Code".to_string(),
+            base_url: "cli://claude".to_string(),
+            allow_base_url_edit: false,
+            models_endpoint: None,
+            supports_structured_output: false,
+            requires_api_key: false,
+        },
         PostProcessProvider {
             id: "openai".to_string(),
             label: "OpenAI".to_string(),
@@ -1928,6 +1953,46 @@ mod tests {
             TranscribeAcceleratorSetting::Gpu
         );
         assert_eq!(settings.transcribe_gpu_device, 2);
+    }
+
+    #[test]
+    fn cli_providers_are_added_idempotently_without_credentials() {
+        let mut settings = get_default_settings();
+        settings
+            .post_process_providers
+            .retain(|provider| !is_cli_post_process_provider(&provider.id));
+        settings.post_process_api_keys.remove(CODEX_CLI_PROVIDER_ID);
+        settings
+            .post_process_api_keys
+            .remove(CLAUDE_CLI_PROVIDER_ID);
+        settings.post_process_models.remove(CODEX_CLI_PROVIDER_ID);
+        settings.post_process_models.remove(CLAUDE_CLI_PROVIDER_ID);
+
+        assert!(ensure_post_process_defaults(&mut settings));
+        for provider_id in [CODEX_CLI_PROVIDER_ID, CLAUDE_CLI_PROVIDER_ID] {
+            let providers = settings
+                .post_process_providers
+                .iter()
+                .filter(|provider| provider.id == provider_id)
+                .collect::<Vec<_>>();
+            assert_eq!(providers.len(), 1);
+            assert!(!providers[0].requires_api_key);
+            assert_eq!(
+                settings
+                    .post_process_api_keys
+                    .get(provider_id)
+                    .map(String::as_str),
+                Some("")
+            );
+            assert_eq!(
+                settings
+                    .post_process_models
+                    .get(provider_id)
+                    .map(String::as_str),
+                Some("")
+            );
+        }
+        assert!(!ensure_post_process_defaults(&mut settings));
     }
 
     #[test]

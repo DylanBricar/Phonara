@@ -23,9 +23,9 @@ use tauri_plugin_autostart::ManagerExt;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::settings::APPLE_INTELLIGENCE_DEFAULT_MODEL_ID;
 use crate::settings::{
-    self, get_settings, AutoSubmitKey, ClipboardHandling, KeyboardImplementation, LLMPrompt,
-    OverlayPosition, OverlayStyle, PasteMethod, ShortcutBinding, SoundTheme, TypingTool,
-    APPLE_INTELLIGENCE_PROVIDER_ID,
+    self, get_settings, is_cli_post_process_provider, AutoSubmitKey, ClipboardHandling,
+    KeyboardImplementation, LLMPrompt, OverlayPosition, OverlayStyle, PasteMethod, ShortcutBinding,
+    SoundTheme, TypingTool, APPLE_INTELLIGENCE_PROVIDER_ID,
 };
 use crate::tray;
 
@@ -1146,6 +1146,13 @@ pub async fn fetch_post_process_models(
         }
     }
 
+    if is_cli_post_process_provider(&provider.id) {
+        return Err(format!(
+            "{} does not expose model discovery; enter an optional model identifier manually.",
+            provider.label
+        ));
+    }
+
     // Get API key
     let api_key = settings
         .post_process_api_keys
@@ -1154,7 +1161,7 @@ pub async fn fetch_post_process_models(
         .unwrap_or_default();
 
     // Skip fetching if no API key for providers that typically need one
-    if api_key.trim().is_empty() && provider.id != "custom" {
+    if api_key.trim().is_empty() && provider.requires_api_key {
         return Err(format!(
             "API key is required for {}. Please add an API key to list available models.",
             provider.label

@@ -8,7 +8,8 @@ use crate::managers::model::ModelManager;
 use crate::managers::transcription::StreamWorkKind;
 use crate::managers::transcription::TranscriptionManager;
 use crate::settings::{
-    get_settings, AppSettings, OverlayStyle, PostProcessAction, APPLE_INTELLIGENCE_PROVIDER_ID,
+    get_settings, is_cli_post_process_provider, AppSettings, OverlayStyle, PostProcessAction,
+    APPLE_INTELLIGENCE_PROVIDER_ID,
 };
 use crate::shortcut;
 use crate::tray::{change_tray_icon, TrayIconState};
@@ -125,7 +126,7 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
         .cloned()
         .unwrap_or_default();
 
-    if model.trim().is_empty() {
+    if model.trim().is_empty() && !is_cli_post_process_provider(&provider.id) {
         debug!(
             "Post-processing skipped because provider '{}' has no model configured",
             provider.id
@@ -159,6 +160,34 @@ async fn post_process_transcription(settings: &AppSettings, transcription: &str)
     if prompt.trim().is_empty() {
         debug!("Post-processing skipped because the selected prompt is empty");
         return None;
+    }
+
+    if is_cli_post_process_provider(&provider.id) {
+        return match crate::local_llm_cli::process_text(
+            &provider.id,
+            &model,
+            &prompt,
+            transcription,
+        )
+        .await
+        {
+            Ok(content) => {
+                let content = strip_invisible_chars(&content);
+                debug!(
+                    "CLI post-processing succeeded for provider '{}'. Output length: {} chars",
+                    provider.id,
+                    content.len()
+                );
+                Some(content)
+            }
+            Err(error) => {
+                error!(
+                    "CLI post-processing failed for provider '{}': {}. Falling back to original transcription.",
+                    provider.id, error
+                );
+                None
+            }
+        };
     }
 
     debug!(
@@ -434,6 +463,33 @@ async fn process_action(
         }
     }
 
+    if is_cli_post_process_provider(&provider.id) {
+        return match crate::local_llm_cli::process_text(&provider.id, &model, prompt, transcription)
+            .await
+        {
+            Ok(content) if !content.trim().is_empty() => {
+                let content = strip_invisible_chars(&content);
+                debug!(
+                    "CLI action processing succeeded for provider '{}'. Output length: {} chars",
+                    provider.id,
+                    content.len()
+                );
+                Some(content)
+            }
+            Ok(_) => {
+                debug!("CLI action processing returned empty output");
+                None
+            }
+            Err(error) => {
+                error!(
+                    "CLI action processing failed for provider '{}': {}",
+                    provider.id, error
+                );
+                None
+            }
+        };
+    }
+
     if model.trim().is_empty() {
         debug!(
             "Action processing skipped: no model configured for provider '{}'",
@@ -552,6 +608,7 @@ pub(crate) struct ProcessedTranscription {
     pub final_text: String,
     pub post_processed_text: Option<String>,
     pub post_process_prompt: Option<String>,
+    pub allow_auto_submit: bool,
 }
 
 /// Resolve the persisted language *intent* into the language the currently-loaded
@@ -584,6 +641,7 @@ pub(crate) async fn process_transcription_output(
     let mut final_text = transcription.to_string();
     let mut post_processed_text: Option<String> = None;
     let mut post_process_prompt: Option<String> = None;
+    let mut allow_auto_submit = true;
 
     // Resolve the language the transcription actually ran in (the persisted
     // intent coerced against the loaded model's capabilities) so OpenCC keys off
@@ -596,9 +654,13 @@ pub(crate) async fn process_transcription_output(
     }
 
     if post_process {
+        let post_process_uses_cli = settings
+            .active_post_process_provider()
+            .is_some_and(|provider| is_cli_post_process_provider(&provider.id));
         if let Some(processed_text) = post_process_transcription(&settings, &final_text).await {
             post_processed_text = Some(processed_text.clone());
             final_text = processed_text;
+            allow_auto_submit = !post_process_uses_cli;
 
             if let Some(prompt_id) = &settings.post_process_selected_prompt_id {
                 if let Some(prompt) = settings
@@ -618,6 +680,7 @@ pub(crate) async fn process_transcription_output(
         final_text,
         post_processed_text,
         post_process_prompt,
+        allow_auto_submit,
     }
 }
 
@@ -926,6 +989,19 @@ impl ShortcutAction for TranscribeAction {
                                     .cloned()
                             });
                             let post_process_requested = post_process || selected_action.is_some();
+                            let action_uses_cli = selected_action.as_ref().is_some_and(|action| {
+                                action
+                                    .provider_id
+                                    .as_deref()
+                                    .filter(|provider_id| !provider_id.is_empty())
+                                    .and_then(|provider_id| {
+                                        settings.post_process_provider(provider_id)
+                                    })
+                                    .or_else(|| settings.active_post_process_provider())
+                                    .is_some_and(|provider| {
+                                        is_cli_post_process_provider(&provider.id)
+                                    })
+                            });
 
                             if post_process_requested {
                                 if use_streaming_overlay {
@@ -955,6 +1031,7 @@ impl ShortcutAction for TranscribeAction {
                                                 final_text: result.clone(),
                                                 post_processed_text: Some(result),
                                                 post_process_prompt: Some(action.prompt),
+                                                allow_auto_submit: !action_uses_cli,
                                             },
                                             None => base,
                                         }
@@ -1003,6 +1080,7 @@ impl ShortcutAction for TranscribeAction {
                             } else {
                                 let ah_clone = ah.clone();
                                 let paste_time = Instant::now();
+                                let allow_auto_submit = processed.allow_auto_submit;
                                 let final_text = processed.final_text;
                                 let rm_for_paste = Arc::clone(&rm);
                                 ah.run_on_main_thread(move || {
@@ -1013,7 +1091,11 @@ impl ShortcutAction for TranscribeAction {
                                         return;
                                     }
 
-                                    match utils::paste(final_text, ah_clone.clone()) {
+                                    match utils::paste_with_auto_submit(
+                                        final_text,
+                                        ah_clone.clone(),
+                                        allow_auto_submit,
+                                    ) {
                                         Ok(()) => debug!(
                                             "Text pasted successfully in {:?}",
                                             paste_time.elapsed()

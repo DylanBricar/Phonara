@@ -248,6 +248,22 @@ async fetchPostProcessModels(providerId: string) : Promise<Result<string[], stri
     else return { status: "error", error: e  as any };
 }
 },
+async getCliProviderStatus(providerId: string) : Promise<Result<CliProviderStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_cli_provider_status", { providerId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async connectCliProvider(providerId: string) : Promise<Result<CliProviderStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("connect_cli_provider", { providerId }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async addPostProcessPrompt(name: string, prompt: string) : Promise<Result<LLMPrompt, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("add_post_process_prompt", { name, prompt }) };
@@ -1175,6 +1191,7 @@ export type AutoSubmitKey = "enter" | "ctrl_enter" | "cmd_enter"
 export type AvailableAccelerators = { transcribe: string[]; ort: string[]; gpu_devices: GpuDeviceOption[] }
 export type BindingResponse = { success: boolean; binding: ShortcutBinding | null; error: string | null }
 export type ClipboardHandling = "dont_modify" | "copy_to_clipboard"
+export type CliProviderStatus = { provider_id: string; installed: boolean; authenticated: boolean; version: string | null; error: string | null }
 export type CustomSounds = { start: boolean; stop: boolean }
 export type EngineType =
 /**

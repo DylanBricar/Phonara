@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ExternalLink, RefreshCcw } from "lucide-react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { CircleCheck, ExternalLink, LogIn, RefreshCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { commands } from "@/bindings";
+import { commands, type CliProviderStatus } from "@/bindings";
+import { toast } from "sonner";
 import { useSettings } from "@/hooks/useSettings";
 import {
   Dropdown,
@@ -37,6 +44,12 @@ export const PostProcessingSettings: React.FC = () => {
   const [baseUrlInput, setBaseUrlInput] = useState("");
   const [modelInput, setModelInput] = useState("");
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [cliStatus, setCliStatus] = useState<CliProviderStatus | null>(null);
+  const [isCheckingCli, setIsCheckingCli] = useState(false);
+  const [isChangingCliAuth, setIsChangingCliAuth] = useState(false);
+  const cliStatusRequestRef = useRef(0);
+  const selectedProviderIdRef = useRef(selectedProviderId);
+  selectedProviderIdRef.current = selectedProviderId;
   const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
   const [promptName, setPromptName] = useState("");
   const [promptText, setPromptText] = useState("");
@@ -103,6 +116,14 @@ export const PostProcessingSettings: React.FC = () => {
     }
   }, [selectedProviderId, t]);
 
+  const isCliProvider =
+    selectedProviderId === "codex_cli" || selectedProviderId === "claude_cli";
+  const cliInstallUrl =
+    selectedProviderId === "codex_cli"
+      ? "https://developers.openai.com/codex/cli/"
+      : "https://docs.anthropic.com/en/docs/claude-code/getting-started";
+  const requiresApiKey = selectedProvider?.requires_api_key !== false;
+
   const activePrompt =
     prompts.find((prompt) => prompt.id === editingPromptId) ?? null;
 
@@ -117,6 +138,41 @@ export const PostProcessingSettings: React.FC = () => {
   useEffect(() => {
     setModelInput(currentModel);
   }, [currentModel, selectedProviderId]);
+
+  const refreshCliStatus = useCallback(async () => {
+    const requestId = ++cliStatusRequestRef.current;
+    if (!isCliProvider) {
+      setCliStatus(null);
+      return;
+    }
+    setCliStatus(null);
+    setIsCheckingCli(true);
+    try {
+      const result = await commands.getCliProviderStatus(selectedProviderId);
+      if (requestId !== cliStatusRequestRef.current) return;
+      if (result.status === "ok") {
+        setCliStatus(result.data);
+        if (result.data.error) {
+          toast.error(t("settings.postProcessing.cli.statusError"), {
+            description: result.data.error,
+          });
+        }
+      } else {
+        toast.error(t("settings.postProcessing.cli.statusError"), {
+          description: String(result.error),
+        });
+      }
+    } catch (error) {
+      if (requestId !== cliStatusRequestRef.current) return;
+      toast.error(t("settings.postProcessing.cli.statusError"), {
+        description: String(error),
+      });
+    } finally {
+      if (requestId === cliStatusRequestRef.current) {
+        setIsCheckingCli(false);
+      }
+    }
+  }, [isCliProvider, selectedProviderId, t]);
 
   useEffect(() => {
     if (!prompts.length) {
@@ -178,6 +234,35 @@ export const PostProcessingSettings: React.FC = () => {
       setIsFetchingModels(false);
     }
   }, [fetchPostProcessModels, selectedProviderId]);
+
+  const handleCliAuth = useCallback(async () => {
+    if (!isCliProvider) return;
+    const providerId = selectedProviderId;
+    setIsChangingCliAuth(true);
+    try {
+      const result = await commands.connectCliProvider(providerId);
+      if (result.status === "error") {
+        toast.error(t("settings.postProcessing.cli.authError"), {
+          description: String(result.error),
+        });
+        return;
+      }
+      if (selectedProviderIdRef.current === providerId) {
+        setCliStatus(result.data);
+      }
+      if (result.data.authenticated) {
+        toast.success(t("settings.postProcessing.cli.connected"));
+      } else {
+        toast.error(t("settings.postProcessing.cli.authError"));
+      }
+    } catch (error) {
+      toast.error(t("settings.postProcessing.cli.authError"), {
+        description: String(error),
+      });
+    } finally {
+      setIsChangingCliAuth(false);
+    }
+  }, [isCliProvider, selectedProviderId, t]);
 
   const handleModelSelect = useCallback(
     async (value: string) => {
@@ -294,7 +379,7 @@ export const PostProcessingSettings: React.FC = () => {
               </SettingContainer>
             )}
 
-            {!isAppleIntelligence && (
+            {requiresApiKey && (
               <SettingContainer
                 title={t("settings.postProcessing.api.apiKey.title")}
                 description={t(
@@ -335,14 +420,81 @@ export const PostProcessingSettings: React.FC = () => {
               </SettingContainer>
             )}
 
+            {isCliProvider && (
+              <SettingContainer
+                title={t("settings.postProcessing.cli.account.title")}
+                description={t(
+                  "settings.postProcessing.cli.account.description",
+                )}
+                descriptionMode="inline"
+                grouped={true}
+              >
+                <div className="flex items-center gap-2">
+                  {cliStatus !== null &&
+                  !cliStatus.installed &&
+                  !isCheckingCli ? (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => openUrl(cliInstallUrl)}
+                      className="inline-flex items-center gap-2"
+                    >
+                      <span>{t("settings.postProcessing.cli.install")}</span>
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleCliAuth}
+                      disabled={
+                        isCheckingCli ||
+                        isChangingCliAuth ||
+                        cliStatus === null ||
+                        cliStatus.authenticated
+                      }
+                      className="inline-flex items-center gap-2"
+                    >
+                      {cliStatus?.authenticated ? (
+                        <CircleCheck className="h-3.5 w-3.5 text-green-500" />
+                      ) : (
+                        <LogIn className="h-3.5 w-3.5" />
+                      )}
+                      <span>
+                        {t(
+                          cliStatus?.authenticated
+                            ? "settings.postProcessing.cli.connected"
+                            : "settings.postProcessing.cli.signIn",
+                        )}
+                      </span>
+                    </Button>
+                  )}
+                  <button
+                    onClick={refreshCliStatus}
+                    disabled={isCheckingCli || isChangingCliAuth}
+                    className="flex h-8 w-8 items-center justify-center rounded-md bg-mid-gray/10 transition-colors hover:bg-mid-gray/20 disabled:opacity-40"
+                    title={t("settings.postProcessing.cli.refresh")}
+                  >
+                    <RefreshCcw
+                      className={`h-3.5 w-3.5 ${isCheckingCli ? "animate-spin" : ""}`}
+                    />
+                  </button>
+                </div>
+              </SettingContainer>
+            )}
+
             <SettingContainer
               title={t("settings.postProcessing.api.model.title")}
               description={
                 isAppleIntelligence
                   ? t("settings.postProcessing.api.model.descriptionApple")
-                  : canEditBaseUrl
-                    ? t("settings.postProcessing.api.model.descriptionCustom")
-                    : t("settings.postProcessing.api.model.descriptionDefault")
+                  : isCliProvider
+                    ? t("settings.postProcessing.cli.modelDescription")
+                    : canEditBaseUrl
+                      ? t("settings.postProcessing.api.model.descriptionCustom")
+                      : t(
+                          "settings.postProcessing.api.model.descriptionDefault",
+                        )
               }
               descriptionMode="tooltip"
               grouped={true}
@@ -367,13 +519,15 @@ export const PostProcessingSettings: React.FC = () => {
                     placeholder={t(
                       isAppleIntelligence
                         ? "settings.postProcessing.api.model.placeholderApple"
-                        : "settings.postProcessing.api.model.placeholderNoOptions",
+                        : isCliProvider
+                          ? "settings.postProcessing.cli.modelPlaceholder"
+                          : "settings.postProcessing.api.model.placeholderNoOptions",
                     )}
                     variant="compact"
                     className="flex-1"
                   />
                 )}
-                {!isAppleIntelligence && !canEditBaseUrl && (
+                {!isAppleIntelligence && !isCliProvider && !canEditBaseUrl && (
                   <button
                     onClick={handleFetchModels}
                     disabled={isFetchingModels || !selectedProviderId}

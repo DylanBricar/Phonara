@@ -33,6 +33,9 @@ export const ProcessingModelsSection: React.FC = () => {
 
   const selectedProvider = providers.find((p) => p.id === selectedProviderId);
   const providerRequiresApiKey = selectedProvider?.requires_api_key !== false;
+  const providerSupportsModelDiscovery = !["codex_cli", "claude_cli"].includes(
+    selectedProviderId,
+  );
   const availableModels = postProcessModelOptions[selectedProviderId] || [];
   const modelOptions = useMemo(
     () => availableModels.map((m) => ({ value: m, label: m })),
@@ -195,18 +198,20 @@ export const ProcessingModelsSection: React.FC = () => {
                       className="flex-1"
                     />
                   )}
-                  <button
-                    onClick={handleFetchModels}
-                    disabled={
-                      isFetching || (providerRequiresApiKey && !apiKey.trim())
-                    }
-                    className="flex items-center justify-center h-8 w-8 rounded-md bg-mid-gray/10 hover:bg-mid-gray/20 transition-colors disabled:opacity-40"
-                    title={t("settings.models.processingModels.fetchModels")}
-                  >
-                    <RefreshCcw
-                      className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`}
-                    />
-                  </button>
+                  {providerSupportsModelDiscovery && (
+                    <button
+                      onClick={handleFetchModels}
+                      disabled={
+                        isFetching || (providerRequiresApiKey && !apiKey.trim())
+                      }
+                      className="flex items-center justify-center h-8 w-8 rounded-md bg-mid-gray/10 hover:bg-mid-gray/20 transition-colors disabled:opacity-40"
+                      title={t("settings.models.processingModels.fetchModels")}
+                    >
+                      <RefreshCcw
+                        className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`}
+                      />
+                    </button>
+                  )}
                 </div>
               </div>
             </>
