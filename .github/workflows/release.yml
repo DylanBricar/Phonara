@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - ".github/**"
   workflow_dispatch:
 
 env:
@@ -331,6 +333,8 @@ jobs:
 
             const releaseId = Number(process.env.RELEASE_ID);
             const version = process.env.RELEASE_VERSION;
+            const tag = `v${version}`;
+            const downloadBase = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${encodeURIComponent(tag)}`;
             const { data: release } = await github.rest.repos.getRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -380,7 +384,9 @@ jobs:
             for (const [target, { asset, signature }] of Object.entries(platformAssets)) {
               platforms[target] = {
                 signature: await readSignature(signature),
-                url: asset.browser_download_url
+                // Draft asset URLs contain an ephemeral /untagged-.../ segment
+                // that returns 404 as soon as the release is published.
+                url: `${downloadBase}/${encodeURIComponent(asset.name)}`
               };
             }
 
@@ -435,4 +441,83 @@ jobs:
               repo: context.repo.repo,
               release_id: releaseId,
               draft: false
-            })
+            });
+
+  verify-published-updater:
+    permissions:
+      contents: read
+    needs: [create-release, publish-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify published updater manifest and downloads
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
+        with:
+          script: |
+            const version = process.env.RELEASE_VERSION;
+            if (!/^\d+\.\d+\.\d+$/.test(version)) {
+              throw new Error(`Invalid release version: ${version}`);
+            }
+
+            const tag = `v${version}`;
+            const downloadBase = `https://github.com/${context.repo.owner}/${context.repo.repo}/releases/download/${encodeURIComponent(tag)}`;
+            const manifestUrl = `${downloadBase}/latest.json`;
+            const expectedTargets = [
+              'darwin-aarch64',
+              'darwin-x86_64',
+              'linux-aarch64',
+              'linux-x86_64',
+              'windows-x86_64'
+            ];
+
+            const fetchPublished = async (url, init = {}) => {
+              let lastStatus = 'request failed';
+              for (let attempt = 1; attempt <= 6; attempt += 1) {
+                try {
+                  const response = await fetch(url, { redirect: 'follow', ...init });
+                  if (response.ok) {
+                    return response;
+                  }
+                  lastStatus = `${response.status} ${response.statusText}`;
+                  await response.body?.cancel();
+                } catch (error) {
+                  lastStatus = error instanceof Error ? error.message : String(error);
+                }
+                await new Promise((resolve) => setTimeout(resolve, attempt * 5000));
+              }
+              throw new Error(`Published updater URL is unavailable (${lastStatus}): ${url}`);
+            };
+
+            const manifestResponse = await fetchPublished(manifestUrl);
+            const manifest = await manifestResponse.json();
+            if (manifest.version !== version) {
+              throw new Error(`Updater manifest version ${manifest.version} does not match ${version}`);
+            }
+
+            const targets = Object.keys(manifest.platforms || {}).sort();
+            if (JSON.stringify(targets) !== JSON.stringify([...expectedTargets].sort())) {
+              throw new Error(`Unexpected updater targets: ${targets.join(', ')}`);
+            }
+
+            for (const target of expectedTargets) {
+              const entry = manifest.platforms[target];
+              if (typeof entry.signature !== 'string' || entry.signature.trim() === '') {
+                throw new Error(`Missing updater signature for ${target}`);
+              }
+              if (typeof entry.url !== 'string' || !entry.url.startsWith(`${downloadBase}/`)) {
+                throw new Error(`Non-canonical updater URL for ${target}: ${entry.url}`);
+              }
+              if (entry.url.includes('/untagged-')) {
+                throw new Error(`Draft updater URL leaked for ${target}: ${entry.url}`);
+              }
+              const signatureResponse = await fetchPublished(`${entry.url}.sig`);
+              const publishedSignature = (await signatureResponse.text()).trim();
+              if (publishedSignature !== entry.signature.trim()) {
+                throw new Error(`Updater signature asset differs from the manifest for ${target}`);
+              }
+              const assetResponse = await fetchPublished(entry.url, {
+                headers: { Range: 'bytes=0-0' }
+              });
+              await assetResponse.body?.cancel();
+            }
