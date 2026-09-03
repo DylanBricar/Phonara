@@ -756,7 +756,9 @@ jobs:
             # AppImage integration tools read the root desktop entry. appimagetool
             # adds X-AppImage-Version there, not to the source copy under usr/share.
             # The root entry may be a symlink, so follow links when locating it.
-            "$APPIMAGE_PATH" --appimage-extract '*.desktop' >/dev/null
+            # Extract the complete image so a root desktop-entry symlink can be
+            # resolved to its target under usr/share/applications.
+            "$APPIMAGE_PATH" --appimage-extract >/dev/null
             DESKTOP_FILE="$(find -L squashfs-root -maxdepth 1 -name '*.desktop' -print -quit)"
             if [ -z "$DESKTOP_FILE" ] || [ ! -f "$DESKTOP_FILE" ]; then
               echo "ERROR: AppImage desktop metadata is missing" >&2
@@ -930,10 +932,12 @@ jobs:
           smoke_binary() {
             local root="$1"
             local label="$2"
+            local vulkan_icd
+            vulkan_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit 2>/dev/null || true)"
             # Run under a virtual X server: the app initializes GTK on startup even
             # on the headless --list-devices path, which fails without a display.
-            # An AppImage audit supplies Mesa's software ICD so GPU registration
-            # is deterministic even on a runner without physical graphics.
+            # Prefer Mesa's software ICD so GPU registration is deterministic even
+            # on a runner without physical graphics.
             if [ -n "$vulkan_icd" ]; then
               export VK_ICD_FILENAMES="$vulkan_icd"
             fi
