@@ -929,15 +929,13 @@ jobs:
           } else {
             $bundleBase = Join-Path $base (Join-Path $profile "bundle")
           }
-          $auditArguments = @(
-            "-BundleBase", $bundleBase,
-            "-StagingDir", "src-tauri/transcribe-libs",
-            "-Target", $target
-          )
-          if ($env:ORT_PREFER_DYNAMIC_LINK -eq "1") {
-            $auditArguments += "-DynamicOrt"
+          $auditParameters = @{
+            BundleBase = $bundleBase
+            StagingDir = "src-tauri/transcribe-libs"
+            Target = $target
+            DynamicOrt = ($env:ORT_PREFER_DYNAMIC_LINK -eq "1")
           }
-          & scripts/ci/audit-windows-package.ps1 @auditArguments
+          & scripts/ci/audit-windows-package.ps1 @auditParameters
 
       - name: Upload artifacts (Windows)
         if: inputs.upload-artifacts && contains(inputs.platform, 'windows')

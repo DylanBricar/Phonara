@@ -214,9 +214,19 @@ chmod +x squashfs-root/AppRun
       join(repositoryRoot, ".github/workflows/release.yml"),
       "utf8",
     );
+    const windowsWorkflow = readFileSync(
+      join(repositoryRoot, ".github/workflows/build-windows.yml"),
+      "utf8",
+    );
+    const rustTestWorkflow = readFileSync(
+      join(repositoryRoot, ".github/workflows/test.yml"),
+      "utf8",
+    );
 
     expect(pullRequestWorkflow).toContain("no-cache: false");
     expect(releaseWorkflow).toContain("no-cache: true");
+    expect(windowsWorkflow).toContain("no-cache: ${{ inputs.create-release }}");
+    expect(rustTestWorkflow).toContain("  pull_request:\n\nconcurrency:");
 
     const sharedBuildWorkflow = readFileSync(
       join(repositoryRoot, ".github/workflows/build.yml"),
@@ -229,5 +239,10 @@ chmod +x squashfs-root/AppRun
     expect(sharedBuildWorkflow).toContain(
       "scripts/ci/audit-windows-package.ps1",
     );
+    expect(sharedBuildWorkflow).toContain("$auditParameters = @{");
+    expect(sharedBuildWorkflow).toContain(
+      "scripts/ci/audit-windows-package.ps1 @auditParameters",
+    );
+    expect(sharedBuildWorkflow).not.toContain("$auditArguments = @(");
   });
 });

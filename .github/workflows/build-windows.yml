@@ -33,7 +33,9 @@ jobs:
       upload-artifacts: true
       sign-binaries: false
       apple_signing: false
-      no-cache: true
+      # Keep publishable artifacts clean while allowing validation-only runs
+      # to reuse the Rust/Vulkan caches.
+      no-cache: ${{ inputs.create-release }}
 
   release:
     name: Publish Windows release

@@ -7,11 +7,10 @@ on:
       - "src-tauri/**"
       - "package.json"
       - ".github/workflows/test.yml"
+  # These jobs are required by branch protection. Always create their check
+  # runs for pull requests so documentation/CI-only changes cannot remain
+  # permanently blocked by a paths filter.
   pull_request:
-    paths:
-      - "src-tauri/**"
-      - "package.json"
-      - ".github/workflows/test.yml"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
