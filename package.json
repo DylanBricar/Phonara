@@ -19,6 +19,7 @@
     "format:backend": "cd src-tauri && cargo fmt",
     "test": "bun run test:unit && bun run test:playwright",
     "test:unit": "bun test tests/unit --coverage --coverage-reporter=text",
+    "test:packaging": "bun test tests/unit/packagingScripts.test.ts",
     "test:playwright": "playwright test",
     "test:playwright:ui": "playwright test --ui",
     "quality:check": "bun run check:translations && bun run check:secrets && bun run check:model-languages && bun run lint && bunx tsc --noEmit --project tsconfig.json && bun run test:unit && bun run build && bun run test:playwright && bun audit && bun run format:check",

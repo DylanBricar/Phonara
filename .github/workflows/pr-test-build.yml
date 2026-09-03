@@ -59,7 +59,9 @@ jobs:
       apple_signing: false
       asset-prefix: "phonara-pr-${{ inputs.pr_number }}"
       upload-artifacts: true
-      no-cache: true
+      # PR test artifacts are unsigned and disposable, so reuse the Rust cache.
+      # Manual releases keep no-cache: true for clean artifact provenance.
+      no-cache: false
       is-debug-build: ${{ contains(matrix.args, '--debug') }}
       ref: ${{ format('refs/pull/{0}/merge', inputs.pr_number) }}
 

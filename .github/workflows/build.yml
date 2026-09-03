@@ -755,23 +755,7 @@ jobs:
             echo "No AppImage produced by this Linux build; skipping metadata verification"
             exit 0
           fi
-          APPIMAGE_PATH="$(readlink -f "$APPIMAGE_PATH")"
-          WORKDIR="$(mktemp -d)"
-          trap 'rm -rf "$WORKDIR"' EXIT
-          (
-            cd "$WORKDIR"
-            "$APPIMAGE_PATH" --appimage-extract >/dev/null
-            if [ ! -x squashfs-root/AppRun ]; then
-              echo "ERROR: AppImage AppRun is missing or not executable" >&2
-              exit 1
-            fi
-            VERSION_OUTPUT="$(squashfs-root/AppRun --version)"
-            if [ "$VERSION_OUTPUT" != "phonara ${EXPECTED_VERSION}" ]; then
-              echo "ERROR: AppImage reports '${VERSION_OUTPUT}', expected 'phonara ${EXPECTED_VERSION}'" >&2
-              exit 1
-            fi
-            echo "AppImage reports the expected version: ${EXPECTED_VERSION}"
-          )
+          bash scripts/ci/verify-appimage-version.sh "$APPIMAGE_PATH" "$EXPECTED_VERSION"
 
       - name: Verify macOS dylib bundling
         if: inputs.target == 'x86_64-apple-darwin'
@@ -890,137 +874,24 @@ jobs:
           BUILD_TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-
-          APP_BINARY="phonara"
           DYNAMIC_TRANSCRIBE=false
           if [ -n "${TRANSCRIBE_LIBDIR:-}" ] || [ -d "src-tauri/transcribe-libs" ]; then
             DYNAMIC_TRANSCRIBE=true
           fi
-
-          # The runtime smoke test launches the packaged app binary, which links
-          # GTK (via tao) even for the headless --list-devices path and therefore
-          # needs a display to start. CI runners are headless, so provide a virtual
-          # X server via xvfb-run.
           if ! command -v xvfb-run >/dev/null 2>&1; then
             sudo apt-get update
             sudo apt-get install -y xvfb
           fi
-
-          PROFILE="$BUILD_PROFILE"
-          BUNDLE_DIR="src-tauri/target/${PROFILE}/bundle"
-
-          require_pattern() {
-            local listing="$1"
-            local pattern="$2"
-            local label="$3"
-            if ! grep -Eq "$pattern" "$listing"; then
-              echo "ERROR: missing ${label} (${pattern}) in ${listing}" >&2
-              cat "$listing" >&2
-              exit 1
-            fi
-          }
-
-          require_path() {
-            local path="$1"
-            local label="$2"
-            if [ ! -e "$path" ]; then
-              echo "ERROR: missing ${label}: ${path}" >&2
-              find "$(dirname "$path")" -maxdepth 2 -type f 2>/dev/null >&2 || true
-              exit 1
-            fi
-          }
-
-          smoke_binary() {
-            local root="$1"
-            local label="$2"
-            local vulkan_icd
-            vulkan_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit 2>/dev/null || true)"
-            # Run under a virtual X server: the app initializes GTK on startup even
-            # on the headless --list-devices path, which fails without a display.
-            # Prefer Mesa's software ICD so GPU registration is deterministic even
-            # on a runner without physical graphics.
-            if [ -n "$vulkan_icd" ]; then
-              export VK_ICD_FILENAMES="$vulkan_icd"
-            fi
-            PHONARA_NO_GTK_LAYER_SHELL=1 \
-            LD_LIBRARY_PATH="${root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
-              xvfb-run -a "${root}/usr/bin/${APP_BINARY}" --list-devices >/tmp/phonara-package-smoke.log
-            echo "${label} --list-devices smoke passed"
-          }
-
-          require_dynamic_transcribe_listing() {
-            local listing="$1"
-            # Tauri packages external binaries either directly under usr/lib or
-            # under an application-specific subdirectory, and may retain SONAME
-            # suffixes. The runtime smoke below proves that the chosen layout is
-            # actually loadable by the packaged executable.
-            require_pattern "$listing" 'usr/lib(/Phonara)?/libtranscribe\.so(\.[0-9]+)*$' "transcribe runtime library"
-            require_pattern "$listing" 'usr/lib(/Phonara)?/libggml-cpu.*\.so(\.[0-9]+)*$' "ggml CPU backend module"
-          }
-
-          require_dynamic_transcribe_appimage() {
-            require_path "squashfs-root/usr/lib/libtranscribe.so" "AppImage transcribe runtime library"
-            if ! find "squashfs-root/usr/lib" -name 'libggml-cpu*.so*' | grep -q .; then
-              echo "ERROR: missing AppImage ggml CPU backend module" >&2
-              find "squashfs-root/usr/lib" -maxdepth 1 -type f >&2
-              exit 1
-            fi
-          }
-
-          if compgen -G "${BUNDLE_DIR}/deb/*.deb" > /dev/null; then
-            for deb in "${BUNDLE_DIR}"/deb/*.deb; do
-              echo "Auditing deb package: ${deb}"
-              listing="$(mktemp)"
-              dpkg-deb -c "$deb" > "$listing"
-              require_pattern "$listing" "usr/bin/${APP_BINARY}$" "app binary"
-              if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
-                require_dynamic_transcribe_listing "$listing"
-              fi
-              if [[ "$BUILD_PLATFORM" == *"ubuntu-22.04"* && "$BUILD_TARGET" == "x86_64-unknown-linux-gnu" ]]; then
-                require_pattern "$listing" 'usr/lib(/Phonara)?/libonnxruntime\.so(\.[0-9]+)*$' "ONNX Runtime library"
-              fi
-              root="$(mktemp -d)"
-              dpkg-deb -x "$deb" "$root"
-              smoke_binary "$root" "deb"
-              rm -rf "$root" "$listing"
-            done
+          if compgen -G "src-tauri/target/${BUILD_PROFILE}/bundle/rpm/*.rpm" >/dev/null && ! command -v rpm >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y rpm
           fi
 
-          if compgen -G "${BUNDLE_DIR}/rpm/*.rpm" > /dev/null; then
-            if ! command -v rpm >/dev/null 2>&1; then
-              sudo apt-get update
-              sudo apt-get install -y rpm
-            fi
-            for rpm_pkg in "${BUNDLE_DIR}"/rpm/*.rpm; do
-              echo "Auditing rpm package: ${rpm_pkg}"
-              listing="$(mktemp)"
-              rpm -qpl "$rpm_pkg" > "$listing"
-              require_pattern "$listing" "/usr/bin/${APP_BINARY}$" "app binary"
-              if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
-                require_dynamic_transcribe_listing "$listing"
-              fi
-              rm -f "$listing"
-            done
-          fi
-
-          if compgen -G "${BUNDLE_DIR}/appimage/*.AppImage" > /dev/null; then
-            for appimage in "${BUNDLE_DIR}"/appimage/*.AppImage; do
-              echo "Auditing AppImage package: ${appimage}"
-              workdir="$(mktemp -d)"
-              cp "$appimage" "${workdir}/Phonara.AppImage"
-              chmod +x "${workdir}/Phonara.AppImage"
-              (
-                cd "$workdir"
-                ./Phonara.AppImage --appimage-extract >/dev/null
-                require_path "squashfs-root/usr/bin/${APP_BINARY}" "AppImage app binary"
-                if [ "$DYNAMIC_TRANSCRIBE" = "true" ]; then
-                  require_dynamic_transcribe_appimage
-                fi
-                echo "AppImage package content audit passed"
-              )
-              rm -rf "$workdir"
-            done
-          fi
+          bash scripts/ci/audit-linux-package.sh bundles \
+            "src-tauri/target/${BUILD_PROFILE}/bundle" \
+            "$BUILD_PLATFORM" \
+            "$BUILD_TARGET" \
+            "$DYNAMIC_TRANSCRIBE"
 
       - name: Upload artifacts (Linux)
         if: inputs.upload-artifacts && contains(inputs.platform, 'ubuntu')
@@ -1058,99 +929,15 @@ jobs:
           } else {
             $bundleBase = Join-Path $base (Join-Path $profile "bundle")
           }
-
-          # VC++ runtime staging is mandatory for every Windows build.
-          $stagedDlls = Get-ChildItem "src-tauri/transcribe-libs" -Filter "*.dll" -ErrorAction SilentlyContinue
-          if (-not $stagedDlls) {
-            throw "src-tauri/transcribe-libs contains no DLLs; every Windows build must stage the app-local VC++ runtime (issue #1527)"
+          $auditArguments = @(
+            "-BundleBase", $bundleBase,
+            "-StagingDir", "src-tauri/transcribe-libs",
+            "-Target", $target
+          )
+          if ($env:ORT_PREFER_DYNAMIC_LINK -eq "1") {
+            $auditArguments += "-DynamicOrt"
           }
-
-          # x64 ships dynamic transcribe/ggml DLLs; ARM64 is otherwise static.
-          # ONNX Runtime is only required when this build configured dynamic ORT staging.
-          $requiredStaged = @("msvcp140.dll", "vcruntime140.dll")
-          if ($target -notlike "aarch64*") {
-            $requiredStaged += @("vcomp140.dll", "ggml-vulkan.dll")
-            if (-not ($stagedDlls | Where-Object { $_.Name -like "*transcribe*" })) {
-              throw "Staging is missing transcribe runtime DLLs"
-            }
-            if (-not ($stagedDlls | Where-Object { $_.Name -like "*ggml*" })) {
-              throw "Staging is missing ggml runtime DLLs"
-            }
-            if ($env:ORT_PREFER_DYNAMIC_LINK -eq "1") {
-              $requiredStaged += @("onnxruntime.dll")
-            }
-          }
-          foreach ($name in $requiredStaged) {
-            if (-not ($stagedDlls | Where-Object { $_.Name -ieq $name })) {
-              throw "Staging is missing $name"
-            }
-          }
-
-          # Both installer types must contain every staged DLL and launch.
-          function Assert-PackageContents {
-            param([string]$Root, [string]$Label)
-
-            $app = Get-ChildItem $Root -Filter "phonara.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-            if (-not $app) {
-              throw "$Label package is missing phonara.exe"
-            }
-            foreach ($dll in $stagedDlls) {
-              if (-not (Get-ChildItem $Root -Filter $dll.Name -Recurse -ErrorAction SilentlyContinue)) {
-                throw "$Label package is missing staged runtime DLL $($dll.Name)"
-              }
-            }
-
-            $deviceOutput = (& $app.FullName --list-devices | Out-String)
-            $deviceOutput | Write-Host
-            if ($LASTEXITCODE -ne 0) {
-              throw "$Label phonara.exe --list-devices failed"
-            }
-            if ("${{ inputs.target }}" -like "aarch64*" -and $deviceOutput -match "kind=(vulkan|cuda|metal|gpu)") {
-              throw "$Label Windows ARM64 package unexpectedly exposed a GPU compute device"
-            }
-            if ("${{ inputs.target }}" -like "aarch64*" -and $deviceOutput -notmatch "kind=cpu") {
-              throw "$Label Windows ARM64 package did not expose its required CPU compute device"
-            }
-          }
-
-          $nsisPackages = Get-ChildItem (Join-Path $bundleBase "nsis") -Filter "*.exe" -ErrorAction SilentlyContinue
-          if (-not $nsisPackages) {
-            throw "No NSIS packages found under $bundleBase for runtime DLL audit"
-          }
-
-          foreach ($pkg in $nsisPackages) {
-            Write-Host "Auditing NSIS package: $($pkg.FullName)"
-            $installDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-            New-Item -ItemType Directory -Path $installDir | Out-Null
-            $proc = Start-Process -FilePath $pkg.FullName -ArgumentList @("/S", "/PORTABLE", "/D=$installDir") -Wait -PassThru
-            if ($proc.ExitCode -ne 0) {
-              throw "Silent portable install failed for $($pkg.FullName) with exit code $($proc.ExitCode)"
-            }
-            Assert-PackageContents -Root $installDir -Label "Installed NSIS"
-            Remove-Item -Recurse -Force $installDir
-          }
-
-          # Administrative install extracts the MSI payload without elevation.
-          $msiPackages = Get-ChildItem (Join-Path $bundleBase "msi") -Filter "*.msi" -ErrorAction SilentlyContinue
-          if (-not $msiPackages) {
-            throw "No MSI packages found under $bundleBase for runtime DLL audit"
-          }
-
-          foreach ($pkg in $msiPackages) {
-            Write-Host "Auditing MSI package: $($pkg.FullName)"
-            $installDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid().ToString())
-            New-Item -ItemType Directory -Path $installDir | Out-Null
-            $logFile = Join-Path $installDir "msi-admin-install.log"
-            # Keep quoting explicit and place public properties last.
-            $msiArgs = "/a `"$($pkg.FullName)`" /qn /L*v `"$logFile`" TARGETDIR=`"$installDir`""
-            $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru
-            if ($proc.ExitCode -ne 0) {
-              if (Test-Path $logFile) { Get-Content $logFile | Out-Host }
-              throw "Administrative install failed for $($pkg.FullName) with exit code $($proc.ExitCode)"
-            }
-            Assert-PackageContents -Root $installDir -Label "Installed MSI"
-            Remove-Item -Recurse -Force $installDir
-          }
+          & scripts/ci/audit-windows-package.ps1 @auditArguments
 
       - name: Upload artifacts (Windows)
         if: inputs.upload-artifacts && contains(inputs.platform, 'windows')
