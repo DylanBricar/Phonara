@@ -688,11 +688,11 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
         .spawn()
         .map_err(|e| format!("Failed to execute external script '{}': {}", script_path, e))?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(text.as_bytes())
-            .map_err(|error| format!("Failed to write to script stdin: {error}"))?;
-    }
+    let stdin_result = if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(text.as_bytes())
+    } else {
+        Ok(())
+    };
     let status = child
         .wait()
         .map_err(|error| format!("Failed to wait for external script '{script_path}': {error}"))?;
@@ -703,6 +703,16 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
             script_path,
             status.code()
         ));
+    }
+
+    // A successful script is allowed to exit without consuming stdin. In that
+    // race the parent observes BrokenPipe even though the script completed its
+    // work successfully. Other write failures still indicate a real delivery
+    // problem and must be reported.
+    if let Err(error) = stdin_result {
+        if error.kind() != std::io::ErrorKind::BrokenPipe {
+            return Err(format!("Failed to write to script stdin: {error}"));
+        }
     }
 
     Ok(())
