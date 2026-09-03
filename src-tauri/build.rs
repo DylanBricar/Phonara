@@ -3,6 +3,7 @@ fn main() {
     build_apple_intelligence_bridge();
 
     generate_tray_translations();
+    probe_linux_layer_shell();
 
     // Linux ships transcribe-cpp as a shared libtranscribe + loadable ggml
     // backend modules (the `dynamic-backends` posture in Cargo.toml). Bake an
@@ -35,6 +36,19 @@ fn main() {
     stage_vc_runtime_dlls();
 
     tauri_build::build()
+}
+
+/// Preserve the native version and linker checks formerly provided by the
+/// unmaintained gtk-layer-shell-sys crate without keeping its Rust bindings.
+fn probe_linux_layer_shell() {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
+        return;
+    }
+
+    pkg_config::Config::new()
+        .atleast_version("0.6")
+        .probe("gtk-layer-shell-0")
+        .expect("gtk-layer-shell >= 0.6 is required for the Linux overlay");
 }
 
 /// Stage the MSVC runtime DLLs into `transcribe-libs/` for app-local deployment.
