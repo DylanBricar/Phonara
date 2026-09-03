@@ -127,7 +127,7 @@
               # which aliases crates-io and Cargo rejects as a duplicate.
               sed -i \
                 '/^\[source\."https:\/\/github.com\/rust-lang\/crates.io-index"\]$/,+2d' \
-                "$cargoDepsCopy/.cargo/config.toml"
+                .cargo/config.toml
 
               # Point libappindicator-sys to the Nix store path
               substituteInPlace \
