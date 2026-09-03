@@ -350,6 +350,7 @@ fn is_point_within_monitor(
         && point_y < (monitor_y + monitor_height as i32) as f64
 }
 
+#[cfg(any(target_os = "windows", test))]
 fn is_mouse_within_monitor(
     mouse_pos: (i32, i32),
     monitor_pos: &PhysicalPosition<i32>,

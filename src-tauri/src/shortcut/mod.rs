@@ -19,12 +19,14 @@ use serde::Serialize;
 use specta::Type;
 use tauri::{AppHandle, Emitter, Manager};
 
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use crate::settings::ThemeMode;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 use crate::settings::APPLE_INTELLIGENCE_DEFAULT_MODEL_ID;
 use crate::settings::{
     self, get_settings, is_cli_post_process_provider, AutoSubmitKey, ClipboardHandling,
     KeyboardImplementation, LLMPrompt, OverlayPosition, OverlayStyle, PasteMethod,
-    ShortcutActivation, ShortcutBinding, SoundTheme, ThemeMode, TypingTool, VadBackend,
+    ShortcutActivation, ShortcutBinding, SoundTheme, TypingTool, VadBackend,
     APPLE_INTELLIGENCE_PROVIDER_ID,
 };
 use crate::tray;
