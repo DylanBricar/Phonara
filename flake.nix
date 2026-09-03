@@ -102,6 +102,13 @@
               # updated every time a git dependency changed in Cargo.lock.
               # Safe for standalone flakes (not allowed in nixpkgs, it is needed something like crate2nix).
               allowBuiltinFetchGit = true;
+
+              # This pinned nixpkgs revision still downloads crates through the
+              # crates.io API, whose runner user-agent is rejected with HTTP 403.
+              # Override the standard registry to its stable archive endpoint.
+              extraRegistries = {
+                "https://github.com/rust-lang/crates.io-index" = "https://static.crates.io/crates";
+              };
             };
 
             postPatch = ''
