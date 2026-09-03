@@ -1,11 +1,8 @@
 name: "Release"
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - ".github/**"
+  # Releases are intentionally manual. A normal push to main must never create
+  # a tag, draft release, updater manifest, or publishing approval request.
   workflow_dispatch:
 
 env:
@@ -14,9 +11,7 @@ env:
 permissions:
   contents: read
 
-# Cancel earlier Release runs on the same ref when a newer push lands so the
-# release matrix doesn't queue up duplicates. Distinct group from Main Branch
-# Build so the two workflows run in parallel on push.
+# A second manual dispatch supersedes an earlier run on the same ref.
 concurrency:
   group: phonara-release-${{ github.ref }}
   cancel-in-progress: true
@@ -100,7 +95,7 @@ jobs:
         uses: actions-rust-lang/audit@72c09e02f132669d52284a3323acdb503cfc1a24 # v1
         with:
           file: src-tauri/Cargo.lock
-          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
+          denyWarnings: true
 
   create-release:
     if: needs.verify-updater-signing.outputs.has-signing-key == 'true'
