@@ -738,6 +738,8 @@ jobs:
       - name: Verify AppImage version metadata
         if: contains(inputs.platform, 'ubuntu')
         shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version != '' && inputs.version || steps.get-version.outputs.version }}
         run: |
           set -euo pipefail
           PROFILE="${{ steps.build-profile.outputs.profile }}"
@@ -753,13 +755,15 @@ jobs:
             cd "$WORKDIR"
             # AppImage integration tools read the root desktop entry. appimagetool
             # adds X-AppImage-Version there, not to the source copy under usr/share.
+            # The root entry may be a symlink, so follow links when locating it.
             "$APPIMAGE_PATH" --appimage-extract '*.desktop' >/dev/null
-            DESKTOP_FILE="$(find squashfs-root -maxdepth 1 -type f -name '*.desktop' -print -quit)"
-            if [ -z "$DESKTOP_FILE" ]; then
+            DESKTOP_FILE="$(find -L squashfs-root -maxdepth 1 -name '*.desktop' -print -quit)"
+            if [ -z "$DESKTOP_FILE" ] || [ ! -f "$DESKTOP_FILE" ]; then
               echo "ERROR: AppImage desktop metadata is missing" >&2
+              find squashfs-root -name '*.desktop' -print >&2 || true
               exit 1
             fi
-            if ! grep -Fqx 'X-AppImage-Version=${{ steps.get-version.outputs.version }}' "$DESKTOP_FILE"; then
+            if ! grep -Fqx "X-AppImage-Version=${EXPECTED_VERSION}" "$DESKTOP_FILE"; then
               echo "ERROR: AppImage version metadata is missing or incorrect:" >&2
               grep -E '^X-AppImage-Version=' "$DESKTOP_FILE" >&2 || true
               exit 1
@@ -941,8 +945,12 @@ jobs:
 
           require_dynamic_transcribe_listing() {
             local listing="$1"
-            require_pattern "$listing" 'usr/lib/libtranscribe\.so' "transcribe runtime library"
-            require_pattern "$listing" 'usr/lib/libggml-cpu.*\.so' "ggml CPU backend module"
+            # Tauri packages external binaries either directly under usr/lib or
+            # under an application-specific subdirectory, and may retain SONAME
+            # suffixes. The runtime smoke below proves that the chosen layout is
+            # actually loadable by the packaged executable.
+            require_pattern "$listing" 'usr/lib(/Phonara)?/libtranscribe\.so(\.[0-9]+)*$' "transcribe runtime library"
+            require_pattern "$listing" 'usr/lib(/Phonara)?/libggml-cpu.*\.so(\.[0-9]+)*$' "ggml CPU backend module"
           }
 
           require_dynamic_transcribe_appimage() {
@@ -964,7 +972,7 @@ jobs:
                 require_dynamic_transcribe_listing "$listing"
               fi
               if [[ "$BUILD_PLATFORM" == *"ubuntu-22.04"* && "$BUILD_TARGET" == "x86_64-unknown-linux-gnu" ]]; then
-                require_pattern "$listing" 'usr/lib/libonnxruntime\.so' "ONNX Runtime library"
+                require_pattern "$listing" 'usr/lib(/Phonara)?/libonnxruntime\.so(\.[0-9]+)*$' "ONNX Runtime library"
               fi
               root="$(mktemp -d)"
               dpkg-deb -x "$deb" "$root"
