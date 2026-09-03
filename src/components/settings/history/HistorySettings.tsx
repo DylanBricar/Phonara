@@ -311,7 +311,9 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(
     const { t, i18n } = useTranslation();
     const [showCopied, setShowCopied] = useState(false);
     const [retrying, setRetrying] = useState(false);
-    const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>();
+    const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+      undefined,
+    );
 
     const hasTranscription = entry.transcription_text.trim().length > 0;
 

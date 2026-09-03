@@ -13,7 +13,9 @@ interface ExportImportSettingsProps {
 export const ExportImportSettings: React.FC<ExportImportSettingsProps> = ({
   grouped = false,
 }) => {
-  const statusTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   useEffect(
     () => () => {
       clearTimeout(statusTimerRef.current);
