@@ -214,9 +214,14 @@ chmod +x squashfs-root/AppRun
       join(repositoryRoot, ".github/workflows/release.yml"),
       "utf8",
     );
+    const windowsWorkflow = readFileSync(
+      join(repositoryRoot, ".github/workflows/build-windows.yml"),
+      "utf8",
+    );
 
     expect(pullRequestWorkflow).toContain("no-cache: false");
     expect(releaseWorkflow).toContain("no-cache: true");
+    expect(windowsWorkflow).toContain("no-cache: ${{ inputs.create-release }}");
 
     const sharedBuildWorkflow = readFileSync(
       join(repositoryRoot, ".github/workflows/build.yml"),
