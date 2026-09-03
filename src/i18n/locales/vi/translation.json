@@ -6,7 +6,8 @@
     "unloadModel": "Dỡ mô hình",
     "model": "Mô hình",
     "quit": "Thoát",
-    "cancel": "Hủy"
+    "cancel": "Hủy",
+    "secureInputWarning": "⚠ Phím tắt bị Secure Input chặn"
   },
   "sidebar": {
     "general": "Chung",
@@ -20,10 +21,10 @@
   },
   "onboarding": {
     "subtitle": "Để bắt đầu, hãy chọn một mô hình chuyển đổi giọng nói",
-    "existingModelsTitle": "Compatible Models",
-    "downloadModelsTitle": "Available to Download",
-    "showAllModels": "Show all {{total}} models",
-    "showFewerModels": "Show fewer models",
+    "existingModelsTitle": "Mô hình tương thích",
+    "downloadModelsTitle": "Có sẵn để tải xuống",
+    "showAllModels": "Hiển thị tất cả {{total}} mô hình",
+    "showFewerModels": "Hiển thị ít mô hình hơn",
     "recommended": "Đề xuất",
     "customModelDescription": "Không được hỗ trợ chính thức",
     "modelCard": {
@@ -117,7 +118,7 @@
       }
     },
     "errors": {
-      "selectModel": "Failed to select model"
+      "selectModel": "Không thể chọn mô hình"
     },
     "permissions": {
       "title": "Cần cấp quyền",
@@ -168,10 +169,11 @@
     "capabilities": {
       "languageSelection": "Hỗ trợ nhiều ngôn ngữ đầu vào",
       "singleLanguage": "Chỉ hỗ trợ ngôn ngữ này",
-      "languageCount": "{{total}} languages",
+      "languageCount": "{{total}} ngôn ngữ",
       "languageOnly": "Chỉ {{language}}",
       "translation": "Có thể dịch sang tiếng Anh",
-      "translate": "Dịch sang tiếng Anh"
+      "translate": "Dịch sang tiếng Anh",
+      "streaming": "Hiển thị phiên âm trực tiếp khi bạn nói"
     },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
@@ -259,6 +261,20 @@
         "noResult": "No transcription result",
         "error": "Transcription failed: {{error}}",
         "audioFiles": "Audio Files"
+      },
+      "shortcutActivation": {
+        "title": "Hành vi phím tắt",
+        "description": "Chọn cách phím tắt chuyển đổi bắt đầu và dừng ghi âm.",
+        "options": {
+          "holdOrToggle": "Tự động",
+          "pushToTalk": "Giữ",
+          "toggle": "Bật/tắt"
+        },
+        "descriptions": {
+          "hold_or_toggle": "Giữ để ghi âm hoặc nhấn nhanh để bật/tắt",
+          "push_to_talk": "Ghi âm trong lúc bạn giữ phím tắt",
+          "toggle": "Nhấn phím tắt để bắt đầu ghi âm, nhấn lại để dừng"
+        }
       }
     },
     "models": {
@@ -276,7 +292,9 @@
       "deleteActiveConfirm": "{{modelName}} là mô hình đang hoạt động của bạn. Xóa nó sẽ dừng phiên âm cho đến khi bạn chọn một mô hình mới. Bạn có chắc không?",
       "deleteTitle": "Xóa mô hình",
       "filters": {
-        "allLanguages": "Tất cả ngôn ngữ"
+        "allLanguages": "Tất cả ngôn ngữ",
+        "streaming": "Lọc các mô hình hỗ trợ phiên âm trực tiếp",
+        "translation": "Lọc các mô hình hỗ trợ dịch sang tiếng Anh"
       },
       "searchPlaceholder": "Search models...",
       "noModelsMatch": "Không có mô hình nào khớp với bộ lọc này.",
@@ -294,6 +312,10 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "rescan": {
+        "label": "Quét lại",
+        "tooltip": "Quét lại các mô hình được thêm vào thư mục mô hình hoặc bộ nhớ đệm Hugging Face bên ngoài Phonara"
       }
     },
     "sound": {
@@ -423,7 +445,7 @@
           "description": "Choose how much recording feedback the overlay shows.",
           "options": {
             "none": "None",
-            "minimal": "Minimal",
+            "minimal": "Tối giản",
             "live": "Live transcript"
           }
         },
@@ -440,9 +462,9 @@
         "title": "Phương thức dán",
         "description": "Chọn cách chèn văn bản. Trực tiếp: mô phỏng gõ phím qua đầu vào hệ thống. Không có: bỏ qua dán, chỉ cập nhật lịch sử/clipboard.",
         "options": {
-          "clipboard": "Clipboard ({{modifier}}+V)",
-          "clipboardCtrlShiftV": "Clipboard (Ctrl+Shift+V)",
-          "clipboardShiftInsert": "Clipboard (Shift+Insert)",
+          "clipboard": "Bảng nhớ tạm ({{modifier}}+V)",
+          "clipboardCtrlShiftV": "Bảng nhớ tạm (Ctrl+Shift+V)",
+          "clipboardShiftInsert": "Bảng nhớ tạm (Shift+Insert)",
           "direct": "Trực tiếp",
           "none": "Không có",
           "externalScript": "Script bên ngoài"
@@ -495,7 +517,7 @@
       },
       "customWords": {
         "title": "Từ tùy chỉnh",
-        "description": "Thêm các từ thường bị nghe nhầm hoặc viết sai trong quá trình chuyển đổi. Hệ thống sẽ tự động sửa các từ có âm thanh tương tự để khớp với danh sách của bạn.",
+        "description": "Giúp các mô hình được hỗ trợ nhận dạng tên và thuật ngữ chuyên ngành. Tính năng sửa gần đúng hiện chỉ áp dụng cho các từ sử dụng chữ cái A–Z và chữ số.",
         "placeholder": "Thêm một từ",
         "add": "Thêm",
         "remove": "Xóa {{word}}",
@@ -537,6 +559,22 @@
         "presetJapanese": "Japanese",
         "presetChineseSimplified": "Chinese (Simplified)",
         "presetChineseTraditional": "Chinese (Traditional)"
+      },
+      "voiceActivityDetection": {
+        "title": "Phát hiện hoạt động giọng nói",
+        "description": "Lọc bỏ khoảng lặng khỏi bản ghi. Các mô hình hỗ trợ truyền trực tiếp dùng đuôi VAD dài hơn; tắt VAD sẽ ghi âm thanh thô."
+      },
+      "vadBackend": {
+        "title": "Bộ phát hiện giọng nói",
+        "description": "Chọn bộ phát hiện dùng để lọc khoảng lặng. Earshot đang thử nghiệm; hãy chuyển về Silero nếu giọng nói bị cắt hoặc tiếng ồn vẫn còn.",
+        "options": {
+          "silero": "Silero",
+          "earshot": "Earshot"
+        }
+      },
+      "fillerWordRemoval": {
+        "title": "Loại bỏ từ đệm",
+        "description": "Loại bỏ các từ ngập ngừng phổ biến khỏi bản chép lời. Tắt để giữ lại các từ này."
       }
     },
     "postProcessing": {
@@ -603,7 +641,7 @@
         "modelPlaceholder": "Use CLI default"
       },
       "prompts": {
-        "title": "Prompt",
+        "title": "Câu lệnh",
         "selectedPrompt": {
           "title": "Prompt đã chọn",
           "description": "Chọn một mẫu để tinh chỉnh bản ghi hoặc tạo mới. Sử dụng ${output} trong văn bản prompt để tham chiếu bản ghi đã chụp."
@@ -707,7 +745,8 @@
       },
       "updateChecks": {
         "label": "Kiểm tra cập nhật",
-        "description": "Tự động kiểm tra phiên bản mới của Phonara"
+        "description": "Tự động kiểm tra phiên bản mới của Phonara",
+        "lockedDescription": "Đã bị vô hiệu hóa bởi cấu hình hệ thống (PHONARA_DISABLE_UPDATER)"
       },
       "whatsNewPreview": {
         "title": "Preview What's New",
@@ -789,6 +828,34 @@
       "recordingBuffer": {
         "title": "Bộ đệm ghi âm thêm",
         "description": "Thời gian thêm (tính bằng mili giây) để tiếp tục ghi âm sau khi nhả phím, để thu âm thanh cuối. 0 = không có bộ đệm thêm."
+      },
+      "holdThreshold": {
+        "title": "Ngưỡng giữ phím",
+        "description": "Chỉ áp dụng cho chế độ Tự động: phím tắt phải được giữ trong bao lâu (mili giây) để được tính là giữ thay vì nhấn nhanh. Giảm xuống nếu bản ghi vẫn tiếp tục sau khi giữ ngắn; tăng lên nếu các lần nhấn nhanh có chủ ý bị coi là giữ phím."
+      },
+      "reliablePaste": {
+        "title": "Dán đáng tin cậy (Beta)",
+        "description": "Chỉ khôi phục bảng nhớ tạm sau khi ứng dụng đích thực sự đọc bản chép lời, thay vì sau một độ trễ cố định. Nhằm khắc phục việc nội dung bảng nhớ tạm cũ bị dán khi hệ thống bị tải nặng. Cần một phương thức dán qua bảng nhớ tạm; chỉ dành cho macOS và Windows."
+      },
+      "keyboardDiagnostic": {
+        "title": "Chẩn đoán bàn phím",
+        "description": "Kiểm tra xem các sự kiện bàn phím có đến được Phonara hay không. Chỉ số lượng sự kiện được ghi lại — không bao giờ ghi lại bạn bấm phím nào.",
+        "run": "Chạy chẩn đoán 10 giây",
+        "running": "Đang lắng nghe… hãy bấm phím tắt của bạn vài lần (ví dụ: Option+Space)",
+        "secureInputLabel": "Secure Input",
+        "enabled": "đang bật",
+        "disabled": "đang tắt",
+        "holder": "bị {{name}} (pid {{pid}}) giữ",
+        "holderUnknown": "không thấy tiến trình nào giữ",
+        "keyDown": "Nhấn phím",
+        "keyUp": "Nhả phím",
+        "flagsChanged": "Phím bổ trợ",
+        "mouse": "Chuột",
+        "verdictBlocked": "Secure Input đang chặn các sự kiện phím — phím tắt có chứa phím thường không thể hoạt động cho đến khi vấn đề này được xử lý.",
+        "verdictSuspicious": "Có sự kiện phím bổ trợ nhưng không có sự kiện phím nào — thứ gì đó đang chặn phím dù Secure Input báo là đang tắt. Vui lòng báo cáo việc này trên GitHub.",
+        "verdictOk": "Các sự kiện phím đang đến Phonara bình thường.",
+        "verdictNoEvents": "Không ghi nhận sự kiện nào — bạn có bấm phím nào trong lúc kiểm tra không?",
+        "failed": "Chẩn đoán thất bại: {{error}}"
       }
     },
     "appearance": {
@@ -853,6 +920,11 @@
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        },
+        "ggml": {
+          "title": "ggml",
+          "description": "Suy luận hiệu suất cao của mô hình nhận dạng giọng nói tự động Whisper của OpenAI",
+          "details": "Phonara sử dụng ggml để xử lý chuyển đổi giọng nói thành văn bản nhanh, cục bộ. Cảm ơn công việc tuyệt vời của Georgi Gerganov và các cộng tác viên."
         }
       }
     },
@@ -874,7 +946,9 @@
     "portableUpdateButton": "Open GitHub Releases",
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "updateInstallFailed": "Failed to install update",
+    "portableUpdateBrowseMessage": "Bản cài đặt di động không thể cập nhật tự động. Hãy tải phiên bản mới nhất phù hợp với hệ thống của bạn từ GitHub Releases và cài vào cùng thư mục — thư mục Data/ (cài đặt, mô hình, bản ghi) của bạn được giữ nguyên.",
+    "portableUpdateBrowseButton": "Mở GitHub Releases"
   },
   "whatsNew": {
     "title": "New in Phonara v{{version}}"
@@ -893,7 +967,8 @@
     "no": "Không",
     "noOptionsFound": "Không tìm thấy tùy chọn",
     "clear": "Clear",
-    "reset": "Reset"
+    "reset": "Reset",
+    "copy": "Sao chép"
   },
   "accessibility": {
     "permissionsRequired": "Cần quyền truy cập",
@@ -934,5 +1009,25 @@
   "progressBar": {
     "downloading": "{{count}} downloading...",
     "downloadingSingle": "Downloading..."
+  },
+  "theme": {
+    "title": "Giao diện ứng dụng",
+    "description": "Chọn xem Phonara theo chủ đề hệ thống hay giữ ở chế độ sáng hoặc tối",
+    "options": {
+      "system": "Hệ thống",
+      "light": "Sáng",
+      "dark": "Tối"
+    }
+  },
+  "secureInput": {
+    "blockedWithCulprit_one": "{{name}} có thể đang chặn 1 phím tắt",
+    "blockedWithCulprit_other": "{{name}} có thể đang chặn {{count}} phím tắt",
+    "blockedNoCulprit_one": "macOS đang tạm thời chặn 1 phím tắt",
+    "blockedNoCulprit_other": "macOS đang tạm thời chặn {{count}} phím tắt",
+    "recorderBlockedWithCulprit": "{{name}} có thể đang chặn việc thay đổi phím tắt",
+    "recorderBlockedNoCulprit": "macOS đang tạm thời chặn việc thay đổi phím tắt",
+    "learnMore": "Cách khắc phục",
+    "recorderBlocked": "Hiện không thể ghi phím tắt — Secure Input của macOS đang chặn các sự kiện phím. Hãy xử lý cảnh báo Secure Input trước.",
+    "dismiss": "Bỏ qua"
   }
 }

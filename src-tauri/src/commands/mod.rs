@@ -5,8 +5,8 @@ pub mod openai;
 pub mod transcription;
 
 use crate::settings::{
-    deserialize_settings_for_import, get_settings, replace_settings, update_settings, AppSettings,
-    LogLevel,
+    deserialize_settings_for_import, get_settings, replace_settings, update_checks_forced_disabled,
+    update_settings, AppSettings, LogLevel,
 };
 use crate::utils::cancel_current_operation;
 use tauri::{AppHandle, Manager};
@@ -22,6 +22,12 @@ pub fn cancel_operation(app: AppHandle) {
 #[specta::specta]
 pub fn is_portable() -> bool {
     crate::portable::is_portable()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn is_update_checks_locked() -> bool {
+    update_checks_forced_disabled()
 }
 
 #[tauri::command]
@@ -216,8 +222,9 @@ pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
     // Initialize shortcuts
     crate::shortcut::init_shortcuts(&app);
 
-    // Mark as initialized
+    // Mark as initialized before reconciling the macOS Secure Input fallback.
     app.manage(ShortcutsInitialized);
+    crate::secure_input::reconcile_fallback(&app);
 
     log::info!("Shortcuts initialized successfully");
     Ok(())

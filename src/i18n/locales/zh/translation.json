@@ -6,7 +6,8 @@
     "unloadModel": "卸载模型",
     "model": "模型",
     "quit": "退出",
-    "cancel": "取消"
+    "cancel": "取消",
+    "secureInputWarning": "⚠ 快捷键被 Secure Input 阻止"
   },
   "sidebar": {
     "general": "通用",
@@ -20,10 +21,10 @@
   },
   "onboarding": {
     "subtitle": "请选择一个转录模型以开始使用",
-    "existingModelsTitle": "Compatible Models",
-    "downloadModelsTitle": "Available to Download",
-    "showAllModels": "Show all {{total}} models",
-    "showFewerModels": "Show fewer models",
+    "existingModelsTitle": "兼容的模型",
+    "downloadModelsTitle": "可供下载",
+    "showAllModels": "显示全部 {{total}} 个模型",
+    "showFewerModels": "显示较少模型",
     "recommended": "推荐",
     "customModelDescription": "非官方支持",
     "modelCard": {
@@ -117,7 +118,7 @@
       }
     },
     "errors": {
-      "selectModel": "Failed to select model"
+      "selectModel": "选择模型失败"
     },
     "permissions": {
       "title": "需要权限",
@@ -168,10 +169,11 @@
     "capabilities": {
       "languageSelection": "支持多种输入语言",
       "singleLanguage": "仅支持此语言",
-      "languageCount": "{{total}} languages",
+      "languageCount": "{{total}} 种语言",
       "languageOnly": "仅 {{language}}",
       "translation": "可翻译为英语",
-      "translate": "翻译为英语"
+      "translate": "翻译为英语",
+      "streaming": "在您说话时实时显示转录"
     },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
@@ -259,6 +261,20 @@
         "noResult": "No transcription result",
         "error": "Transcription failed: {{error}}",
         "audioFiles": "Audio Files"
+      },
+      "shortcutActivation": {
+        "title": "快捷键行为",
+        "description": "选择转录快捷键开始和停止录音的方式。",
+        "options": {
+          "holdOrToggle": "自动",
+          "pushToTalk": "按住",
+          "toggle": "切换"
+        },
+        "descriptions": {
+          "hold_or_toggle": "按住录音，或轻按切换",
+          "push_to_talk": "按住快捷键期间录音",
+          "toggle": "轻按快捷键开始录音，再次轻按停止"
+        }
       }
     },
     "models": {
@@ -276,7 +292,9 @@
       "deleteActiveConfirm": "{{modelName}} 是您当前使用的模型。删除后将停止转录，直到您选择新的模型。确定要删除吗？",
       "deleteTitle": "删除模型",
       "filters": {
-        "allLanguages": "所有语言"
+        "allLanguages": "所有语言",
+        "streaming": "筛选支持实时转录的模型",
+        "translation": "筛选支持翻译为英语的模型"
       },
       "searchPlaceholder": "搜索模型...",
       "noModelsMatch": "没有符合此筛选条件的模型。",
@@ -294,6 +312,10 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "rescan": {
+        "label": "重新扫描",
+        "tooltip": "重新扫描在 Phonara 之外添加到模型文件夹或 Hugging Face 缓存中的模型"
       }
     },
     "sound": {
@@ -423,7 +445,7 @@
           "description": "Choose how much recording feedback the overlay shows.",
           "options": {
             "none": "None",
-            "minimal": "Minimal",
+            "minimal": "精简",
             "live": "Live transcript"
           }
         },
@@ -469,10 +491,10 @@
         "description": "在文本插入后自动发送所选的按键组合。macOS 上使用 Cmd+Enter，Windows/Linux 上使用 Super+Enter。",
         "options": {
           "off": "关闭",
-          "enter": "Enter",
-          "cmdEnter": "Cmd+Enter",
-          "superEnter": "Super+Enter",
-          "ctrlEnter": "Ctrl+Enter"
+          "enter": "回车",
+          "cmdEnter": "Cmd+回车",
+          "superEnter": "Super+回车",
+          "ctrlEnter": "Ctrl+回车"
         }
       },
       "translateToEnglish": {
@@ -495,7 +517,7 @@
       },
       "customWords": {
         "title": "自定义词汇",
-        "description": "添加经常被误听或拼写错误的词汇。系统将自动将发音相似的词汇修正为您列表中的词汇。",
+        "description": "帮助受支持的模型识别名称和专业术语。目前，模糊纠错仅适用于使用 A–Z 字母和数字的词语。",
         "placeholder": "添加词汇",
         "add": "添加",
         "remove": "删除 {{word}}",
@@ -537,6 +559,22 @@
         "presetJapanese": "Japanese",
         "presetChineseSimplified": "Chinese (Simplified)",
         "presetChineseTraditional": "Chinese (Traditional)"
+      },
+      "voiceActivityDetection": {
+        "title": "语音活动检测",
+        "description": "过滤录音中的静音。支持流式的模型会使用更长的 VAD 尾段；停用 VAD 则会录制原始音频。"
+      },
+      "vadBackend": {
+        "title": "语音活动检测后端",
+        "description": "选择用于过滤静音的检测器。Earshot 为实验性功能；如果语音被截断或噪音被保留，请切换回 Silero。",
+        "options": {
+          "silero": "Silero",
+          "earshot": "Earshot"
+        }
+      },
+      "fillerWordRemoval": {
+        "title": "移除语气词",
+        "description": "从转录中移除常见的语气词。关闭此选项即可保留这些词。"
       }
     },
     "postProcessing": {
@@ -707,7 +745,8 @@
       },
       "updateChecks": {
         "label": "检查更新",
-        "description": "自动检查 Phonara 的新版本"
+        "description": "自动检查 Phonara 的新版本",
+        "lockedDescription": "已被系统配置禁用 (PHONARA_DISABLE_UPDATER)"
       },
       "whatsNewPreview": {
         "title": "Preview What's New",
@@ -789,6 +828,34 @@
       "recordingBuffer": {
         "title": "额外录音缓冲",
         "description": "放开按键后继续录音的额外时间（毫秒），以捕捉尾音。0 = 无额外缓冲。"
+      },
+      "holdThreshold": {
+        "title": "长按判定时长",
+        "description": "仅适用于“自动”模式：快捷键需要按住多长时间（毫秒）才算作按住而不是轻按。如果短暂按住后录音仍持续，请调低；如果有意的轻按被当作按住，请调高。"
+      },
+      "reliablePaste": {
+        "title": "可靠粘贴（Beta）",
+        "description": "在目标应用程序真正读取转录文本之后再恢复剪贴板，而不是等待固定延迟。用于解决系统负载较高时粘贴旧剪贴板内容的问题。需要使用剪贴板类的粘贴方式；仅支持 macOS 和 Windows。"
+      },
+      "keyboardDiagnostic": {
+        "title": "键盘诊断",
+        "description": "检查键盘事件是否能到达 Phonara。仅记录事件数量，绝不记录您按了哪些键。",
+        "run": "运行 10 秒诊断",
+        "running": "正在监听… 请按几次您的快捷键（例如 Option+Space）",
+        "secureInputLabel": "Secure Input",
+        "enabled": "已启用",
+        "disabled": "已禁用",
+        "holder": "被 {{name}}（pid {{pid}}）占用",
+        "holderUnknown": "未发现占用方",
+        "keyDown": "按键按下",
+        "keyUp": "按键释放",
+        "flagsChanged": "修饰键",
+        "mouse": "鼠标",
+        "verdictBlocked": "Secure Input 正在阻止按键事件——在问题解决前，包含普通按键的快捷键无法工作。",
+        "verdictSuspicious": "收到了修饰键事件，但没有按键事件——尽管 Secure Input 报告为已禁用，仍有程序在抑制按键。请在 GitHub 上反馈此问题。",
+        "verdictOk": "按键事件正常到达 Phonara。",
+        "verdictNoEvents": "未捕获到任何事件——测试期间您按过键吗？",
+        "failed": "诊断失败：{{error}}"
       }
     },
     "appearance": {
@@ -853,6 +920,11 @@
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        },
+        "ggml": {
+          "title": "ggml",
+          "description": "OpenAI Whisper 自动语音识别模型的高性能推理",
+          "details": "Phonara 使用 ggml 进行快速的本地语音转文字处理。感谢 Georgi Gerganov 和贡献者们的出色工作。"
         }
       }
     },
@@ -874,7 +946,9 @@
     "portableUpdateButton": "Open GitHub Releases",
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "updateInstallFailed": "Failed to install update",
+    "portableUpdateBrowseMessage": "便携版无法自动更新。请从 GitHub Releases 下载适用于你的系统的最新版本，并安装到同一文件夹，你的 Data/ 文件夹（设置、模型、录音）会保留在原处。",
+    "portableUpdateBrowseButton": "打开 GitHub Releases"
   },
   "whatsNew": {
     "title": "New in Phonara v{{version}}"
@@ -893,7 +967,8 @@
     "no": "否",
     "noOptionsFound": "未找到选项",
     "clear": "清除",
-    "reset": "Reset"
+    "reset": "Reset",
+    "copy": "复制"
   },
   "accessibility": {
     "permissionsRequired": "需要辅助功能权限",
@@ -934,5 +1009,25 @@
   "progressBar": {
     "downloading": "{{count}} downloading...",
     "downloadingSingle": "Downloading..."
+  },
+  "theme": {
+    "title": "应用主题",
+    "description": "选择 Phonara 跟随系统主题，还是保持浅色或深色",
+    "options": {
+      "system": "跟随系统",
+      "light": "浅色",
+      "dark": "深色"
+    }
+  },
+  "secureInput": {
+    "blockedWithCulprit_one": "{{name}} 可能正在阻止 1 个快捷键",
+    "blockedWithCulprit_other": "{{name}} 可能正在阻止 {{count}} 个快捷键",
+    "blockedNoCulprit_one": "macOS 正在暂时阻止 1 个快捷键",
+    "blockedNoCulprit_other": "macOS 正在暂时阻止 {{count}} 个快捷键",
+    "recorderBlockedWithCulprit": "{{name}} 可能正在阻止快捷键更改",
+    "recorderBlockedNoCulprit": "macOS 正在暂时阻止快捷键更改",
+    "learnMore": "如何解决",
+    "recorderBlocked": "当前无法录制快捷键——macOS 的 Secure Input 正在阻止按键事件。请先解决 Secure Input 警告。",
+    "dismiss": "关闭"
   }
 }

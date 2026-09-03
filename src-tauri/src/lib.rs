@@ -3,6 +3,7 @@ mod actions;
 mod apple_intelligence;
 mod audio_feedback;
 pub mod audio_toolkit;
+mod autostart;
 mod catalog;
 pub mod cli;
 mod clipboard;
@@ -12,8 +13,11 @@ mod input;
 mod llm_client;
 mod local_llm_cli;
 mod managers;
+mod memory;
 mod overlay;
+mod paste_tx;
 pub mod portable;
+mod secure_input;
 mod settings;
 mod shortcut;
 mod signal_handle;
@@ -55,7 +59,7 @@ pub use transcription_coordinator::TranscriptionCoordinator;
 
 use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Listener, Manager};
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_log::{Builder as LogBuilder, RotationStrategy, Target, TargetKind};
 
 use crate::settings::get_settings;
@@ -133,6 +137,42 @@ fn show_main_window(app: &AppHandle) {
     );
 }
 
+/// Choose the macOS activation policy the process *launches* with.
+///
+/// Must run between `build()` and `run()`: that is the only point where
+/// `App::set_activation_policy` sets tao's initial policy, which
+/// `applicationDidFinishLaunching` then applies directly. Calling the
+/// `AppHandle` variant from `setup` (which Tauri runs on `RunEvent::Ready`,
+/// i.e. after launch) is instead a runtime Regular → Accessory demotion of an
+/// already-activated foreground app — the transition Apple documents as
+/// unreliable, and what left a Dock icon behind for start-hidden and
+/// login-item launches on macOS 26+ (#1787). Launching as Accessory avoids the
+/// transition entirely; showing the window later promotes to Regular, which is
+/// the supported direction.
+///
+/// Mirrors the show-window decision in `setup`: the app launches without a
+/// Dock icon only when it will start hidden (setting or `--start-hidden`) AND a
+/// tray icon is available (setting and not `--no-tray`). With no tray the Dock
+/// icon stays as the only way back into the app (#903). Headless one-shot
+/// runs are left alone.
+#[cfg(target_os = "macos")]
+fn apply_startup_activation_policy(app: &mut tauri::App, headless_mode: bool) {
+    if headless_mode {
+        return;
+    }
+
+    let cli_args = app.state::<CliArgs>().inner().clone();
+    let settings = settings::get_settings(app.handle());
+
+    let should_hide = settings.start_hidden || cli_args.start_hidden;
+    let tray_available = settings.show_tray_icon && !cli_args.no_tray;
+
+    if should_hide && tray_available {
+        log::info!("Starting hidden with tray available: launching as Accessory (no Dock icon)");
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    }
+}
+
 #[allow(unused_variables)]
 fn should_force_show_permissions_window(app: &AppHandle) -> bool {
     #[cfg(target_os = "windows")]
@@ -193,7 +233,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(model_manager.clone());
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
-    app_handle.manage(tray::CurrentTrayIconState::new());
+    app_handle.manage(tray::TrayState::new());
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -212,23 +252,18 @@ fn initialize_core_logic(app_handle: &AppHandle) {
         let signals = Signals::new([SIGUSR2]).unwrap();
         signal_handle::setup_signal_handler_macos(app_handle.clone(), signals);
     }
+    // The macOS activation policy for a start-hidden launch is applied before
+    // the event loop runs (see `apply_startup_activation_policy`), not here:
+    // by the time `setup` runs the app has already launched as a Regular
+    // (Dock) app, and demoting it at runtime is unreliable (#1787).
 
-    // Apply macOS Accessory policy if starting hidden and tray is available.
-    // If the tray icon is disabled, keep the dock icon so the user can reopen.
-    #[cfg(target_os = "macos")]
-    {
-        let settings = settings::get_settings(app_handle);
-        if settings.start_hidden && settings.show_tray_icon {
-            let _ = app_handle.set_activation_policy(tauri::ActivationPolicy::Accessory);
-        }
-    }
     // Get the current theme to set the appropriate initial icon
     let initial_theme = tray::get_current_theme(app_handle);
 
     // Choose the appropriate initial icon based on theme
-    let initial_icon_path = tray::get_icon_path(initial_theme, tray::TrayIconState::Idle);
+    let initial_icon_path = tray::get_icon_path(initial_theme, tray::TrayIconState::Idle, false);
 
-    let tray = TrayIconBuilder::new()
+    let mut tray_builder = TrayIconBuilder::new()
         .icon(
             Image::from_path(
                 app_handle
@@ -239,50 +274,83 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             .unwrap(),
         )
         .tooltip(tray::tray_tooltip())
-        .show_menu_on_left_click(true)
-        .icon_as_template(true)
-        .on_tray_icon_event(|tray, event| {
-            use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
-            match event {
-                TrayIconEvent::DoubleClick { button, .. } => {
-                    if matches!(button, MouseButton::Left) {
-                        let app = tray.app_handle();
-                        show_main_window(app);
+        .icon_as_template(true);
+
+    // Windows notification-area convention: left click opens the app, right click
+    // shows the menu. Elsewhere (macOS menu bar, Linux) the menu stays on left click.
+    #[cfg(target_os = "windows")]
+    {
+        tray_builder = tray_builder
+            .show_menu_on_left_click(false)
+            .on_tray_icon_event(|tray, event| {
+                use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+                let opens_window = matches!(
+                    event,
+                    TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } | TrayIconEvent::DoubleClick {
+                        button: MouseButton::Left,
+                        ..
                     }
+                );
+                if opens_window {
+                    show_main_window(tray.app_handle());
                 }
+            });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        tray_builder = tray_builder.show_menu_on_left_click(true);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        tray_builder = tray_builder.on_tray_icon_event(|tray, event| {
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+            let app = tray.app_handle();
+            match event {
+                TrayIconEvent::DoubleClick {
+                    button: MouseButton::Left,
+                    ..
+                } => show_main_window(app),
                 TrayIconEvent::Click {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     ..
                 } => {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let now = Instant::now();
-                        if let Ok(mut last) = LAST_TRAY_CLICK.lock() {
-                            let is_double = last
-                                .map(|prev| {
-                                    now.duration_since(prev)
-                                        <= Duration::from_millis(DOUBLE_CLICK_THRESHOLD_MS)
-                                })
-                                .unwrap_or(false);
-                            *last = Some(now);
-                            if is_double {
-                                let app = tray.app_handle();
-                                show_main_window(&app);
-                            }
+                    let now = Instant::now();
+                    if let Ok(mut last) = LAST_TRAY_CLICK.lock() {
+                        let is_double = last
+                            .map(|previous| {
+                                now.duration_since(previous)
+                                    <= Duration::from_millis(DOUBLE_CLICK_THRESHOLD_MS)
+                            })
+                            .unwrap_or(false);
+                        *last = Some(now);
+                        if is_double {
+                            show_main_window(app);
                         }
                     }
                 }
                 _ => {}
             }
-        })
+        });
+    }
+
+    let tray = tray_builder
         .on_menu_event(|app, event| match event.id.as_ref() {
             "settings" => {
                 show_main_window(app);
             }
+            "secure_input_warning" => {
+                // Full explanation lives in the settings-window banner
+                show_main_window(app);
+            }
             "check_updates" => {
                 let settings = settings::get_settings(app);
-                if settings.update_checks_enabled {
+                if settings::update_checks_effectively_enabled(&settings) {
                     show_main_window(app);
                     let _ = app.emit("check-for-updates", ());
                 }
@@ -326,7 +394,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
                             log::error!("Failed to switch model via tray: {}", e);
                         }
                     }
-                    tray::update_tray_menu(&app_clone, None);
+                    tray::update_tray_menu(&app_clone);
                 });
             }
             _ => {}
@@ -336,7 +404,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(tray);
 
     // Initialize tray menu with idle state
-    tray::update_tray_menu(app_handle, None);
+    tray::update_tray_menu(app_handle);
 
     // Apply show_tray_icon setting
     let settings = settings::get_settings(app_handle);
@@ -347,20 +415,12 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     // Refresh tray menu when model state changes
     let app_handle_for_listener = app_handle.clone();
     app_handle.listen("model-state-changed", move |_| {
-        tray::update_tray_menu(&app_handle_for_listener, None);
+        tray::update_tray_menu(&app_handle_for_listener);
     });
 
-    // Get the autostart manager and configure based on user setting
-    let autostart_manager = app_handle.autolaunch();
-    let settings = settings::get_settings(app_handle);
-
-    if settings.autostart_enabled {
-        // Enable autostart if user has opted in
-        let _ = autostart_manager.enable();
-    } else {
-        // Disable autostart if user has opted out
-        let _ = autostart_manager.disable();
-    }
+    // Apply the autostart preference (SMAppService login item on macOS 13+,
+    // tauri-plugin-autostart elsewhere)
+    autostart::apply_autostart(app_handle, settings.autostart_enabled);
 
     // Create the recording overlay window (hidden by default)
     utils::create_recording_overlay(app_handle);
@@ -370,7 +430,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
 #[specta::specta]
 fn trigger_update_check(app: AppHandle) -> Result<(), String> {
     let settings = settings::get_settings(&app);
-    if !settings.update_checks_enabled {
+    if !settings::update_checks_effectively_enabled(&settings) {
         return Ok(());
     }
     app.emit("check-for-updates", ())
@@ -383,6 +443,29 @@ fn trigger_update_check(app: AppHandle) -> Result<(), String> {
 fn show_main_window_command(app: AppHandle) -> Result<(), String> {
     show_main_window(&app);
     Ok(())
+}
+
+/// Convert an unexpected panic on the headless worker into a normal CLI
+/// failure. Without this guard the Tauri event loop remains alive after the
+/// worker exits, leaving `--transcribe-file` hung indefinitely.
+fn run_headless_guarded<F>(operation: F) -> i32
+where
+    F: FnOnce() -> i32,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
+        Ok(code) => code,
+        Err(payload) => {
+            let message = if let Some(message) = payload.downcast_ref::<&str>() {
+                (*message).to_string()
+            } else if let Some(message) = payload.downcast_ref::<String>() {
+                message.clone()
+            } else {
+                "unknown panic".to_string()
+            };
+            eprintln!("error: headless transcription panicked: {message}");
+            1
+        }
+    }
 }
 
 /// Headless one-shot transcription for the `--transcribe-file` / `--list-devices`
@@ -579,6 +662,27 @@ fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run(cli_args: CliArgs) {
+    // Avoid ggml-metal residency-set teardown assertions when a native engine
+    // outlives the Tauri shutdown sequence (#1902). This must happen before
+    // transcribe-cpp initializes its Metal device. Advanced users can restore
+    // upstream residency behavior with PHONARA_METAL_RESIDENCY=1. Keep the old
+    // Handy name as a compatibility alias for existing launch scripts.
+    #[cfg(target_os = "macos")]
+    if std::env::var("PHONARA_METAL_RESIDENCY").as_deref() == Ok("1")
+        || std::env::var("HANDY_METAL_RESIDENCY").as_deref() == Ok("1")
+    {
+        // ggml treats GGML_METAL_NO_RESIDENCY as presence-based, so remove an
+        // inherited value as well when explicitly opting back in.
+        std::env::remove_var("GGML_METAL_NO_RESIDENCY");
+    } else {
+        std::env::set_var("GGML_METAL_NO_RESIDENCY", "1");
+    }
+
+    // Pin glibc's dynamic mmap threshold before the first large allocation,
+    // so per-dictation transient buffers are returned to the OS on free
+    // instead of accumulating in malloc arenas (#1792). No-op off Linux/glibc.
+    memory::init_allocator();
+
     // Detect portable mode before anything else
     portable::init();
 
@@ -590,7 +694,8 @@ pub fn run(cli_args: CliArgs) {
         .commands(collect_commands![
             shortcut::change_binding,
             shortcut::reset_binding,
-            shortcut::change_ptt_setting,
+            shortcut::change_shortcut_activation_setting,
+            shortcut::change_hold_threshold_ms_setting,
             shortcut::change_audio_feedback_setting,
             shortcut::change_audio_feedback_volume_setting,
             shortcut::change_sound_theme_setting,
@@ -605,6 +710,7 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_extra_recording_buffer_setting,
             shortcut::change_paste_delay_ms_setting,
             shortcut::change_paste_delay_after_ms_setting,
+            shortcut::change_reliable_paste_setting,
             shortcut::change_paste_method_setting,
             shortcut::get_available_typing_tools,
             shortcut::change_typing_tool_setting,
@@ -626,12 +732,14 @@ pub fn run(cli_args: CliArgs) {
             shortcut::delete_post_process_prompt,
             shortcut::set_post_process_selected_prompt,
             shortcut::update_custom_words,
-            shortcut::suspend_binding,
-            shortcut::resume_binding,
+            shortcut::suspend_all_bindings,
+            shortcut::resume_all_bindings,
             shortcut::change_mute_while_recording_setting,
             shortcut::change_append_trailing_space_setting,
             shortcut::change_lazy_stream_close_setting,
             shortcut::change_vad_enabled_setting,
+            shortcut::change_vad_backend_setting,
+            shortcut::change_filler_word_removal_enabled_setting,
             shortcut::change_app_language_setting,
             shortcut::change_update_checks_setting,
             shortcut::change_show_whats_new_on_update_setting,
@@ -677,10 +785,13 @@ pub fn run(cli_args: CliArgs) {
             commands::export_settings,
             commands::import_settings,
             commands::transcription::transcribe_file,
+            secure_input::get_secure_input_status,
+            secure_input::run_keyboard_diagnostic,
             trigger_update_check,
             show_main_window_command,
             commands::cancel_operation,
             commands::is_portable,
+            commands::is_update_checks_locked,
             commands::get_app_dir_path,
             commands::get_app_settings,
             commands::get_default_settings,
@@ -827,7 +938,7 @@ pub fn run(cli_args: CliArgs) {
         builder = builder.plugin(tauri_nspanel::init());
     }
 
-    // Single-instance forwards CLI args to an already-running Handy and exits.
+    // Single-instance forwards CLI args to an already-running Phonara and exits.
     // That would make the headless path
     // (--transcribe-file/--list-devices/--list-models) a silent no-op whenever the
     // app is already open, so skip it in headless mode and run a standalone
@@ -841,12 +952,21 @@ pub fn run(cli_args: CliArgs) {
             } else if args.iter().any(|a| a == "--cancel") {
                 crate::utils::cancel_current_operation(app);
             } else {
+                // A second process was launched without remote-control flags
+                // (e.g. the binary run from a shell). On macOS, relaunching the
+                // bundle from Spotlight/Finder/Dock does not start a process —
+                // it arrives as RunEvent::Reopen below — but treat this the
+                // same way: raise the window and recreate a possibly vanished
+                // tray icon (#1948).
+                #[cfg(target_os = "macos")]
+                tray::recreate_tray_icon(app);
                 show_main_window(app);
             }
         }));
     }
 
-    builder
+    #[allow(unused_mut)]
+    let mut app = builder
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -888,7 +1008,7 @@ pub fn run(cli_args: CliArgs) {
                 let handle = app_handle.clone();
                 let args = cli_args.clone();
                 std::thread::spawn(move || {
-                    let code = run_headless_transcription(&handle, &args);
+                    let code = run_headless_guarded(|| run_headless_transcription(&handle, &args));
                     // Drop the loaded engine before teardown: ggml-metal's global
                     // device free asserts (SIGABRT) if a model's Metal resources
                     // are still alive at C++ static-destructor time.
@@ -923,7 +1043,7 @@ pub fn run(cli_args: CliArgs) {
                 .inner_size(680.0, 570.0)
                 .min_inner_size(680.0, 570.0)
                 .resizable(true)
-                .maximizable(false)
+                .maximizable(true)
                 .visible(false);
 
                 if let Some(data_dir) = portable::data_dir() {
@@ -939,6 +1059,12 @@ pub fn run(cli_args: CliArgs) {
 
             let mut settings = get_settings(app.handle());
 
+            // Apply the persisted appearance theme to the native title bar before
+            // the window is shown, so it matches the in-app palette without a flash
+            // of the wrong theme. See `apply_window_theme` for what this does per
+            // platform.
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            shortcut::apply_window_theme(app.handle(), settings.theme_mode);
             // CLI --debug flag overrides debug_mode and log level (runtime-only, not persisted)
             if cli_args.debug {
                 settings.debug_mode = true;
@@ -957,6 +1083,11 @@ pub fn run(cli_args: CliArgs) {
             app.manage(TranscriptionCoordinator::new(app_handle.clone()));
 
             initialize_core_logic(&app_handle);
+
+            // Secure Input monitor (macOS): detects stuck secure input that
+            // silently blocks keyed shortcuts, warns the user, and activates
+            // the Carbon fallback. See secure_input.rs and issue #1578.
+            secure_input::init(&app_handle);
 
             // Populate the overlay-enabled cache from initial settings so the
             // audio path (overlay::emit_levels, called ~24 Hz during recording)
@@ -988,6 +1119,7 @@ pub fn run(cli_args: CliArgs) {
 
             // If start_hidden but tray is disabled, we must show the window
             // anyway. Without a tray icon, the dock is the only way back in.
+            // Keep in sync with `apply_startup_activation_policy` (macOS).
             let tray_available = settings.show_tray_icon && !cli_args.no_tray;
             if should_force_show || !should_hide || !tray_available {
                 show_main_window(&app_handle);
@@ -1026,20 +1158,53 @@ pub fn run(cli_args: CliArgs) {
         })
         .invoke_handler(invoke_handler)
         .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| match &event {
-            #[cfg(target_os = "macos")]
-            tauri::RunEvent::Reopen { .. } => {
-                show_main_window(app);
+        .expect("error while building tauri application");
+
+    // Must sit between build() and run(): see the doc comment.
+    #[cfg(target_os = "macos")]
+    apply_startup_activation_policy(&mut app, headless_mode);
+
+    app.run(|app, event| match &event {
+        #[cfg(target_os = "macos")]
+        tauri::RunEvent::Reopen { .. } => {
+            // Fired when the already-running bundle is launched again from
+            // Spotlight/Finder or the Dock icon is clicked. If the settings
+            // window is hidden, the user is likely looking for a tray icon
+            // that vanished (#1948): recreate it. When the window is
+            // already visible this is just a focus request and the tray is
+            // left alone.
+            let window_visible = app
+                .get_webview_window("main")
+                .and_then(|w| w.is_visible().ok())
+                .unwrap_or(false);
+            if !window_visible {
+                tray::recreate_tray_icon(app);
             }
-            // Teardown transcribe.cpp before exit
-            tauri::RunEvent::Exit => {
-                if let Some(tm) = app.try_state::<Arc<TranscriptionManager>>() {
-                    if let Err(error) = tm.shutdown() {
-                        log::warn!("Transcription shutdown did not finish cleanly: {error}");
-                    }
+            show_main_window(app);
+        }
+        // Teardown transcribe.cpp before exit
+        tauri::RunEvent::Exit => {
+            if let Some(tm) = app.try_state::<Arc<TranscriptionManager>>() {
+                if let Err(error) = tm.shutdown() {
+                    log::warn!("Transcription shutdown did not finish cleanly: {error}");
                 }
             }
-            _ => {}
-        });
+        }
+        _ => {}
+    });
+}
+
+#[cfg(test)]
+mod headless_guard_tests {
+    use super::run_headless_guarded;
+
+    #[test]
+    fn preserves_normal_exit_codes() {
+        assert_eq!(run_headless_guarded(|| 2), 2);
+    }
+
+    #[test]
+    fn converts_worker_panics_to_runtime_failures() {
+        assert_eq!(run_headless_guarded(|| panic!("simulated failure")), 1);
+    }
 }

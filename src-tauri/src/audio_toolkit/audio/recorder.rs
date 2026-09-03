@@ -21,9 +21,9 @@ use crate::audio_toolkit::{
 
 enum Cmd {
     /// Begin capturing. Carries the send timestamp so the consumer can log how
-    /// long the command sat in the channel (and how much audio was dropped
-    /// before it was seen).
-    Start(VadPolicy, Instant),
+    /// long the command sat in the channel, plus a one-shot acknowledgement
+    /// sent only after the first microphone sample chunk is processed.
+    Start(VadPolicy, Instant, mpsc::Sender<()>),
     Stop(mpsc::Sender<Vec<f32>>),
     Shutdown,
 }
@@ -31,6 +31,20 @@ enum Cmd {
 enum AudioChunk {
     Samples(Vec<f32>),
     EndOfStream,
+}
+
+#[derive(Clone)]
+struct StreamControl {
+    stop_flag: Arc<AtomicBool>,
+    stream_error: Arc<AtomicBool>,
+    pause_flag: Option<Arc<AtomicBool>>,
+}
+
+#[derive(Clone, Copy)]
+struct InputBlockConfig {
+    channels: usize,
+    use_channel: Option<usize>,
+    paused: bool,
 }
 
 /// How 16 kHz mono frames should be filtered for one recording session.
@@ -51,12 +65,13 @@ pub enum VadPolicy {
 #[derive(Clone)]
 struct VadConfig {
     detector: Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>,
+    frame_samples: usize,
     offline_hangover_frames: usize,
     streaming_hangover_frames: usize,
 }
 
 impl VadConfig {
-    /// Post-speech hangover tail (in 30 ms frames) for the given policy.
+    /// Post-speech hangover tail (in backend-sized frames) for the given policy.
     /// `Disabled` never reaches the detector, so it maps to the offline value.
     fn hangover_for(&self, policy: VadPolicy) -> usize {
         match policy {
@@ -78,11 +93,17 @@ pub struct AudioRecorder {
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
     audio_cb: Option<AudioFrameCallback>,
     pause_flag: Option<Arc<AtomicBool>>,
+    /// Which input channel to use. None = average all (original behavior).
     selected_channel: Option<usize>,
-    /// Preferred stream config cached per device name. The HAL property queries
-    /// in `get_preferred_config` are on the keypress-to-capture path in
-    /// on-demand mode, so cache the accepted config and clear it on open failure.
+    /// Preferred stream config cached per device name. The two HAL property
+    /// queries in `get_preferred_config` cost ~40-85ms per open (worse on
+    /// USB/Bluetooth), which lands on the keypress->capture path in on-demand
+    /// mode. Keyed by name so a system-default change misses naturally;
+    /// cleared whenever an open fails so a stale rate/format self-heals on the
+    /// caller's retry.
     config_cache: Arc<Mutex<Option<(String, cpal::SupportedStreamConfig)>>>,
+    /// Set by cpal when the active input stream can no longer capture.
+    stream_error: Arc<AtomicBool>,
 }
 
 impl AudioRecorder {
@@ -97,6 +118,7 @@ impl AudioRecorder {
             pause_flag: None,
             selected_channel: None,
             config_cache: Arc::new(Mutex::new(None)),
+            stream_error: Arc::new(AtomicBool::new(false)),
         })
     }
 
@@ -109,8 +131,11 @@ impl AudioRecorder {
         offline_hangover_frames: usize,
         streaming_hangover_frames: usize,
     ) -> Self {
+        let frame_samples = detector.frame_samples();
+        assert!(frame_samples > 0, "VAD frame size must be non-zero");
         self.vad = Some(VadConfig {
             detector: Arc::new(Mutex::new(detector)),
+            frame_samples,
             offline_hangover_frames,
             streaming_hangover_frames,
         });
@@ -126,7 +151,9 @@ impl AudioRecorder {
     }
 
     /// Register a callback that receives real-time 16 kHz frames after the active
-    /// VAD policy has been applied. Keep the callback cheap so it never stalls capture.
+    /// VAD policy has been applied. Frames arrive in real time, in order, on the
+    /// recorder's consumer thread — keep the callback cheap (e.g. forward to a
+    /// channel) so it never stalls capture.
     pub fn with_audio_callback<F>(mut self, cb: F) -> Self
     where
         F: Fn(&[f32]) + Send + Sync + 'static,
@@ -135,20 +162,30 @@ impl AudioRecorder {
         self
     }
 
+    pub fn with_selected_channel(mut self, channel: Option<u16>) -> Self {
+        self.set_selected_channel(channel);
+        self
+    }
+
     pub fn with_pause_flag(mut self, flag: Arc<AtomicBool>) -> Self {
         self.pause_flag = Some(flag);
         self
     }
 
-    pub fn with_selected_channel(mut self, channel: Option<u16>) -> Self {
-        self.selected_channel = channel.map(|c| c as usize);
-        self
+    pub fn set_selected_channel(&mut self, channel: Option<u16>) {
+        self.selected_channel = channel.map(usize::from);
     }
 
     pub fn open(&mut self, device: Option<Device>) -> Result<(), Box<dyn std::error::Error>> {
         if self.worker_handle.is_some() {
-            return Ok(()); // already open
+            if !self.needs_reopen() {
+                return Ok(()); // already open
+            }
+            log::warn!("Capture stream failed; rebuilding microphone stream");
+            let _ = self.close();
         }
+
+        self.stream_error.store(false, Ordering::Relaxed);
 
         let (sample_tx, sample_rx) = mpsc::channel::<AudioChunk>();
         let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
@@ -164,11 +201,14 @@ impl AudioRecorder {
 
         let thread_device = device.clone();
         let vad = self.vad.clone();
+        // Move the optional level callback into the worker thread
         let level_cb = self.level_cb.clone();
+        // Move the optional real-time audio frame callback into the worker thread
         let audio_cb = self.audio_cb.clone();
         let pause_flag = self.pause_flag.clone();
         let selected_channel = self.selected_channel;
         let config_cache = Arc::clone(&self.config_cache);
+        let stream_error = Arc::clone(&self.stream_error);
 
         let worker = std::thread::spawn(move || {
             let stop_flag = Arc::new(AtomicBool::new(false));
@@ -201,82 +241,92 @@ impl AudioRecorder {
                     config.sample_format()
                 );
 
-                let sample_tx_i16 = sample_tx.clone();
-                let stop_i16 = stop_flag_for_stream.clone();
+                if let Some(channel) = selected_channel {
+                    if channel < channels {
+                        log::info!("Using selected input channel: {}", channel + 1);
+                    } else {
+                        log::warn!(
+                            "Selected input channel {} is out of range for a {}-channel device; averaging all channels instead",
+                            channel + 1,
+                            channels
+                        );
+                    }
+                } else {
+                    log::info!("Averaging all {} input channels", channels);
+                }
 
                 let build_started = Instant::now();
-                let stream_result = match config.sample_format() {
+                let stream = match config.sample_format() {
                     cpal::SampleFormat::U8 => AudioRecorder::build_stream::<u8>(
                         &thread_device,
                         &config,
                         sample_tx,
                         channels,
-                        stop_flag_for_stream,
                         selected_channel,
-                        pause_flag.clone(),
-                    ),
+                        StreamControl {
+                            stop_flag: stop_flag_for_stream,
+                            stream_error: Arc::clone(&stream_error),
+                            pause_flag: pause_flag.clone(),
+                        },
+                    )
+                    .map_err(|e| format!("Failed to build input stream: {e}"))?,
                     cpal::SampleFormat::I8 => AudioRecorder::build_stream::<i8>(
                         &thread_device,
                         &config,
                         sample_tx,
                         channels,
-                        stop_flag_for_stream,
                         selected_channel,
-                        pause_flag.clone(),
-                    ),
+                        StreamControl {
+                            stop_flag: stop_flag_for_stream,
+                            stream_error: Arc::clone(&stream_error),
+                            pause_flag: pause_flag.clone(),
+                        },
+                    )
+                    .map_err(|e| format!("Failed to build input stream: {e}"))?,
                     cpal::SampleFormat::I16 => AudioRecorder::build_stream::<i16>(
                         &thread_device,
                         &config,
                         sample_tx,
                         channels,
-                        stop_flag_for_stream,
                         selected_channel,
-                        pause_flag.clone(),
-                    ),
+                        StreamControl {
+                            stop_flag: stop_flag_for_stream,
+                            stream_error: Arc::clone(&stream_error),
+                            pause_flag: pause_flag.clone(),
+                        },
+                    )
+                    .map_err(|e| format!("Failed to build input stream: {e}"))?,
                     cpal::SampleFormat::I32 => AudioRecorder::build_stream::<i32>(
                         &thread_device,
                         &config,
                         sample_tx,
                         channels,
-                        stop_flag_for_stream,
                         selected_channel,
-                        pause_flag.clone(),
-                    ),
+                        StreamControl {
+                            stop_flag: stop_flag_for_stream,
+                            stream_error: Arc::clone(&stream_error),
+                            pause_flag: pause_flag.clone(),
+                        },
+                    )
+                    .map_err(|e| format!("Failed to build input stream: {e}"))?,
                     cpal::SampleFormat::F32 => AudioRecorder::build_stream::<f32>(
                         &thread_device,
                         &config,
                         sample_tx,
                         channels,
-                        stop_flag_for_stream,
                         selected_channel,
-                        pause_flag.clone(),
-                    ),
+                        StreamControl {
+                            stop_flag: stop_flag_for_stream,
+                            stream_error: Arc::clone(&stream_error),
+                            pause_flag: pause_flag.clone(),
+                        },
+                    )
+                    .map_err(|e| format!("Failed to build input stream: {e}"))?,
                     sample_format => {
                         return Err(format!("Unsupported sample format: {sample_format:?}"));
                     }
                 };
                 let build_elapsed = build_started.elapsed();
-
-                let stream = match stream_result {
-                    Ok(s) => s,
-                    Err(e) if config.sample_format() != cpal::SampleFormat::I16 => {
-                        log::warn!(
-                            "Failed with {:?} format, retrying with I16: {e}",
-                            config.sample_format()
-                        );
-                        AudioRecorder::build_stream::<i16>(
-                            &thread_device,
-                            &config,
-                            sample_tx_i16,
-                            channels,
-                            stop_i16,
-                            selected_channel,
-                            pause_flag.clone(),
-                        )
-                        .map_err(|e| format!("Failed to build input stream: {e}"))?
-                    }
-                    Err(e) => return Err(format!("Failed to build input stream: {e}")),
-                };
 
                 let play_started = Instant::now();
                 stream
@@ -302,7 +352,10 @@ impl AudioRecorder {
             match init_result {
                 Ok((stream, sample_rate)) => {
                     let _ = init_tx.send(Ok(()));
+                    // Timestamp for the play()-returned -> first-samples gap the
+                    // init handshake can't see (hardware dependent).
                     let stream_running_at = Instant::now();
+                    // Keep the stream alive while we process samples.
                     run_consumer(
                         sample_rate,
                         vad,
@@ -351,11 +404,21 @@ impl AudioRecorder {
         }
     }
 
-    pub fn start(&self, vad_policy: VadPolicy) -> Result<(), Box<dyn std::error::Error>> {
-        if let Some(tx) = &self.cmd_tx {
-            tx.send(Cmd::Start(vad_policy, Instant::now()))?;
-        }
-        Ok(())
+    /// Queue a recording start and return a one-shot receiver that resolves only
+    /// after the first real microphone sample chunk has entered the capture path.
+    /// `Stream::play()` returning is not sufficient: some Bluetooth and USB
+    /// devices take much longer to begin delivering callbacks.
+    pub fn start(
+        &self,
+        vad_policy: VadPolicy,
+    ) -> Result<mpsc::Receiver<()>, Box<dyn std::error::Error>> {
+        let tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| Error::other("Recorder is not open"))?;
+        let (ready_tx, ready_rx) = mpsc::channel();
+        tx.send(Cmd::Start(vad_policy, Instant::now(), ready_tx))?;
+        Ok(ready_rx)
     }
 
     pub fn stop(&self) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
@@ -364,6 +427,18 @@ impl AudioRecorder {
             tx.send(Cmd::Stop(resp_tx))?;
         }
         Ok(resp_rx.recv()?) // wait for the samples
+    }
+
+    /// True when the active capture stream must be rebuilt.
+    ///
+    /// cpal may report a device disconnect asynchronously without closing its
+    /// callback channel, so also honor the error callback's explicit flag.
+    pub fn needs_reopen(&self) -> bool {
+        self.stream_error.load(Ordering::Relaxed)
+            || self
+                .worker_handle
+                .as_ref()
+                .is_some_and(|handle| handle.is_finished())
     }
 
     pub fn close(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -382,96 +457,191 @@ impl AudioRecorder {
         config: &cpal::SupportedStreamConfig,
         sample_tx: mpsc::Sender<AudioChunk>,
         channels: usize,
-        stop_flag: Arc<AtomicBool>,
         selected_channel: Option<usize>,
-        pause_flag: Option<Arc<AtomicBool>>,
+        control: StreamControl,
     ) -> Result<cpal::Stream, cpal::BuildStreamError>
     where
         T: Sample + SizedSample + Send + 'static,
         f32: cpal::FromSample<T>,
     {
-        // Resolve the effective channel index (clamp to valid range)
-        let effective_channel = selected_channel.and_then(|ch| {
-            if ch < channels {
-                Some(ch)
-            } else {
-                log::warn!(
-                    "Selected channel {} exceeds device channels {}, averaging all",
-                    ch,
-                    channels
-                );
-                None
-            }
-        });
-
+        let StreamControl {
+            stop_flag,
+            stream_error,
+            pause_flag,
+        } = control;
         let mut output_buffer = Vec::new();
         let mut eos_sent = false;
+        // Resolve the effective channel to use. If the selected channel is
+        // out of range for this device, fall back to averaging all channels.
+        let use_channel: Option<usize> = match selected_channel {
+            Some(ch) if ch < channels => Some(ch),
+            Some(_) => None, // out of range, fall back to average
+            None => None,    // user chose "average all"
+        };
 
         let stream_cb = move |data: &[T], _: &cpal::InputCallbackInfo| {
-            if stop_flag.load(Ordering::Relaxed) {
-                if !eos_sent {
-                    let _ = sample_tx.send(AudioChunk::EndOfStream);
-                    eos_sent = true;
-                }
-                return;
-            }
-            eos_sent = false;
-
-            // When paused, discard incoming audio samples
-            if pause_flag
-                .as_ref()
-                .map(|f| f.load(Ordering::Relaxed))
-                .unwrap_or(false)
-            {
-                return;
-            }
-
-            if channels == 1 {
-                output_buffer.extend(data.iter().map(|&sample| sample.to_sample::<f32>()));
-            } else if let Some(ch) = effective_channel {
-                // Extract a single channel
-                let frame_count = data.len() / channels;
-                output_buffer.reserve(frame_count);
-                for frame in data.chunks_exact(channels) {
-                    output_buffer.push(frame[ch].to_sample::<f32>());
-                }
-            } else {
-                // Average all channels
-                let frame_count = data.len() / channels;
-                output_buffer.reserve(frame_count);
-
-                for frame in data.chunks_exact(channels) {
-                    let mono_sample = frame
-                        .iter()
-                        .map(|&sample| sample.to_sample::<f32>())
-                        .sum::<f32>()
-                        / channels as f32;
-                    output_buffer.push(mono_sample);
-                }
-            }
-
-            if sample_tx
-                .send(AudioChunk::Samples(std::mem::take(&mut output_buffer)))
-                .is_err()
-            {
-                log::error!("Failed to send samples");
-            }
+            handle_input_block(
+                data,
+                InputBlockConfig {
+                    channels,
+                    use_channel,
+                    paused: pause_flag
+                        .as_ref()
+                        .is_some_and(|flag| flag.load(Ordering::Relaxed)),
+                },
+                &stop_flag,
+                &mut eos_sent,
+                &mut output_buffer,
+                &sample_tx,
+            );
         };
 
         device.build_input_stream(
             &config.clone().into(),
             stream_cb,
-            |err| log::error!("Stream error: {}", err),
+            move |err| {
+                log::error!("Stream error: {}", err);
+                stream_error.store(true, Ordering::Relaxed);
+            },
             None,
         )
+    }
+
+    pub fn preferred_input_channel_count(
+        device: &cpal::Device,
+    ) -> Result<u16, Box<dyn std::error::Error>> {
+        Ok(Self::get_preferred_config(device)?.channels())
     }
 
     fn get_preferred_config(
         device: &cpal::Device,
     ) -> Result<cpal::SupportedStreamConfig, Box<dyn std::error::Error>> {
-        // Always use the device's default config for shared-mode compatibility.
-        // The FrameResampler in run_consumer() handles downsampling to 16 kHz.
-        Ok(device.default_input_config()?)
+        // Use the device's native/default sample rate and let the FrameResampler
+        // in run_consumer() downsample to 16kHz. This avoids forcing hardware into
+        // a non-native rate which can cause issues on some devices (Bluetooth
+        // codecs, certain ALSA drivers, etc.).
+        let default_config = device.default_input_config()?;
+        let target_rate = default_config.sample_rate();
+
+        // Try to find the best sample format at the device's default rate
+        let supported_configs = match device.supported_input_configs() {
+            Ok(configs) => configs,
+            Err(e) => {
+                log::warn!("Could not enumerate input configs ({e}), using device default");
+                return Ok(default_config);
+            }
+        };
+        let mut best_config: Option<cpal::SupportedStreamConfigRange> = None;
+
+        for config_range in supported_configs {
+            if config_range.min_sample_rate() <= target_rate
+                && config_range.max_sample_rate() >= target_rate
+            {
+                match best_config {
+                    None => best_config = Some(config_range),
+                    Some(ref current) => {
+                        // Prioritize F32 > I16 > I32 > others
+                        let score = |fmt: cpal::SampleFormat| match fmt {
+                            cpal::SampleFormat::F32 => 4,
+                            cpal::SampleFormat::I16 => 3,
+                            cpal::SampleFormat::I32 => 2,
+                            _ => 1,
+                        };
+
+                        if score(config_range.sample_format()) > score(current.sample_format()) {
+                            best_config = Some(config_range);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(config) = best_config {
+            return Ok(config.with_sample_rate(target_rate));
+        }
+
+        // Fall back to device default if no config matched (exotic/virtual devices)
+        log::warn!(
+            "No supported config matched device default rate {:?}, using default config",
+            target_rate
+        );
+        Ok(default_config)
+    }
+}
+
+/// Body of the cpal input callback, extracted for testing without a device.
+/// Converts the block to mono and forwards it. The block that first observes
+/// the stop flag was captured before the stop, so it is still forwarded —
+/// dropping it loses up to a callback period of tail audio (worst on
+/// Bluetooth) — followed by the end-of-stream sentinel; later blocks are
+/// dropped until the flag clears.
+fn handle_input_block<T>(
+    data: &[T],
+    config: InputBlockConfig,
+    stop_flag: &AtomicBool,
+    eos_sent: &mut bool,
+    output_buffer: &mut Vec<f32>,
+    sample_tx: &mpsc::Sender<AudioChunk>,
+) where
+    T: Sample,
+    f32: cpal::FromSample<T>,
+{
+    let stopping = stop_flag.load(Ordering::Relaxed);
+    if stopping && *eos_sent {
+        return;
+    }
+
+    // A paused session intentionally discards live samples, but stop must
+    // still terminate the consumer even when no more audio should be kept.
+    if config.paused {
+        if stopping {
+            let _ = sample_tx.send(AudioChunk::EndOfStream);
+            *eos_sent = true;
+        }
+        return;
+    }
+
+    output_buffer.clear();
+
+    if config.channels == 1 {
+        output_buffer.extend(data.iter().map(|&sample| sample.to_sample::<f32>()));
+    } else {
+        let frame_count = data.len() / config.channels;
+        output_buffer.reserve(frame_count);
+
+        if let Some(ch) = config.use_channel {
+            for frame in data.chunks_exact(config.channels) {
+                let mono_sample = frame[ch].to_sample::<f32>();
+                output_buffer.push(mono_sample);
+            }
+        } else {
+            for frame in data.chunks_exact(config.channels) {
+                let mono_sample = frame
+                    .iter()
+                    .map(|&sample| sample.to_sample::<f32>())
+                    .sum::<f32>()
+                    / config.channels as f32;
+                output_buffer.push(mono_sample);
+            }
+        }
+    }
+
+    // A failed send means the consumer thread is gone. During shutdown that is
+    // expected (the consumer exits before the stream is dropped), so only
+    // report it when capture was supposed to be live.
+    if sample_tx
+        .send(AudioChunk::Samples(output_buffer.clone()))
+        .is_err()
+        && !stopping
+    {
+        log::error!("Failed to send samples");
+    }
+
+    if stopping {
+        let _ = sample_tx.send(AudioChunk::EndOfStream);
+        *eos_sent = true;
+    } else {
+        *eos_sent = false;
     }
 }
 
@@ -489,95 +659,6 @@ pub fn is_no_input_device_error(error_message: &str) -> bool {
             && normalized.contains("coreaudio"))
 }
 
-#[cfg(test)]
-mod error_detection_tests {
-    use super::{is_microphone_access_denied, is_no_input_device_error};
-
-    #[test]
-    fn detects_access_is_denied() {
-        assert!(is_microphone_access_denied("Access is denied"));
-    }
-
-    #[test]
-    fn detects_permission_denied() {
-        assert!(is_microphone_access_denied("permission denied"));
-    }
-
-    #[test]
-    fn detects_windows_error_code() {
-        assert!(is_microphone_access_denied("WASAPI error: 0x80070005"));
-    }
-
-    #[test]
-    fn does_not_match_unrelated_errors() {
-        assert!(!is_microphone_access_denied("device not found"));
-    }
-
-    #[test]
-    fn detects_no_input_device() {
-        assert!(is_no_input_device_error("No input device found"));
-    }
-
-    #[test]
-    fn detects_coreaudio_config_error() {
-        assert!(is_no_input_device_error(
-            "Failed to fetch preferred config: A backend-specific error has occurred: An unknown error unknown to the coreaudio-rs API occurred"
-        ));
-    }
-
-    #[test]
-    fn does_not_match_other_errors_for_no_device() {
-        assert!(!is_no_input_device_error("permission denied"));
-        assert!(!is_no_input_device_error("device not found"));
-    }
-
-    #[test]
-    fn shutdown_command_exits_without_waiting_for_samples() {
-        use super::{run_consumer, AudioChunk, Cmd};
-        use std::sync::atomic::AtomicBool;
-        use std::sync::Arc;
-        use std::time::Instant;
-
-        let (sample_tx, sample_rx) = std::sync::mpsc::channel::<AudioChunk>();
-        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<Cmd>();
-        let stop_flag = Arc::new(AtomicBool::new(false));
-
-        let worker = std::thread::spawn(move || {
-            run_consumer(
-                16_000,
-                None,
-                sample_rx,
-                cmd_rx,
-                None,
-                None,
-                stop_flag,
-                Instant::now(),
-            );
-        });
-
-        // Queue shutdown first so it's already on cmd_rx when the consumer
-        // checks after processing the dummy sample (eliminates race).
-        cmd_tx.send(Cmd::Shutdown).expect("send shutdown");
-        // Unblock the consumer loop which blocks on sample_rx.recv() before
-        // non-blockingly checking cmd_rx.
-        sample_tx
-            .send(AudioChunk::Samples(vec![0.0; 480]))
-            .expect("send dummy sample");
-
-        let (joined_tx, joined_rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = worker.join();
-            let _ = joined_tx.send(());
-        });
-
-        joined_rx
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .expect("worker should exit after shutdown");
-
-        drop(sample_tx);
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn run_consumer(
     in_sample_rate: u32,
@@ -589,10 +670,16 @@ fn run_consumer(
     stop_flag: Arc<AtomicBool>,
     stream_running_at: Instant,
 ) {
+    let frame_samples = vad.as_ref().map_or(
+        (constants::WHISPER_SAMPLE_RATE * 30 / 1000) as usize,
+        |config| config.frame_samples,
+    );
+    let frame_duration =
+        Duration::from_secs_f64(frame_samples as f64 / constants::WHISPER_SAMPLE_RATE as f64);
     let mut frame_resampler = FrameResampler::new(
         in_sample_rate as usize,
         constants::WHISPER_SAMPLE_RATE as usize,
-        Duration::from_millis(30),
+        frame_duration,
     );
 
     let mut processed_samples = Vec::<f32>::new();
@@ -605,6 +692,7 @@ fn run_consumer(
     // when Cmd::Start lands.
     let mut first_chunk_logged = false;
     let mut awaiting_first_captured_chunk: Option<Instant> = None;
+    let mut capture_ready_tx: Option<mpsc::Sender<()>> = None;
 
     // ---------- spectrum visualisation setup ---------------------------- //
     const BUCKETS: usize = 16;
@@ -652,9 +740,7 @@ fn run_consumer(
         }
 
         if let Some(cfg) = vad {
-            // Recover from a poisoned lock instead of panicking the consumer thread,
-            // which would silently kill all further recordings this session.
-            let mut det = cfg.detector.lock().unwrap_or_else(|e| e.into_inner());
+            let mut det = cfg.detector.lock().unwrap();
             match det.push_frame(samples).unwrap_or(VadFrame::Speech(samples)) {
                 VadFrame::Speech(buf) => emit(buf),
                 VadFrame::Noise => {}
@@ -664,36 +750,45 @@ fn run_consumer(
         }
     }
 
+    // Poll commands even when a disconnected device stops producing samples
+    // without closing its CoreAudio stream.
     loop {
-        // Wait for an audio chunk with a timeout so Cmd::Shutdown and other
-        // commands are still processed when no audio is flowing (mic idle,
-        // test harness with no producer, etc.).
         let mut pending = match sample_rx.recv_timeout(Duration::from_millis(50)) {
             Ok(chunk) => Some(chunk),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         };
 
-        // non-blocking check for a command
+        // Handle pending commands BEFORE the in-flight chunk so a Start
+        // captures it. Commands used to be polled after processing, which
+        // silently dropped one buffer period of audio (~10ms built-in, up to
+        // ~100ms on Bluetooth) at every recording start.
         while let Ok(cmd) = cmd_rx.try_recv() {
             match cmd {
-                Cmd::Start(policy, sent_at) => {
+                Cmd::Start(policy, sent_at, ready_tx) => {
                     log::debug!(
-                        "Cmd::Start processed {:?} after send; capture begins with the in-flight chunk",
-                        sent_at.elapsed()
+                        "Cmd::Start processed {:?} after send; capture begins with {} chunk",
+                        sent_at.elapsed(),
+                        if pending.is_some() {
+                            "the in-flight"
+                        } else {
+                            "the next available"
+                        }
                     );
                     awaiting_first_captured_chunk = Some(Instant::now());
+                    capture_ready_tx = Some(ready_tx);
                     stop_flag.store(false, Ordering::Relaxed);
                     vad_policy = policy;
                     processed_samples.clear();
                     recording = true;
                     visualizer.reset();
-                    // Flush the resampler's FFT filter delay-line so the tail of the
-                    // previous utterance can't bleed into the next recording (#828).
                     frame_resampler.reset();
+                    // Reconfigure the single VAD engine for this session's policy
+                    // and clear its smoothing + recurrent state before it sees
+                    // any frames.
                     if vad_policy != VadPolicy::Disabled {
                         if let Some(cfg) = &vad {
-                            let mut det = cfg.detector.lock().unwrap_or_else(|e| e.into_inner());
+                            let mut det = cfg.detector.lock().unwrap();
                             det.set_hangover_frames(cfg.hangover_for(vad_policy));
                             det.reset();
                         }
@@ -701,6 +796,10 @@ fn run_consumer(
                 }
                 Cmd::Stop(reply_tx) => {
                     recording = false;
+                    // If Stop was queued before the first chunk, dropping this
+                    // sender prevents a stale ready UI event or start chime.
+                    capture_ready_tx = None;
+                    awaiting_first_captured_chunk = None;
                     stop_flag.store(true, Ordering::Relaxed);
 
                     // The chunk in hand arrived before the stop; it belongs to
@@ -719,6 +818,9 @@ fn run_consumer(
                     }
 
                     // Drain all remaining audio until the producer confirms end-of-stream.
+                    // The cpal callback sees the stop flag, sends EndOfStream, and goes
+                    // silent — guaranteeing every captured sample is in the channel
+                    // ahead of the sentinel.
                     loop {
                         match sample_rx.recv_timeout(Duration::from_secs(2)) {
                             Ok(AudioChunk::Samples(remaining)) => {
@@ -752,9 +854,31 @@ fn run_consumer(
                         )
                     });
 
+                    // Diagnostic only: evidence for whether the VAD was
+                    // still withholding tail audio when capture stopped.
+                    // Suggestive, not conclusive, in either direction.
+                    if vad_policy != VadPolicy::Disabled {
+                        if let Some(cfg) = &vad {
+                            let report = cfg.detector.lock().unwrap().tail_report();
+                            if let Some(report) = report {
+                                log::debug!(
+                                    "VAD at stop: withheld tail {} frames (~{}ms, {} voiced), in_speech={}, onset_counter={}, hangover_counter={}",
+                                    report.withheld_frames,
+                                    report.withheld_frames * cfg.frame_samples * 1000
+                                        / constants::WHISPER_SAMPLE_RATE as usize,
+                                    report.withheld_voiced_frames,
+                                    report.in_speech,
+                                    report.onset_counter,
+                                    report.hangover_counter
+                                );
+                            }
+                        }
+                    }
+
                     let _ = reply_tx.send(std::mem::take(&mut processed_samples));
 
                     // Resume the audio callback so the consumer loop can continue
+                    // receiving chunks (important for always-on microphone mode).
                     stop_flag.store(false, Ordering::Relaxed);
                 }
                 Cmd::Shutdown => {
@@ -780,24 +904,33 @@ fn run_consumer(
             );
         }
 
-        // ---------- spectrum processing ---------------------------------- //
-        if let Some(buckets) = visualizer.feed(&raw) {
-            if let Some(cb) = &level_cb {
-                cb(buckets);
+        // ---------- recording-time processing ---------------------------- //
+        // In always-on mode the capture stream stays open continuously for
+        // zero-latency start, so while idle (not recording) there is nothing to
+        // do with a chunk: handle_frame returns early when not recording, which
+        // means the resampled output would be discarded, and the level meter has
+        // no idle consumer. Skip both the level-meter FFT and the resampler while
+        // idle to avoid doing unnecessary work whose output is thrown away. Both
+        // are reset on Cmd::Start (visualizer.reset() / frame_resampler.reset()),
+        // so they resume cleanly the moment recording begins.
+        if recording {
+            if let Some(buckets) = visualizer.feed(&raw) {
+                if let Some(cb) = &level_cb {
+                    cb(buckets);
+                }
             }
-        }
 
-        // ---------- existing pipeline ------------------------------------ //
-        frame_resampler.push(&raw, &mut |frame: &[f32]| {
-            handle_frame(
-                frame,
-                recording,
-                vad_policy,
-                &vad,
-                &audio_cb,
-                &mut processed_samples,
-            )
-        });
+            frame_resampler.push(&raw, &mut |frame: &[f32]| {
+                handle_frame(
+                    frame,
+                    recording,
+                    vad_policy,
+                    &vad,
+                    &audio_cb,
+                    &mut processed_samples,
+                )
+            });
+        }
 
         if recording {
             if let Some(started) = awaiting_first_captured_chunk.take() {
@@ -807,51 +940,154 @@ fn run_consumer(
                     started.elapsed()
                 );
             }
+            if let Some(ready_tx) = capture_ready_tx.take() {
+                // Signal only after this chunk has passed through the visualizer
+                // and resampler. Silence still counts: readiness means the host
+                // is delivering samples, not that VAD has detected speech.
+                let _ = ready_tx.send(());
+            }
         }
     }
 }
 
 #[cfg(test)]
-mod consumer_tests {
-    use super::{run_consumer, AudioChunk, Cmd};
-    use std::sync::atomic::AtomicBool;
-    use std::sync::{mpsc, Arc};
-    use std::time::{Duration, Instant};
+mod tests {
+    use super::{
+        handle_input_block, is_microphone_access_denied, is_no_input_device_error, run_consumer,
+        AudioChunk, AudioRecorder, Cmd, InputBlockConfig,
+    };
+    use std::{
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            mpsc, Arc,
+        },
+        thread,
+        time::{Duration, Instant},
+    };
 
     #[test]
-    fn shutdown_command_exits_without_waiting_for_samples() {
-        let (sample_tx, sample_rx) = mpsc::channel::<AudioChunk>();
-        let (cmd_tx, cmd_rx) = mpsc::channel::<Cmd>();
-        let stop_flag = Arc::new(AtomicBool::new(false));
+    fn unopened_recorder_does_not_need_reopen() {
+        // No worker has been spawned yet, so there is nothing to reap. Guards
+        // against inverting the "no worker" case, which would make every first
+        // open() take the rebuild path.
+        let recorder = AudioRecorder::new().expect("recorder");
+        assert!(!recorder.needs_reopen());
+    }
 
-        let worker = std::thread::spawn({
-            let stop_flag = stop_flag.clone();
-            move || {
-                run_consumer(
-                    16_000,
-                    None,
-                    sample_rx,
-                    cmd_rx,
-                    None,
-                    None,
-                    stop_flag,
-                    Instant::now(),
-                );
-            }
+    #[test]
+    fn stream_error_requires_reopen() {
+        let recorder = AudioRecorder::new().expect("recorder");
+        recorder.stream_error.store(true, Ordering::Relaxed);
+        assert!(recorder.needs_reopen());
+    }
+
+    #[test]
+    fn shutdown_is_processed_without_audio_samples() {
+        let (sample_tx, sample_rx) = mpsc::channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_consumer(
+                48_000,
+                None,
+                sample_rx,
+                cmd_rx,
+                None,
+                None,
+                Arc::new(AtomicBool::new(false)),
+                Instant::now(),
+            );
+            let _ = done_tx.send(());
         });
 
         cmd_tx.send(Cmd::Shutdown).expect("send shutdown");
+        let stopped = done_rx.recv_timeout(Duration::from_secs(1));
 
-        let (joined_tx, joined_rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let _ = worker.join();
-            let _ = joined_tx.send(());
-        });
-
-        joined_rx
-            .recv_timeout(Duration::from_secs(1))
-            .expect("worker should exit after shutdown");
-
+        // Unblock the old implementation so a failing test still exits cleanly.
         drop(sample_tx);
+        worker.join().expect("join consumer");
+        assert!(stopped.is_ok(), "shutdown waited for an audio sample");
+    }
+
+    #[test]
+    fn boundary_block_forwarded_before_eos() {
+        let (tx, rx) = mpsc::channel();
+        let stop_flag = AtomicBool::new(false);
+        let mut eos_sent = false;
+        let mut scratch = Vec::new();
+        let mut push = |flag: &AtomicBool, eos: &mut bool, block: &[f32]| {
+            handle_input_block::<f32>(
+                block,
+                InputBlockConfig {
+                    channels: 1,
+                    use_channel: None,
+                    paused: false,
+                },
+                flag,
+                eos,
+                &mut scratch,
+                &tx,
+            )
+        };
+
+        // Running: blocks forwarded, no sentinel.
+        push(&stop_flag, &mut eos_sent, &[0.1]);
+        assert!(matches!(rx.try_recv(), Ok(AudioChunk::Samples(_))));
+        assert!(rx.try_recv().is_err());
+
+        // The block observing the stop flag is still forwarded, then EOS.
+        stop_flag.store(true, Ordering::Relaxed);
+        push(&stop_flag, &mut eos_sent, &[0.5, 0.5]);
+        match rx.try_recv() {
+            Ok(AudioChunk::Samples(samples)) => assert_eq!(samples, vec![0.5, 0.5]),
+            _ => panic!("boundary block must be forwarded, not dropped"),
+        }
+        assert!(matches!(rx.try_recv(), Ok(AudioChunk::EndOfStream)));
+
+        // Later blocks are dropped until the flag clears, then capture resumes.
+        push(&stop_flag, &mut eos_sent, &[0.9]);
+        assert!(rx.try_recv().is_err(), "blocks after EOS must be dropped");
+        stop_flag.store(false, Ordering::Relaxed);
+        push(&stop_flag, &mut eos_sent, &[0.2]);
+        assert!(matches!(rx.try_recv(), Ok(AudioChunk::Samples(_))));
+        assert!(rx.try_recv().is_err(), "no sentinel while running");
+    }
+
+    #[test]
+    fn detects_access_is_denied() {
+        assert!(is_microphone_access_denied("Access is denied"));
+    }
+
+    #[test]
+    fn detects_permission_denied() {
+        assert!(is_microphone_access_denied("permission denied"));
+    }
+
+    #[test]
+    fn detects_windows_error_code() {
+        assert!(is_microphone_access_denied("WASAPI error: 0x80070005"));
+    }
+
+    #[test]
+    fn does_not_match_unrelated_errors() {
+        assert!(!is_microphone_access_denied("device not found"));
+    }
+
+    #[test]
+    fn detects_no_input_device() {
+        assert!(is_no_input_device_error("No input device found"));
+    }
+
+    #[test]
+    fn detects_coreaudio_config_error() {
+        assert!(is_no_input_device_error(
+            "Failed to fetch preferred config: A backend-specific error has occurred: An unknown error unknown to the coreaudio-rs API occurred"
+        ));
+    }
+
+    #[test]
+    fn does_not_match_other_errors_for_no_device() {
+        assert!(!is_no_input_device_error("permission denied"));
+        assert!(!is_no_input_device_error("device not found"));
     }
 }

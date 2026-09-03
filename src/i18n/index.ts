@@ -1,7 +1,8 @@
-import i18n from "i18next";
+import i18n, { type BackendModule } from "i18next";
 import { initReactI18next } from "react-i18next";
 import { locale } from "@tauri-apps/plugin-os";
 import { LANGUAGE_METADATA } from "./languages";
+import englishTranslation from "./locales/en/translation.json";
 import { commands } from "@/bindings";
 import {
   getLanguageDirection,
@@ -9,20 +10,46 @@ import {
   updateDocumentLanguage,
 } from "@/lib/utils/rtl";
 
-const localeModules = import.meta.glob<{ default: Record<string, unknown> }>(
+const localeLoaders = import.meta.glob<{ default: Record<string, unknown> }>([
   "./locales/*/translation.json",
-  { eager: true },
-);
+  "!./locales/en/translation.json",
+]);
 
-const resources: Record<string, { translation: Record<string, unknown> }> = {};
-for (const [path, module] of Object.entries(localeModules)) {
-  const langCode = path.match(/\.\/locales\/(.+)\/translation\.json/)?.[1];
-  if (langCode) {
-    resources[langCode] = { translation: module.default };
-  }
-}
+const languageCodes = [
+  "en",
+  ...Object.keys(localeLoaders).flatMap((path) => {
+    const code = path.match(/\.\/locales\/(.+)\/translation\.json/)?.[1];
+    return code ? [code] : [];
+  }),
+];
 
-export const SUPPORTED_LANGUAGES = Object.keys(resources)
+const localeBackend: BackendModule = {
+  type: "backend",
+  init: () => undefined,
+  read: (language, _namespace, callback) => {
+    const loader = localeLoaders[`./locales/${language}/translation.json`];
+    if (!loader) {
+      callback(
+        new Error(`Unsupported application language: ${language}`),
+        false,
+      );
+      return;
+    }
+
+    loader().then(
+      (module) => callback(null, module.default),
+      (error: unknown) =>
+        callback(
+          error instanceof Error
+            ? error
+            : new Error(`Failed to load application language: ${language}`),
+          false,
+        ),
+    );
+  },
+};
+
+export const SUPPORTED_LANGUAGES = languageCodes
   .map((code) => {
     const meta = LANGUAGE_METADATA[code];
     if (!meta) {
@@ -46,34 +73,55 @@ export const SUPPORTED_LANGUAGES = Object.keys(resources)
 
 export type SupportedLanguageCode = string;
 
-const getSupportedLanguage = (
+// Check if a language code is supported
+export const getSupportedLanguage = (
   langCode: string | null | undefined,
 ): SupportedLanguageCode | null => {
   if (!langCode) return null;
-  const normalized = langCode.toLowerCase();
+  const normalized = langCode.toLowerCase().replace(/_/g, "-");
+  const subtags = normalized.split("-");
+  const language = subtags[0];
+  const isHant = subtags.includes("hant");
+  const isHans = subtags.includes("hans");
+  const isTraditionalRegion = ["tw", "hk", "mo"].some((region) =>
+    subtags.includes(region),
+  );
+
+  // Try exact match first
   let supported = SUPPORTED_LANGUAGES.find(
     (lang) => lang.code.toLowerCase() === normalized,
   );
   if (!supported) {
-    const prefix = normalized.split("-")[0];
+    let fallback = language;
+    if (language === "zh" && (isHant || (!isHans && isTraditionalRegion))) {
+      fallback = "zh-tw";
+    } else if (language === "yue") {
+      // Cantonese uses Traditional Chinese unless explicitly tagged as Hans.
+      fallback = isHans ? "zh" : "zh-tw";
+    }
     supported = SUPPORTED_LANGUAGES.find(
-      (lang) => lang.code.toLowerCase() === prefix,
+      (lang) => lang.code.toLowerCase() === fallback,
     );
   }
   return supported ? supported.code : null;
 };
 
-i18n.use(initReactI18next).init({
-  resources,
-  lng: "en",
-  fallbackLng: "en",
-  interpolation: {
-    escapeValue: false,
-  },
-  react: {
-    useSuspense: false,
-  },
-});
+i18n
+  .use(localeBackend)
+  .use(initReactI18next)
+  .init({
+    resources: { en: { translation: englishTranslation } },
+    partialBundledLanguages: true,
+    supportedLngs: languageCodes,
+    lng: "en",
+    fallbackLng: "en",
+    interpolation: {
+      escapeValue: false,
+    },
+    react: {
+      useSuspense: false,
+    },
+  });
 
 export const syncLanguageFromSettings = async () => {
   try {

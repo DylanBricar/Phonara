@@ -8,6 +8,8 @@ import { useSettings } from "../../hooks/useSettings";
 import { useOsType } from "../../hooks/useOsType";
 import { commands } from "@/bindings";
 import { toast } from "sonner";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { SECURE_INPUT_HELP_URL } from "../SecureInputWarning";
 
 interface PhonaraKeysShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
@@ -40,6 +42,13 @@ export const PhonaraKeysShortcutInput: React.FC<
   const shortcutRef = useRef<HTMLDivElement | null>(null);
   const unlistenRef = useRef<(() => void) | null>(null);
   const currentKeysRef = useRef<string>("");
+  // Track keyed vs modifier-only captures separately so a combo commits only
+  // on its key's release and a modifier-only shortcut only once every
+  // modifier is released. Committing on the *first* release (the old
+  // behavior) silently saved just the modifier whenever the key event never
+  // arrived — e.g. while macOS Secure Input is active (issue #1578).
+  const keyedShortcutRef = useRef<string>("");
+  const modifierOnlyShortcutRef = useRef<string>("");
   const osType = useOsType();
 
   const bindings = getSetting("bindings") || {};
@@ -65,6 +74,8 @@ export const PhonaraKeysShortcutInput: React.FC<
     setIsRecording(false);
     setCurrentKeys("");
     currentKeysRef.current = "";
+    keyedShortcutRef.current = "";
+    modifierOnlyShortcutRef.current = "";
     setOriginalBinding("");
   }, [isRecording, originalBinding, shortcutId, updateBinding, t]);
 
@@ -74,45 +85,78 @@ export const PhonaraKeysShortcutInput: React.FC<
     let cleanup = false;
 
     const setupListener = async () => {
+      const commitAndStop = async (keysToCommit: string) => {
+        try {
+          await updateBinding(shortcutId, keysToCommit);
+        } catch (error) {
+          console.error("Failed to change binding:", error);
+          toast.error(
+            t("settings.general.shortcut.errors.set", {
+              error: String(error),
+            }),
+          );
+
+          // Reset to original binding on error
+          if (originalBinding) {
+            try {
+              await updateBinding(shortcutId, originalBinding);
+            } catch (resetError) {
+              console.error("Failed to reset binding:", resetError);
+              toast.error(t("settings.general.shortcut.errors.reset"));
+            }
+          }
+        }
+
+        // Stop recording
+        if (unlistenRef.current) {
+          unlistenRef.current();
+          unlistenRef.current = null;
+        }
+        await commands.stopPhonaraKeysRecording().catch(console.error);
+        setIsRecording(false);
+        setCurrentKeys("");
+        currentKeysRef.current = "";
+        keyedShortcutRef.current = "";
+        modifierOnlyShortcutRef.current = "";
+        setOriginalBinding("");
+      };
+
       const unlisten = await listen<PhonaraKeysEvent>(
         "phonara-keys-event",
         async (event) => {
           if (cleanup) return;
 
-          const { hotkey_string, is_key_down } = event.payload;
+          const { hotkey_string, is_key_down, key, modifiers } = event.payload;
 
           if (is_key_down && hotkey_string) {
+            // Update both state (for display) and refs (for release handler)
+            if (key) {
+              keyedShortcutRef.current = hotkey_string;
+            } else {
+              modifierOnlyShortcutRef.current = hotkey_string;
+            }
             currentKeysRef.current = hotkey_string;
             setCurrentKeys(hotkey_string);
-          } else if (!is_key_down && currentKeysRef.current) {
-            const keysToCommit = currentKeysRef.current;
-            try {
-              await updateBinding(shortcutId, keysToCommit);
-            } catch (error) {
-              toast.error(
-                t("settings.general.shortcut.errors.set", {
-                  error: String(error),
-                }),
-              );
-
-              if (originalBinding) {
-                try {
-                  await updateBinding(shortcutId, originalBinding);
-                } catch {
-                  toast.error(t("settings.general.shortcut.errors.reset"));
-                }
-              }
+          } else if (!is_key_down && key) {
+            // The main key was released — commit the keyed combo. The release
+            // event's hotkey_string still contains the key, so it works even
+            // if the key-down was somehow missed. Never fall back to a
+            // modifier-only capture here: that's how bindings used to get
+            // silently overwritten with just the modifier (issue #1578).
+            const keysToCommit = keyedShortcutRef.current || hotkey_string;
+            if (keysToCommit) {
+              await commitAndStop(keysToCommit);
             }
-
-            if (unlistenRef.current) {
-              unlistenRef.current();
-              unlistenRef.current = null;
-            }
-            await commands.stopPhonaraKeysRecording().catch(() => {});
-            setIsRecording(false);
-            setCurrentKeys("");
-            currentKeysRef.current = "";
-            setOriginalBinding("");
+          } else if (
+            !is_key_down &&
+            !key &&
+            modifiers.length === 0 &&
+            !keyedShortcutRef.current &&
+            modifierOnlyShortcutRef.current
+          ) {
+            // Every modifier released without a main key ever going down —
+            // commit as a modifier-only shortcut
+            await commitAndStop(modifierOnlyShortcutRef.current);
           }
         },
       );
@@ -170,11 +214,34 @@ export const PhonaraKeysShortcutInput: React.FC<
 
     setOriginalBinding(bindings[shortcutId]?.current_binding || "");
 
+    // Start backend recording. The backend refuses while macOS Secure Input
+    // is active (the recorder's listener would receive no key events and
+    // capture just the modifier) — it also flips the warning banner on, so
+    // the toast points at a visible explanation.
     try {
-      await commands.startPhonaraKeysRecording(shortcutId);
+      const result = await commands.startPhonaraKeysRecording(shortcutId);
+      if (result.status === "error") {
+        if (String(result.error).includes("secure-input-active")) {
+          toast.error(t("secureInput.recorderBlocked"), {
+            action: {
+              label: t("secureInput.learnMore"),
+              onClick: () => openUrl(SECURE_INPUT_HELP_URL),
+            },
+          });
+        } else {
+          toast.error(
+            t("settings.general.shortcut.errors.set", {
+              error: String(result.error),
+            }),
+          );
+        }
+        return;
+      }
       setIsRecording(true);
       setCurrentKeys("");
       currentKeysRef.current = "";
+      keyedShortcutRef.current = "";
+      modifierOnlyShortcutRef.current = "";
     } catch (error) {
       toast.error(
         t("settings.general.shortcut.errors.set", { error: String(error) }),

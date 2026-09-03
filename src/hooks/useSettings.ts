@@ -12,13 +12,16 @@ interface UseSettingsReturn {
   outputDevices: AudioDevice[];
   audioFeedbackEnabled: boolean;
   postProcessModelOptions: Record<string, string[]>;
+  updateChecksLocked: boolean | null;
+
+  // Actions
   updateSetting: <K extends keyof Settings>(
     key: K,
     value: Settings[K],
   ) => Promise<void>;
   updateTranscribeAcceleration: (
     accelerator: TranscribeAcceleratorSetting,
-    gpuDevice: number,
+    gpuDevice: string | null,
   ) => Promise<boolean>;
   resetSetting: (key: keyof Settings) => Promise<void>;
   refreshSettings: () => Promise<void>;
@@ -49,6 +52,7 @@ export const useSettings = (): UseSettingsReturn => {
       audioDevices: state.audioDevices,
       outputDevices: state.outputDevices,
       postProcessModelOptions: state.postProcessModelOptions,
+      updateChecksLocked: state.updateChecksLocked,
       updateSetting: state.updateSetting,
       updateTranscribeAcceleration: state.updateTranscribeAcceleration,
       resetSetting: state.resetSetting,
@@ -81,6 +85,7 @@ export const useSettings = (): UseSettingsReturn => {
     outputDevices: store.outputDevices,
     audioFeedbackEnabled: store.settings?.audio_feedback || false,
     postProcessModelOptions: store.postProcessModelOptions,
+    updateChecksLocked: store.updateChecksLocked,
     updateSetting: store.updateSetting,
     updateTranscribeAcceleration: store.updateTranscribeAcceleration,
     resetSetting: store.resetSetting,

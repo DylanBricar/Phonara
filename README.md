@@ -6,17 +6,17 @@ Press a shortcut, speak, and your words appear in any text field. Everything run
 
 ## How It Works
 
-1. **Press** a configurable keyboard shortcut (or use push-to-talk)
+1. **Press** a configurable shortcut: hold it, tap it to toggle, or select a fixed activation mode
 2. **Speak** while recording is active
-3. **Release** and Phonara transcribes your speech
+3. **Release or tap again** and Phonara transcribes your speech
 4. **Get** transcribed text pasted directly into your active app
 
 ### Features
 
 - **Multiple models**: Whisper (Small/Medium/Turbo/Large), Parakeet V3, Moonshine, SenseVoice, GigaAM
-- **Voice Activity Detection** with Silero (filters silence automatically)
+- **Voice Activity Detection** with Silero or Earshot (filters silence automatically)
 - **GPU acceleration** when available (Metal on macOS, Vulkan on Windows/Linux)
-- **19 languages** supported in the UI
+- **24 languages** supported in the UI
 - **CLI control** for automation (`--toggle-transcription`, `--start-hidden`, etc.)
 - **Cross-platform**: macOS (Intel + Apple Silicon), Windows (x64), Linux (x64, ARM64)
 
@@ -40,6 +40,10 @@ Press a shortcut, speak, and your words appear in any text field. Everything run
 - **Long audio chunking** - Audio >28s is automatically split at silence boundaries with 0.5s overlap to prevent Whisper hallucinations
 - **Hallucination filtering** - Detects and removes punctuation-only output, repeated characters (!!!!!), spaced repetitions (! ! ! !), and stutter artifacts
 - **Consistent language detection** - First chunk language is forced for remaining chunks to prevent Whisper auto-detection errors
+- **Flexible shortcut activation** - Auto push-to-talk/toggle detection plus explicit hold-only and toggle-only modes
+- **Audio channel selection** - Select a channel on multi-channel microphones instead of always averaging inputs
+- **Expanded model support** - Current Parakeet GGUF, Moonshine streaming, translation-aware filters, and hardened mirror downloads
+- **Secure Input diagnostics** - macOS shortcut coverage is detected and explained when Secure Input blocks ordinary key events
 
 ### Bug Fixes
 
@@ -57,6 +61,11 @@ Press a shortcut, speak, and your words appear in any text field. Everything run
 - **Admin window freeze** - Windows SendInput replaces enigo for input simulation (Issue #434)
 - **Volume slider precision** - 1% step instead of 10% (PR #944)
 - **Double-click tray** - Opens main window (PR #369)
+- **Recording tail preservation** - Samples captured while a recording stops are no longer discarded
+- **Microphone recovery** - Automatically falls back to the default microphone after a selected device disconnects
+- **Reliable paste** - Platform-specific transactions preserve clipboard content and clear stuck modifiers
+- **Shortcut parity** - Toggle presses arriving during transcription are queued instead of being lost
+- **Private release logs** - Production logs no longer contain transcription text
 
 ### Infrastructure & Security
 
@@ -137,7 +146,7 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 
 | Source                                              | Last Commit Hash |
 | --------------------------------------------------- | ---------------- |
-| [cjpais/Handy](https://github.com/cjpais/Handy)     | `f79a907`        |
+| [cjpais/Handy](https://github.com/cjpais/Handy)     | `fbd4e15f`       |
 | [Melvynx/Parler](https://github.com/Melvynx/Parler) | `1aaa38b`        |
 
 ### How to Contribute

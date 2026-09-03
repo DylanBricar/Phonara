@@ -1,3 +1,4 @@
+use crate::utils;
 use log::{debug, warn};
 use once_cell::sync::Lazy;
 use serde::de::{self, Visitor};
@@ -223,6 +224,21 @@ pub enum PasteMethod {
     ExternalScript,
 }
 
+/// How the transcribe shortcut's key events drive a recording.
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ShortcutActivation {
+    /// Press to start, press again to stop.
+    Toggle,
+    /// Hold to record, release to stop.
+    PushToTalk,
+    /// Hold to record and release to stop, or tap to keep recording until the
+    /// next press. Which one it was is decided by how long the key was held
+    /// (`hold_threshold_ms`).
+    #[default]
+    HoldOrToggle,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ClipboardHandling {
@@ -360,6 +376,14 @@ pub enum OrtAcceleratorSetting {
     Rocm,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Type, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VadBackend {
+    #[default]
+    Silero,
+    Earshot,
+}
+
 #[derive(Clone, Serialize, Deserialize, Type)]
 #[serde(transparent)]
 pub(crate) struct SecretMap(HashMap<String, String>);
@@ -406,8 +430,14 @@ pub struct AppSettings {
     /// default bindings for any missing keys before the settings are used.
     #[serde(default)]
     pub bindings: HashMap<String, ShortcutBinding>,
-    #[serde(default = "default_push_to_talk")]
-    pub push_to_talk: bool,
+    /// Replaces the pre-0.10 `push_to_talk` bool; stores missing this key are
+    /// migrated from it in `apply_settings_migrations`.
+    #[serde(default)]
+    pub shortcut_activation: ShortcutActivation,
+    /// Hold-or-toggle only: a press held at least this long is push-to-talk,
+    /// anything shorter is a tap that locks recording on.
+    #[serde(default = "default_hold_threshold_ms")]
+    pub hold_threshold_ms: u64,
     #[serde(default)]
     pub audio_feedback: bool,
     #[serde(default = "default_audio_feedback_volume")]
@@ -436,6 +466,10 @@ pub struct AppSettings {
     pub always_on_microphone: bool,
     #[serde(default)]
     pub selected_microphone: Option<String>,
+    /// Which input channel to use on the selected microphone device.
+    /// None means "average all channels" (original behavior).
+    #[serde(default)]
+    pub selected_channel: Option<u16>,
     #[serde(default)]
     pub clamshell_microphone: Option<String>,
     #[serde(default)]
@@ -506,10 +540,17 @@ pub struct AppSettings {
     pub paste_delay_ms: u64,
     #[serde(default = "default_paste_delay_after_ms")]
     pub paste_delay_after_ms: u64,
+    /// Debug-gated ("beta") receipt-sequenced paste: restore the clipboard only
+    /// after the target app actually reads the transcript, instead of after a
+    /// fixed delay. See `paste_tx`. macOS and Windows only.
+    #[serde(default)]
+    pub reliable_paste: bool,
     #[serde(default = "default_typing_tool")]
     pub typing_tool: TypingTool,
     #[serde(default)]
     pub external_script_path: Option<String>,
+    #[serde(default = "default_filler_word_removal_enabled")]
+    pub filler_word_removal_enabled: bool,
     #[serde(default)]
     pub long_audio_model: Option<String>,
     #[serde(default = "default_long_audio_threshold_seconds")]
@@ -556,16 +597,26 @@ pub struct AppSettings {
     pub transcribe_accelerator: TranscribeAcceleratorSetting,
     #[serde(default)]
     pub ort_accelerator: OrtAcceleratorSetting,
-    #[serde(default = "default_transcribe_gpu_device")]
-    pub transcribe_gpu_device: i32,
+    /// Stable transcribe.cpp device selector. This is derived from the backend's
+    /// `device_id` when available (or its name for backends such as Metal),
+    /// never from the process-local device registry index.
+    #[serde(
+        default = "default_transcribe_gpu_device",
+        deserialize_with = "deserialize_transcribe_gpu_device"
+    )]
+    pub transcribe_gpu_device: Option<String>,
     #[serde(default)]
     pub extra_recording_buffer_ms: u64,
     #[serde(default = "default_vad_enabled")]
     pub vad_enabled: bool,
+    /// Experimental detector implementation. Silero remains the stable default.
+    #[serde(default)]
+    pub vad_backend: VadBackend,
+    /// Which recording overlay to show: None / Minimal / Live. Streaming mode is
+    /// not gated on this — that follows model capability. Migrated from the old
+    /// `overlay_position` (position `none` → style `None`).
     #[serde(default = "default_overlay_style")]
     pub overlay_style: OverlayStyle,
-    #[serde(default)]
-    pub selected_channel: Option<u16>,
 }
 
 fn default_model() -> String {
@@ -578,8 +629,8 @@ fn default_settings_schema_version() -> u32 {
     CURRENT_SETTINGS_SCHEMA_VERSION
 }
 
-fn default_push_to_talk() -> bool {
-    true
+fn default_hold_threshold_ms() -> u64 {
+    300
 }
 
 fn default_always_on_microphone() -> bool {
@@ -630,6 +681,10 @@ fn default_overlay_style() -> OverlayStyle {
 }
 
 fn default_vad_enabled() -> bool {
+    true
+}
+
+fn default_filler_word_removal_enabled() -> bool {
     true
 }
 
@@ -860,8 +915,25 @@ fn default_long_audio_threshold_seconds() -> f32 {
     10.0
 }
 
-fn default_transcribe_gpu_device() -> i32 {
-    -1 // auto
+fn default_transcribe_gpu_device() -> Option<String> {
+    None // automatic device selection
+}
+
+/// Accept the 0.1-era integer registry index long enough for the schema
+/// migration to clear it. Device indices are process-local in transcribe.cpp
+/// 0.2 and must never be carried across launches.
+fn deserialize_transcribe_gpu_device<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(serde_json::Value::String(value)) => Ok(Some(value)),
+        Some(serde_json::Value::Number(_)) => Ok(None),
+        Some(_) => Err(de::Error::custom(
+            "transcribe GPU device must be a string, integer, or null",
+        )),
+    }
 }
 
 fn default_gemini_model() -> String {
@@ -1035,7 +1107,8 @@ pub fn get_default_settings() -> AppSettings {
     AppSettings {
         settings_schema_version: default_settings_schema_version(),
         bindings,
-        push_to_talk: default_push_to_talk(),
+        shortcut_activation: ShortcutActivation::default(),
+        hold_threshold_ms: default_hold_threshold_ms(),
         audio_feedback: false,
         audio_feedback_volume: default_audio_feedback_volume(),
         sound_theme: default_sound_theme(),
@@ -1048,6 +1121,7 @@ pub fn get_default_settings() -> AppSettings {
         onboarding_completed: false,
         always_on_microphone: false,
         selected_microphone: None,
+        selected_channel: None,
         clamshell_microphone: None,
         selected_output_device: None,
         translate_to_english: false,
@@ -1083,6 +1157,7 @@ pub fn get_default_settings() -> AppSettings {
         show_tray_icon: default_show_tray_icon(),
         paste_delay_ms: default_paste_delay_ms(),
         paste_delay_after_ms: default_paste_delay_after_ms(),
+        reliable_paste: false,
         typing_tool: default_typing_tool(),
         external_script_path: None,
         long_audio_model: None,
@@ -1105,14 +1180,15 @@ pub fn get_default_settings() -> AppSettings {
         overlay_custom_height: default_overlay_custom_height(),
         theme_mode: ThemeMode::default(),
         accent_color: AccentColor::default(),
+        filler_word_removal_enabled: default_filler_word_removal_enabled(),
         custom_filler_words: None,
         transcribe_accelerator: TranscribeAcceleratorSetting::default(),
         ort_accelerator: OrtAcceleratorSetting::default(),
         transcribe_gpu_device: default_transcribe_gpu_device(),
         extra_recording_buffer_ms: 0,
         vad_enabled: default_vad_enabled(),
+        vad_backend: VadBackend::default(),
         overlay_style: default_overlay_style(),
-        selected_channel: None,
     }
 }
 
@@ -1310,17 +1386,30 @@ fn apply_settings_migrations(
         updated = true;
     }
 
+    // One-time shortcut activation migration (only while the new key is
+    // absent): the retired `push_to_talk` bool maps onto the two legacy modes so
+    // upgrading users keep exactly the behavior they had. Only fresh installs
+    // get the hold-or-toggle default.
+    if settings_value.get("shortcut_activation").is_none() {
+        if let Some(push_to_talk) = settings_value.get("push_to_talk").and_then(|v| v.as_bool()) {
+            settings.shortcut_activation = if push_to_talk {
+                ShortcutActivation::PushToTalk
+            } else {
+                ShortcutActivation::Toggle
+            };
+            updated = true;
+        }
+    }
+
     let stored_schema_version = settings_value
         .get("settings_schema_version")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
 
     // Phonara v0.9.x persisted these fields under their original Whisper
-    // names. They are unknown to the current struct and would otherwise fall
-    // back to Auto/-1 before the `whisper_use_gpu` migration below forces GPU.
-    // Prefer the current keys when both are present (for downgrade/upgrade
-    // cycles), and normalize ambiguous positive legacy GPU ordinals in the
-    // schema-0 migration immediately afterwards.
+    // names. Prefer the current keys when both are present (for
+    // downgrade/upgrade cycles). Integer device ordinals cannot be preserved:
+    // transcribe.cpp 0.2 uses opaque stable identifiers instead.
     let has_current_transcribe_accelerator = settings_value.get("transcribe_accelerator").is_some();
     let legacy_whisper_accelerator = settings_value
         .get("whisper_accelerator")
@@ -1328,12 +1417,6 @@ fn apply_settings_migrations(
     let has_legacy_whisper_accelerator =
         !has_current_transcribe_accelerator && legacy_whisper_accelerator.is_some();
     if has_legacy_whisper_accelerator {
-        let legacy_gpu_device = settings_value
-            .get("whisper_gpu_device")
-            .and_then(|v| v.as_i64())
-            .and_then(|v| i32::try_from(v).ok())
-            .unwrap_or(default_transcribe_gpu_device());
-
         match legacy_whisper_accelerator {
             Some("auto") => {
                 settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
@@ -1345,12 +1428,9 @@ fn apply_settings_migrations(
                 settings.transcribe_gpu_device = default_transcribe_gpu_device();
                 updated = true;
             }
-            Some("gpu") if legacy_gpu_device >= 0 => {
-                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Gpu;
-                settings.transcribe_gpu_device = legacy_gpu_device;
-                updated = true;
-            }
             Some("gpu") => {
+                // Auto still prefers an available GPU, without pinning a stale
+                // process-local integer to an unrelated device.
                 settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
                 settings.transcribe_gpu_device = default_transcribe_gpu_device();
                 updated = true;
@@ -1360,50 +1440,50 @@ fn apply_settings_migrations(
     }
 
     if stored_schema_version < 1 {
-        // `transcribe_gpu_device` used to be a UI ordinal; it is now a
-        // transcribe.cpp registry index. A positive legacy value can point at a
-        // different GPU after CPU/accelerator/backend devices are included in
-        // the registry. Preserve an explicit GPU preference while normalizing
-        // its ambiguous ordinal to the first GPU; other inconsistent pairs
-        // fall back to Auto.
-        if settings.transcribe_gpu_device > 0 {
-            if settings.transcribe_accelerator == TranscribeAcceleratorSetting::Gpu {
-                settings.transcribe_gpu_device = 0;
-            } else {
-                settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
-                settings.transcribe_gpu_device = default_transcribe_gpu_device();
-            }
+        // Before schema 1 this was a UI ordinal. Preserve the original safety
+        // migration: a positive selection was ambiguous even in 0.1.
+        let had_positive_legacy_selection = settings_value
+            .get("transcribe_gpu_device")
+            .and_then(|value| value.as_i64())
+            .is_some_and(|value| value > 0);
+        if had_positive_legacy_selection {
+            settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
         }
+    }
+    if stored_schema_version < 2 {
+        // Before the stable transcribe.cpp device identity, whisper_use_gpu was
+        // the user's persisted intent. A disabled legacy toggle must remain a
+        // strict CPU choice; an enabled one maps safely to Auto because 0.2 no
+        // longer supports a generic, index-free forced-GPU selection.
+        let legacy_gpu_enabled = settings_value
+            .get("whisper_use_gpu")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(default_whisper_use_gpu());
+        let stored_gpu_device_is_automatic = settings_value
+            .get("transcribe_gpu_device")
+            .and_then(|value| value.as_i64())
+            .is_none_or(|value| value <= 0);
+        if !has_legacy_whisper_accelerator
+            && !legacy_gpu_enabled
+            && stored_gpu_device_is_automatic
+            && settings.transcribe_accelerator == TranscribeAcceleratorSetting::Auto
+        {
+            settings.transcribe_accelerator = TranscribeAcceleratorSetting::Cpu;
+        }
+
+        // transcribe.cpp 0.2 replaced integer registry indices with opaque
+        // process-local handles. Clear every old index once.
+        settings.transcribe_gpu_device = default_transcribe_gpu_device();
         settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
         updated = true;
     }
 
-    if stored_schema_version < 2 {
-        // Before the split transcribe.cpp accelerator setting, `whisper_use_gpu`
-        // was the user's persisted intent. Preserve that intent for upgraded
-        // stores that only have the default Auto accelerator; Auto can bind CPU
-        // on some machines, which makes transcription feel like a regression.
-        let legacy_gpu_enabled = settings_value
-            .get("whisper_use_gpu")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(default_whisper_use_gpu());
-        let stored_gpu_device = settings_value
-            .get("transcribe_gpu_device")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(default_transcribe_gpu_device() as i64);
-        if !has_legacy_whisper_accelerator
-            && settings.transcribe_accelerator == TranscribeAcceleratorSetting::Auto
-            && settings.transcribe_gpu_device == default_transcribe_gpu_device()
-            && stored_gpu_device <= 0
-        {
-            settings.transcribe_accelerator = if legacy_gpu_enabled {
-                settings.transcribe_gpu_device = 0;
-                TranscribeAcceleratorSetting::Gpu
-            } else {
-                TranscribeAcceleratorSetting::Cpu
-            };
-        }
-        settings.settings_schema_version = CURRENT_SETTINGS_SCHEMA_VERSION;
+    // The generic GPU choice was removed in favor of Auto or an exact device.
+    // Normalize settings created by builds that exposed that short-lived option.
+    if settings.transcribe_accelerator == TranscribeAcceleratorSetting::Gpu
+        && settings.transcribe_gpu_device.is_none()
+    {
+        settings.transcribe_accelerator = TranscribeAcceleratorSetting::Auto;
         updated = true;
     }
 
@@ -1428,11 +1508,38 @@ fn apply_settings_migrations(
     updated
 }
 
-/// Replace the complete settings document. Regular field mutations must use
-/// [`update_settings`] or [`try_update_settings`] to avoid stale-snapshot loss.
-pub fn replace_settings(app: &AppHandle, settings: AppSettings) {
+/// Update checks are forced off (without touching the persisted setting) when
+/// `PHONARA_DISABLE_UPDATER` (or its legacy Handy alias) is set — e.g. by the
+/// Nix package, since self-update can't work against an immutable /nix/store
+/// install.
+pub fn update_checks_forced_disabled() -> bool {
+    use std::sync::OnceLock;
+    static IS_UPDATER_DISABLED: OnceLock<bool> = OnceLock::new();
+    *IS_UPDATER_DISABLED.get_or_init(|| {
+        utils::env_flag_enabled("PHONARA_DISABLE_UPDATER")
+            || utils::env_flag_enabled("HANDY_DISABLE_UPDATER")
+    })
+}
+
+/// Effective updater state: the user's stored preference, overridden to `false`
+/// while an updater-disable environment flag is set. Callers deciding whether
+/// to actually check for updates must use this rather than reading
+/// `update_checks_enabled` directly, so the forced-off state never leaks into
+/// the persisted setting.
+pub fn update_checks_effectively_enabled(settings: &AppSettings) -> bool {
+    settings.update_checks_enabled && !update_checks_forced_disabled()
+}
+
+/// Persist a complete settings snapshot. Prefer [`update_settings`] for a
+/// field-level mutation so concurrent changes cannot be overwritten.
+pub fn write_settings(app: &AppHandle, settings: AppSettings) {
     let _guard = lock_settings_mutation();
     write_settings_unlocked(app, settings);
+}
+
+/// Replace the complete settings document, for validated import operations.
+pub fn replace_settings(app: &AppHandle, settings: AppSettings) {
+    write_settings(app, settings);
 }
 
 fn write_settings_unlocked(app: &AppHandle, settings: AppSettings) {
@@ -1503,15 +1610,21 @@ mod tests {
     fn empty_store_parses_with_defaults() {
         let settings: AppSettings = serde_json::from_value(serde_json::json!({}))
             .expect("all AppSettings fields need serde defaults");
-        assert!(settings.push_to_talk);
+        assert_eq!(
+            settings.shortcut_activation,
+            ShortcutActivation::HoldOrToggle
+        );
+        assert_eq!(settings.hold_threshold_ms, default_hold_threshold_ms());
         assert!(!settings.audio_feedback);
+        assert!(settings.filler_word_removal_enabled);
         // Bindings default to empty; the load path merges the real defaults in.
         assert!(settings.bindings.is_empty());
     }
 
     /// Frozen snapshot of a real v0.9.0-era settings store, as written to
     /// disk. This pins backwards compatibility: it must always parse strictly
-    /// (no salvage) and migrate in place without losing user choices.
+    /// (no salvage). Schema migrations may then rewrite fields whose native
+    /// meaning changed.
     ///
     /// If a schema change breaks this test, do NOT just update the fixture —
     /// it stands in for the stores on users' machines. Add a
@@ -1519,7 +1632,7 @@ mod tests {
     /// `apply_settings_migrations` so old values keep loading, and only extend
     /// the fixture alongside that.
     #[test]
-    fn frozen_v0_9_store_parses_strictly_and_migrates() {
+    fn frozen_v0_9_store_parses_strictly_then_migrates_device_index() {
         // Note "log_level": 2 — the legacy numeric format, kept deliberately.
         let stored: serde_json::Value = serde_json::from_str(
             r##"{
@@ -1618,9 +1731,9 @@ mod tests {
             .expect("the frozen v0.9 settings backup must import");
         assert_eq!(
             imported.transcribe_accelerator,
-            TranscribeAcceleratorSetting::Gpu
+            TranscribeAcceleratorSetting::Auto
         );
-        assert_eq!(imported.transcribe_gpu_device, 0);
+        assert_eq!(imported.transcribe_gpu_device, None);
         assert_eq!(
             imported.settings_schema_version,
             CURRENT_SETTINGS_SCHEMA_VERSION
@@ -1633,7 +1746,11 @@ mod tests {
         assert_eq!(settings.bindings["transcribe"].current_binding, "f13");
         assert_eq!(settings.log_level, LogLevel::Debug);
         assert_eq!(settings.sound_theme, SoundTheme::Pop);
+        assert!(settings.filler_word_removal_enabled);
+        assert_eq!(settings.vad_backend, VadBackend::Silero);
 
+        // The 0.1 integer device index is cleared once for transcribe.cpp 0.2.
+        // Without an exact device, the retired generic GPU choice becomes Auto.
         assert!(apply_settings_migrations(&mut settings, &stored));
         assert_eq!(
             settings.settings_schema_version,
@@ -1641,12 +1758,12 @@ mod tests {
         );
         assert_eq!(
             settings.transcribe_accelerator,
-            TranscribeAcceleratorSetting::Gpu
+            TranscribeAcceleratorSetting::Auto
         );
-        assert_eq!(settings.transcribe_gpu_device, 0);
-
-        let migrated = serde_json::to_value(&settings).expect("migrated settings serialize");
-        assert!(!apply_settings_migrations(&mut settings, &migrated));
+        // The retired push_to_talk bool (false in this fixture) becomes the
+        // matching legacy mode rather than the new hold-or-toggle default.
+        assert_eq!(settings.shortcut_activation, ShortcutActivation::Toggle);
+        assert_eq!(settings.transcribe_gpu_device, None);
     }
 
     #[test]
@@ -1804,10 +1921,62 @@ mod tests {
     }
 
     #[test]
-    fn gpu_device_migration_preserves_forced_gpu_with_safe_device() {
+    fn shortcut_activation_migration_maps_push_to_talk_true() {
+        let mut settings = get_default_settings();
+        let raw = serde_json::json!({
+            "selected_model": "",
+            "push_to_talk": true
+        });
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(settings.shortcut_activation, ShortcutActivation::PushToTalk);
+    }
+
+    #[test]
+    fn shortcut_activation_migration_maps_push_to_talk_false() {
+        let mut settings = get_default_settings();
+        let raw = serde_json::json!({
+            "selected_model": "",
+            "push_to_talk": false
+        });
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(settings.shortcut_activation, ShortcutActivation::Toggle);
+    }
+
+    #[test]
+    fn shortcut_activation_migration_respects_explicit_new_key() {
+        let mut settings = get_default_settings();
+        settings.shortcut_activation = ShortcutActivation::HoldOrToggle;
+        let raw = serde_json::json!({
+            "selected_model": "",
+            "push_to_talk": true,
+            "shortcut_activation": "hold_or_toggle"
+        });
+
+        apply_settings_migrations(&mut settings, &raw);
+        assert_eq!(
+            settings.shortcut_activation,
+            ShortcutActivation::HoldOrToggle
+        );
+    }
+
+    #[test]
+    fn shortcut_activation_defaults_to_hold_or_toggle_without_legacy_key() {
+        let mut settings = get_default_settings();
+        let raw = serde_json::json!({ "selected_model": "" });
+
+        apply_settings_migrations(&mut settings, &raw);
+        assert_eq!(
+            settings.shortcut_activation,
+            ShortcutActivation::HoldOrToggle
+        );
+    }
+
+    #[test]
+    fn gpu_device_migration_resets_legacy_positive_selection_to_auto() {
         let mut settings = get_default_settings();
         settings.transcribe_accelerator = TranscribeAcceleratorSetting::Gpu;
-        settings.transcribe_gpu_device = 2;
 
         let raw = serde_json::json!({
             "transcribe_accelerator": "gpu",
@@ -1817,9 +1986,9 @@ mod tests {
         assert!(apply_settings_migrations(&mut settings, &raw));
         assert_eq!(
             settings.transcribe_accelerator,
-            TranscribeAcceleratorSetting::Gpu
+            TranscribeAcceleratorSetting::Auto
         );
-        assert_eq!(settings.transcribe_gpu_device, 0);
+        assert_eq!(settings.transcribe_gpu_device, None);
         assert_eq!(
             settings.settings_schema_version,
             CURRENT_SETTINGS_SCHEMA_VERSION
@@ -1841,8 +2010,18 @@ mod tests {
                 TranscribeAcceleratorSetting::Cpu,
                 default_transcribe_gpu_device(),
             ),
-            ("gpu", 0, TranscribeAcceleratorSetting::Gpu, 0),
-            ("gpu", 2, TranscribeAcceleratorSetting::Gpu, 0),
+            (
+                "gpu",
+                0,
+                TranscribeAcceleratorSetting::Auto,
+                default_transcribe_gpu_device(),
+            ),
+            (
+                "gpu",
+                2,
+                TranscribeAcceleratorSetting::Auto,
+                default_transcribe_gpu_device(),
+            ),
         ];
 
         for (legacy_accelerator, legacy_device, expected_accelerator, expected_device) in cases {
@@ -1895,9 +2074,9 @@ mod tests {
         assert!(apply_settings_migrations(&mut settings, &raw));
         assert_eq!(
             settings.transcribe_accelerator,
-            TranscribeAcceleratorSetting::Gpu
+            TranscribeAcceleratorSetting::Auto
         );
-        assert_eq!(settings.transcribe_gpu_device, 0);
+        assert_eq!(settings.transcribe_gpu_device, None);
         assert_eq!(
             settings.settings_schema_version,
             CURRENT_SETTINGS_SCHEMA_VERSION
@@ -1926,17 +2105,55 @@ mod tests {
             settings.transcribe_accelerator,
             TranscribeAcceleratorSetting::Cpu
         );
+        assert_eq!(settings.transcribe_gpu_device, None);
         assert_eq!(
-            settings.transcribe_gpu_device,
-            default_transcribe_gpu_device()
+            settings.settings_schema_version,
+            CURRENT_SETTINGS_SCHEMA_VERSION
         );
     }
 
     #[test]
-    fn gpu_device_migration_keeps_current_schema_positive_selection() {
+    fn gpu_device_migration_maps_v1_automatic_gpu_to_auto() {
+        let raw = serde_json::json!({
+            "settings_schema_version": 1,
+            "transcribe_accelerator": "gpu",
+            "transcribe_gpu_device": 2
+        });
+        let mut settings: AppSettings = serde_json::from_value(raw.clone()).unwrap();
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(
+            settings.transcribe_accelerator,
+            TranscribeAcceleratorSetting::Auto
+        );
+        assert_eq!(settings.transcribe_gpu_device, None);
+    }
+
+    #[test]
+    fn gpu_device_migration_maps_current_automatic_gpu_to_auto() {
+        let raw = serde_json::json!({
+            "settings_schema_version": CURRENT_SETTINGS_SCHEMA_VERSION,
+            "onboarding_completed": false,
+            "whats_new_last_seen_version": default_whats_new_last_seen_version(),
+            "overlay_style": "live",
+            "transcribe_accelerator": "gpu",
+            "transcribe_gpu_device": null
+        });
+        let mut settings: AppSettings = serde_json::from_value(raw.clone()).unwrap();
+
+        assert!(apply_settings_migrations(&mut settings, &raw));
+        assert_eq!(
+            settings.transcribe_accelerator,
+            TranscribeAcceleratorSetting::Auto
+        );
+        assert_eq!(settings.transcribe_gpu_device, None);
+    }
+
+    #[test]
+    fn gpu_device_migration_keeps_current_stable_selection() {
         let mut settings = get_default_settings();
         settings.transcribe_accelerator = TranscribeAcceleratorSetting::Gpu;
-        settings.transcribe_gpu_device = 2;
+        settings.transcribe_gpu_device = Some("[\"vulkan\",\"id\",\"0000:01:00.0\"]".into());
 
         let raw = serde_json::json!({
             "settings_schema_version": CURRENT_SETTINGS_SCHEMA_VERSION,
@@ -1944,15 +2161,14 @@ mod tests {
             "whats_new_last_seen_version": default_whats_new_last_seen_version(),
             "overlay_style": "live",
             "transcribe_accelerator": "gpu",
-            "transcribe_gpu_device": 2
+            "transcribe_gpu_device": settings.transcribe_gpu_device
         });
 
         assert!(!apply_settings_migrations(&mut settings, &raw));
         assert_eq!(
-            settings.transcribe_accelerator,
-            TranscribeAcceleratorSetting::Gpu
+            settings.transcribe_gpu_device.as_deref(),
+            Some("[\"vulkan\",\"id\",\"0000:01:00.0\"]")
         );
-        assert_eq!(settings.transcribe_gpu_device, 2);
     }
 
     #[test]

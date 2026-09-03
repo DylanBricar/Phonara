@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { commands } from "../../bindings";
 import { Dropdown } from "../ui/Dropdown";
 import { SettingContainer } from "../ui/SettingContainer";
+import { commands } from "@/bindings";
 import { useSettings } from "../../hooks/useSettings";
 
 interface ChannelSelectorProps {
@@ -13,60 +13,59 @@ interface ChannelSelectorProps {
 export const ChannelSelector: React.FC<ChannelSelectorProps> = React.memo(
   ({ descriptionMode = "tooltip", grouped = false }) => {
     const { t } = useTranslation();
-    const { getSetting } = useSettings();
-    const [channelCount, setChannelCount] = useState<number>(1);
-    const [selectedChannel, setSelectedChannel] = useState<number | null>(null);
-    const [updating, setUpdating] = useState(false);
+    const { getSetting, updateSetting, isUpdating, isLoading } = useSettings();
+    const [channelCount, setChannelCount] = useState(1);
 
     const selectedMicrophone = getSetting("selected_microphone") || "default";
-
-    const fetchChannelInfo = useCallback(async () => {
-      try {
-        const channelsResult = await commands.getMicrophoneChannels(
-          selectedMicrophone === "Default" ? "default" : selectedMicrophone,
-        );
-        if (channelsResult.status === "ok") {
-          setChannelCount(channelsResult.data);
-        }
-
-        const selectedResult = await commands.getSelectedChannel();
-        if (selectedResult.status === "ok") {
-          setSelectedChannel(selectedResult.data);
-        }
-      } catch (error) {
-        console.error("Failed to fetch channel info:", error);
-      }
-    }, [selectedMicrophone]);
+    const selectedChannel = getSetting("selected_channel");
 
     useEffect(() => {
-      fetchChannelInfo();
-    }, [fetchChannelInfo]);
+      let cancelled = false;
+      setChannelCount(1);
 
-    const handleChannelSelect = async (value: string) => {
-      setUpdating(true);
-      const channel = value === "average" ? null : parseInt(value, 10);
-      const result = await commands.setSelectedChannel(channel);
-      if (result.status === "ok") {
-        setSelectedChannel(channel);
-      }
-      setUpdating(false);
-    };
+      const fetchChannels = async () => {
+        try {
+          const deviceName =
+            selectedMicrophone === "Default" ? "default" : selectedMicrophone;
+          const result = await commands.getMicrophoneChannels(deviceName);
+          if (!cancelled && result.status === "ok") {
+            setChannelCount(result.data);
+          }
+        } catch (error) {
+          console.error("Failed to get microphone channel count:", error);
+        }
+      };
 
-    // Only show when the device has more than 1 channel
+      void fetchChannels();
+      return () => {
+        cancelled = true;
+      };
+    }, [selectedMicrophone]);
+
+    // Don't render if the device only has one channel.
     if (channelCount <= 1) {
       return null;
     }
 
+    const handleChannelSelect = async (value: string) => {
+      const channel = value === "average" ? null : parseInt(value, 10);
+      await updateSetting("selected_channel", channel);
+    };
+
     const options = [
       { value: "average", label: t("settings.sound.channel.average") },
-      ...Array.from({ length: channelCount }, (_, i) => ({
-        value: String(i),
-        label: t("settings.sound.channel.channel", { n: i + 1 }),
+      ...Array.from({ length: channelCount }, (_, index) => ({
+        value: index.toString(),
+        label: t("settings.sound.channel.channel", { n: index + 1 }),
       })),
     ];
 
+    // An old selection may not exist on a newly selected device. The recorder
+    // also falls back to averaging in that case, so reflect that effective value.
     const currentValue =
-      selectedChannel === null ? "average" : String(selectedChannel);
+      selectedChannel == null || selectedChannel >= channelCount
+        ? "average"
+        : selectedChannel.toString();
 
     return (
       <SettingContainer
@@ -79,9 +78,11 @@ export const ChannelSelector: React.FC<ChannelSelectorProps> = React.memo(
           options={options}
           selectedValue={currentValue}
           onSelect={handleChannelSelect}
-          disabled={updating}
+          disabled={isUpdating("selected_channel") || isLoading}
         />
       </SettingContainer>
     );
   },
 );
+
+ChannelSelector.displayName = "ChannelSelector";

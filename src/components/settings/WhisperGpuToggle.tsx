@@ -16,10 +16,7 @@ export const WhisperGpuToggle: React.FC<WhisperGpuToggleProps> = React.memo(
 
     const accelerator = getSetting("transcribe_accelerator") ?? "auto";
     const handleChange = async (enabled: boolean) => {
-      await updateTranscribeAcceleration(
-        enabled ? "gpu" : "cpu",
-        enabled ? 0 : -1,
-      );
+      await updateTranscribeAcceleration(enabled ? "auto" : "cpu", null);
     };
 
     return (

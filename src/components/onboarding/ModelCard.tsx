@@ -22,6 +22,7 @@ import {
 } from "../../lib/constants/languages";
 import Badge from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const getLanguageDisplayText = (
   supportedLanguages: string[],
@@ -92,15 +93,20 @@ const ModelCard: React.FC<ModelCardProps> = ({
   showRecommended = true,
 }) => {
   const { t } = useTranslation();
+  const debugMode = useSettingsStore(
+    (state) => state.settings?.debug_mode ?? false,
+  );
   const isFeatured = variant === "featured";
-  const isClickable =
-    status === "available" || status === "active" || status === "downloadable";
+  // The active model is already loaded — re-selecting it just reloads it for no
+  // gain, so it is deliberately not clickable.
+  const isClickable = status === "available" || status === "downloadable";
 
   const displayName = getTranslatedModelName(model, t);
   const displayDescription = getTranslatedModelDescription(model, t);
   const showModelSize =
     status === "downloadable" || status === "available" || status === "active";
   const formattedModelSize = formatModelSize(Number(model.size_mb));
+  const quantLabel = getQuantLabel(model.filename);
   const capabilityLanguages = getUniqueCapabilityLanguages(
     model.supported_languages,
   );
@@ -260,6 +266,9 @@ const ModelCard: React.FC<ModelCardProps> = ({
               <HardDrive className="w-3.5 h-3.5" />
             )}
             <span>{formattedModelSize}</span>
+            {debugMode && quantLabel && (
+              <span className="text-text/40">{quantLabel}</span>
+            )}
           </span>
         )}
         {onDelete && (status === "available" || status === "active") && (

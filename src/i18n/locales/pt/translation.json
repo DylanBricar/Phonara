@@ -6,7 +6,8 @@
     "unloadModel": "Descarregar modelo",
     "model": "Modelo",
     "quit": "Sair",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "secureInputWarning": "⚠ Atalhos bloqueados pelo Secure Input"
   },
   "sidebar": {
     "general": "Geral",
@@ -20,10 +21,10 @@
   },
   "onboarding": {
     "subtitle": "Para começar, escolha um modelo de transcrição",
-    "existingModelsTitle": "Compatible Models",
-    "downloadModelsTitle": "Available to Download",
-    "showAllModels": "Show all {{total}} models",
-    "showFewerModels": "Show fewer models",
+    "existingModelsTitle": "Modelos compatíveis",
+    "downloadModelsTitle": "Disponíveis para download",
+    "showAllModels": "Mostrar todos os {{total}} modelos",
+    "showFewerModels": "Mostrar menos modelos",
     "recommended": "Recomendado",
     "customModelDescription": "Não suportado oficialmente",
     "modelCard": {
@@ -117,7 +118,7 @@
       }
     },
     "errors": {
-      "selectModel": "Failed to select model"
+      "selectModel": "Falha ao selecionar o modelo"
     },
     "permissions": {
       "title": "Permissões Necessárias",
@@ -168,10 +169,11 @@
     "capabilities": {
       "languageSelection": "Suporta vários idiomas de entrada",
       "singleLanguage": "Suporta apenas este idioma",
-      "languageCount": "{{total}} languages",
+      "languageCount": "{{total}} idiomas",
       "languageOnly": "Apenas {{language}}",
       "translation": "Pode traduzir para inglês",
-      "translate": "Traduzir para inglês"
+      "translate": "Traduzir para inglês",
+      "streaming": "Mostra a transcrição ao vivo enquanto você fala"
     },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
@@ -239,7 +241,7 @@
         "description": "Selecione o idioma para reconhecimento de fala. Auto detectará automaticamente o idioma, enquanto selecionar um idioma específico pode melhorar a precisão para esse idioma.",
         "searchPlaceholder": "Buscar idiomas...",
         "noResults": "Nenhum idioma encontrado",
-        "auto": "Auto"
+        "auto": "Automático"
       },
       "pushToTalk": {
         "label": "Pressionar para Falar",
@@ -259,6 +261,20 @@
         "noResult": "No transcription result",
         "error": "Transcription failed: {{error}}",
         "audioFiles": "Audio Files"
+      },
+      "shortcutActivation": {
+        "title": "Comportamento do atalho",
+        "description": "Escolha como o atalho de transcrição inicia e para a gravação.",
+        "options": {
+          "holdOrToggle": "Automático",
+          "pushToTalk": "Segurar",
+          "toggle": "Alternar"
+        },
+        "descriptions": {
+          "hold_or_toggle": "Segure para gravar ou toque para alternar",
+          "push_to_talk": "Grava enquanto você mantém o atalho pressionado",
+          "toggle": "Toque no atalho para começar a gravar, toque novamente para parar"
+        }
       }
     },
     "models": {
@@ -276,7 +292,9 @@
       "deleteActiveConfirm": "{{modelName}} é o seu modelo ativo. Excluí-lo interromperá as transcrições até que você selecione um novo modelo. Tem certeza?",
       "deleteTitle": "Excluir Modelo",
       "filters": {
-        "allLanguages": "Todos os Idiomas"
+        "allLanguages": "Todos os Idiomas",
+        "streaming": "Filtrar modelos compatíveis com transcrição ao vivo",
+        "translation": "Filtrar modelos compatíveis com tradução para inglês"
       },
       "searchPlaceholder": "Pesquisar modelos...",
       "noModelsMatch": "Nenhum modelo corresponde a este filtro.",
@@ -294,6 +312,10 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "rescan": {
+        "label": "Reescanear",
+        "tooltip": "Reescaneia em busca de modelos adicionados à pasta de modelos ou ao cache do Hugging Face fora do Phonara"
       }
     },
     "sound": {
@@ -366,7 +388,7 @@
           "description": "Aceleração por hardware para modelos ONNX (Parakeet, Canary, Moonshine, etc.). DirectML no Windows é experimental. Os modelos podem falhar na transcrição."
         },
         "gpuDevice": {
-          "auto": "Auto"
+          "auto": "Automático"
         }
       },
       "startHidden": {
@@ -423,7 +445,7 @@
           "description": "Choose how much recording feedback the overlay shows.",
           "options": {
             "none": "None",
-            "minimal": "Minimal",
+            "minimal": "Minimalista",
             "live": "Live transcript"
           }
         },
@@ -495,7 +517,7 @@
       },
       "customWords": {
         "title": "Palavras Personalizadas",
-        "description": "Adicione palavras que são frequentemente mal ouvidas ou mal escritas durante a transcrição. O sistema irá automaticamente corrigir palavras semelhantes para corresponder à sua lista.",
+        "description": "Ajude os modelos compatíveis a reconhecer nomes e termos especializados. A correção aproximada está atualmente limitada a palavras que usam letras de A–Z e números.",
         "placeholder": "Adicionar uma palavra",
         "add": "Adicionar",
         "remove": "Remover {{word}}",
@@ -537,6 +559,22 @@
         "presetJapanese": "Japanese",
         "presetChineseSimplified": "Chinese (Simplified)",
         "presetChineseTraditional": "Chinese (Traditional)"
+      },
+      "voiceActivityDetection": {
+        "title": "Detecção de atividade de voz",
+        "description": "Filtra o silêncio das gravações. Modelos com suporte a streaming usam uma cauda de VAD mais longa; desativar o VAD grava o áudio bruto."
+      },
+      "vadBackend": {
+        "title": "Backend de detecção de voz",
+        "description": "Escolha o detector usado para filtrar o silêncio. O Earshot é experimental; volte para o Silero se a fala for cortada ou o ruído for mantido.",
+        "options": {
+          "silero": "Silero",
+          "earshot": "Earshot"
+        }
+      },
+      "fillerWordRemoval": {
+        "title": "Remover palavras de preenchimento",
+        "description": "Remove hesitações comuns das transcrições. Desative para mantê-las."
       }
     },
     "postProcessing": {
@@ -707,7 +745,8 @@
       },
       "updateChecks": {
         "label": "Verificar Atualizações",
-        "description": "Verificar automaticamente novas versões do Phonara"
+        "description": "Verificar automaticamente novas versões do Phonara",
+        "lockedDescription": "Desativado pela configuração do sistema (PHONARA_DISABLE_UPDATER)"
       },
       "whatsNewPreview": {
         "title": "Preview What's New",
@@ -789,6 +828,34 @@
       "recordingBuffer": {
         "title": "Buffer de gravação extra",
         "description": "Tempo extra (em milissegundos) para continuar gravando após soltar a tecla, para capturar áudio restante. 0 = sem buffer extra."
+      },
+      "holdThreshold": {
+        "title": "Limite de tempo de pressão",
+        "description": "Apenas no modo Automático: por quanto tempo (em milissegundos) o atalho precisa ficar pressionado para contar como segurar em vez de um toque. Diminua se a gravação continuar ativa após pressões curtas; aumente se toques intencionais forem tratados como segurar."
+      },
+      "reliablePaste": {
+        "title": "Colagem confiável (Beta)",
+        "description": "Restaura a área de transferência somente depois que o aplicativo de destino realmente lê a transcrição, em vez de após um atraso fixo. Serve para corrigir a colagem do conteúdo antigo da área de transferência quando o sistema está sobrecarregado. Requer um método de colar via área de transferência; apenas macOS e Windows."
+      },
+      "keyboardDiagnostic": {
+        "title": "Diagnóstico do teclado",
+        "description": "Verifica se os eventos de teclado chegam ao Phonara. Apenas a contagem de eventos é registrada — nunca quais teclas você pressiona.",
+        "run": "Executar diagnóstico de 10 s",
+        "running": "Ouvindo… pressione seu atalho algumas vezes (ex.: Option+Space)",
+        "secureInputLabel": "Secure Input",
+        "enabled": "ativado",
+        "disabled": "desativado",
+        "holder": "retido por {{name}} (pid {{pid}})",
+        "holderUnknown": "sem responsável visível",
+        "keyDown": "Tecla pressionada",
+        "keyUp": "Tecla liberada",
+        "flagsChanged": "Modificadores",
+        "mouse": "Mouse",
+        "verdictBlocked": "O Secure Input está bloqueando os eventos de tecla — atalhos que incluem uma tecla normal não funcionam até que isso seja resolvido.",
+        "verdictSuspicious": "Chegaram eventos de modificadores, mas nenhum evento de tecla — algo está suprimindo as teclas mesmo com o Secure Input indicando desativado. Por favor, relate isso no GitHub.",
+        "verdictOk": "Os eventos de tecla estão chegando normalmente ao Phonara.",
+        "verdictNoEvents": "Nenhum evento capturado — você pressionou alguma tecla durante o teste?",
+        "failed": "Falha no diagnóstico: {{error}}"
       }
     },
     "appearance": {
@@ -853,6 +920,11 @@
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        },
+        "ggml": {
+          "title": "ggml",
+          "description": "Inferência de alto desempenho do modelo de reconhecimento automático de fala Whisper da OpenAI",
+          "details": "O Phonara usa ggml para processamento rápido e local de fala para texto. Agradecemos ao incrível trabalho de Georgi Gerganov e colaboradores."
         }
       }
     },
@@ -870,11 +942,13 @@
     "preparing": "Preparando...",
     "checkForUpdates": "Verificar atualizações",
     "portableUpdateTitle": "Atualização manual necessária",
-    "portableUpdateMessage": "Instalações portáteis não podem ser atualizadas automaticamente. Para atualizar: baixe o instalador NSIS mais recente do GitHub Releases, instale-o na mesma pasta e, em seguida, copie sua pasta Data/ (configurações, modelos, gravações) da versão antiga para a nova.",
-    "portableUpdateButton": "Abrir GitHub Releases",
+    "portableUpdateMessage": "Instalações portáteis não podem ser atualizadas automaticamente. Baixe abaixo o instalador para o seu sistema, execute-o e instale na mesma pasta — a sua pasta Data/ (configurações, modelos, gravações) é mantida.",
+    "portableUpdateButton": "Baixar instalador",
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "updateInstallFailed": "Failed to install update",
+    "portableUpdateBrowseMessage": "Instalações portáteis não podem ser atualizadas automaticamente. Baixe a versão mais recente para o seu sistema no GitHub Releases e instale-a na mesma pasta — a sua pasta Data/ (configurações, modelos, gravações) é mantida.",
+    "portableUpdateBrowseButton": "Abrir GitHub Releases"
   },
   "whatsNew": {
     "title": "New in Phonara v{{version}}"
@@ -893,7 +967,8 @@
     "no": "Não",
     "noOptionsFound": "Nenhuma opção encontrada",
     "clear": "Limpar",
-    "reset": "Reset"
+    "reset": "Reset",
+    "copy": "Copiar"
   },
   "accessibility": {
     "permissionsRequired": "Permissões de Acessibilidade Necessárias",
@@ -934,5 +1009,25 @@
   "progressBar": {
     "downloading": "{{count}} downloading...",
     "downloadingSingle": "Downloading..."
+  },
+  "theme": {
+    "title": "Tema do aplicativo",
+    "description": "Escolha se o Phonara segue o tema do sistema ou permanece claro ou escuro",
+    "options": {
+      "system": "Sistema",
+      "light": "Claro",
+      "dark": "Escuro"
+    }
+  },
+  "secureInput": {
+    "blockedWithCulprit_one": "{{name}} pode estar bloqueando 1 atalho",
+    "blockedWithCulprit_other": "{{name}} pode estar bloqueando {{count}} atalhos",
+    "blockedNoCulprit_one": "O macOS está bloqueando temporariamente 1 atalho",
+    "blockedNoCulprit_other": "O macOS está bloqueando temporariamente {{count}} atalhos",
+    "recorderBlockedWithCulprit": "{{name}} pode estar bloqueando alterações nos atalhos",
+    "recorderBlockedNoCulprit": "O macOS está bloqueando temporariamente alterações nos atalhos",
+    "learnMore": "Como resolver isso",
+    "recorderBlocked": "Não é possível gravar atalhos agora — o Secure Input do macOS está bloqueando os eventos de tecla. Resolva primeiro o aviso do Secure Input.",
+    "dismiss": "Dispensar"
   }
 }

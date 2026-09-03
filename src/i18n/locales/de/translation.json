@@ -6,7 +6,8 @@
     "unloadModel": "Modell entladen",
     "model": "Modell",
     "quit": "Beenden",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "secureInputWarning": "⚠ Tastenkürzel durch Secure Input blockiert"
   },
   "sidebar": {
     "general": "Allgemein",
@@ -20,10 +21,10 @@
   },
   "onboarding": {
     "subtitle": "Wähle ein Transkriptionsmodell, um loszulegen",
-    "existingModelsTitle": "Compatible Models",
-    "downloadModelsTitle": "Available to Download",
-    "showAllModels": "Show all {{total}} models",
-    "showFewerModels": "Show fewer models",
+    "existingModelsTitle": "Kompatible Modelle",
+    "downloadModelsTitle": "Verfügbar zum Download",
+    "showAllModels": "Alle {{total}} Modelle anzeigen",
+    "showFewerModels": "Weniger Modelle anzeigen",
     "recommended": "Empfohlen",
     "customModelDescription": "Nicht offiziell unterstützt",
     "modelCard": {
@@ -117,7 +118,7 @@
       }
     },
     "errors": {
-      "selectModel": "Failed to select model"
+      "selectModel": "Modellauswahl fehlgeschlagen"
     },
     "permissions": {
       "title": "Berechtigungen erforderlich",
@@ -168,10 +169,11 @@
     "capabilities": {
       "languageSelection": "Unterstützt mehrere Eingabesprachen",
       "singleLanguage": "Unterstützt nur diese Sprache",
-      "languageCount": "{{total}} languages",
+      "languageCount": "{{total}} Sprachen",
       "languageOnly": "Nur {{language}}",
       "translation": "Kann ins Englische übersetzen",
-      "translate": "Ins Englische übersetzen"
+      "translate": "Ins Englische übersetzen",
+      "streaming": "Zeigt die Transkription live während des Sprechens an"
     },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
@@ -239,7 +241,7 @@
         "description": "Wähle die Sprache für die Spracherkennung. Auto erkennt die Sprache automatisch, die Auswahl einer bestimmten Sprache kann die Genauigkeit verbessern.",
         "searchPlaceholder": "Sprachen suchen...",
         "noResults": "Keine Sprachen gefunden",
-        "auto": "Auto"
+        "auto": "Automatisch"
       },
       "pushToTalk": {
         "label": "Push-to-Talk",
@@ -259,6 +261,20 @@
         "noResult": "No transcription result",
         "error": "Transcription failed: {{error}}",
         "audioFiles": "Audio Files"
+      },
+      "shortcutActivation": {
+        "title": "Verhalten der Tastenkombination",
+        "description": "Wähle aus, wie das Transkriptions-Tastenkürzel die Aufnahme startet und beendet.",
+        "options": {
+          "holdOrToggle": "Automatisch",
+          "pushToTalk": "Halten",
+          "toggle": "Umschalten"
+        },
+        "descriptions": {
+          "hold_or_toggle": "Gedrückt halten zum Aufnehmen oder antippen zum Umschalten",
+          "push_to_talk": "Nimmt auf, solange die Tastenkombination gedrückt bleibt",
+          "toggle": "Tastenkombination antippen, um die Aufnahme zu starten, erneut antippen zum Stoppen"
+        }
       }
     },
     "models": {
@@ -276,7 +292,9 @@
       "deleteActiveConfirm": "{{modelName}} ist dein aktives Modell. Das Löschen stoppt Transkriptionen, bis du ein neues Modell auswählst. Bist du sicher?",
       "deleteTitle": "Modell löschen",
       "filters": {
-        "allLanguages": "Alle Sprachen"
+        "allLanguages": "Alle Sprachen",
+        "streaming": "Modelle filtern, die Live-Transkription unterstützen",
+        "translation": "Modelle filtern, die Übersetzungen ins Englische unterstützen"
       },
       "searchPlaceholder": "Modelle suchen...",
       "noModelsMatch": "Keine Modelle entsprechen diesem Filter.",
@@ -294,6 +312,10 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "rescan": {
+        "label": "Neu scannen",
+        "tooltip": "Erneut nach Modellen scannen, die außerhalb von Phonara zum Modellordner oder Hugging-Face-Cache hinzugefügt wurden"
       }
     },
     "sound": {
@@ -366,7 +388,7 @@
           "description": "Hardwarebeschleunigung für ONNX-Modelle (Parakeet, Canary, Moonshine usw.). DirectML unter Windows ist experimentell. Modelle können bei der Transkription fehlschlagen."
         },
         "gpuDevice": {
-          "auto": "Auto"
+          "auto": "Automatisch"
         }
       },
       "startHidden": {
@@ -495,7 +517,7 @@
       },
       "customWords": {
         "title": "Benutzerdefinierte Wörter",
-        "description": "Wörter hinzufügen, die oft falsch gehört oder geschrieben werden. Das System korrigiert automatisch ähnlich klingende Wörter entsprechend deiner Liste.",
+        "description": "Hilf unterstützten Modellen, Namen und Fachbegriffe zu erkennen. Die unscharfe Korrektur ist derzeit auf Wörter mit den Buchstaben A–Z und Zahlen beschränkt.",
         "placeholder": "Wort hinzufügen",
         "add": "Hinzufügen",
         "remove": "{{word}} entfernen",
@@ -537,6 +559,22 @@
         "presetJapanese": "Japanese",
         "presetChineseSimplified": "Chinese (Simplified)",
         "presetChineseTraditional": "Chinese (Traditional)"
+      },
+      "voiceActivityDetection": {
+        "title": "Sprachaktivitätserkennung (VAD)",
+        "description": "Filtert Stille aus Aufnahmen. Streamingfähige Modelle verwenden ein längeres VAD-Ende; das Deaktivieren von VAD nimmt Rohaudio auf."
+      },
+      "vadBackend": {
+        "title": "VAD-Backend",
+        "description": "Wählt den Detektor zum Herausfiltern von Stille. Earshot ist experimentell; wechseln Sie zurück zu Silero, wenn Sprache abgeschnitten oder Rauschen beibehalten wird.",
+        "options": {
+          "silero": "Silero",
+          "earshot": "Earshot"
+        }
+      },
+      "fillerWordRemoval": {
+        "title": "Füllwörter entfernen",
+        "description": "Entfernt häufige Verzögerungslaute aus Transkriptionen. Deaktivieren Sie diese Option, um sie beizubehalten."
       }
     },
     "postProcessing": {
@@ -707,7 +745,8 @@
       },
       "updateChecks": {
         "label": "Nach Updates suchen",
-        "description": "Automatisch nach neuen Versionen von Phonara suchen"
+        "description": "Automatisch nach neuen Versionen von Phonara suchen",
+        "lockedDescription": "Durch Systemkonfiguration deaktiviert (PHONARA_DISABLE_UPDATER)"
       },
       "whatsNewPreview": {
         "title": "Preview What's New",
@@ -789,6 +828,34 @@
       "recordingBuffer": {
         "title": "Zusätzlicher Aufnahmepuffer",
         "description": "Zusätzliche Zeit (in Millisekunden), um nach dem Loslassen der Taste weiter aufzunehmen, um nachlaufendes Audio zu erfassen. 0 = kein zusätzlicher Puffer."
+      },
+      "holdThreshold": {
+        "title": "Halte-Schwellenwert",
+        "description": "Nur im Modus „Automatisch“: wie lange (in Millisekunden) die Tastenkombination gedrückt bleiben muss, damit sie als Halten statt als Tippen zählt. Verringern, wenn die Aufnahme nach kurzem Halten weiterläuft; erhöhen, wenn bewusstes Tippen als Halten gewertet wird."
+      },
+      "reliablePaste": {
+        "title": "Zuverlässiges Einfügen (Beta)",
+        "description": "Die Zwischenablage erst wiederherstellen, wenn die Ziel-App die Transkription tatsächlich gelesen hat, statt nach einer festen Verzögerung. Soll verhindern, dass bei Systemlast der alte Inhalt der Zwischenablage eingefügt wird. Erfordert eine Einfügemethode über die Zwischenablage; nur macOS und Windows."
+      },
+      "keyboardDiagnostic": {
+        "title": "Tastatur-Diagnose",
+        "description": "Prüft, ob Tastaturereignisse Phonara erreichen. Es wird nur die Anzahl der Ereignisse erfasst — niemals, welche Tasten du drückst.",
+        "run": "10-Sekunden-Diagnose starten",
+        "running": "Lauscht… drücke dein Tastenkürzel ein paar Mal (z. B. Option+Space)",
+        "secureInputLabel": "Secure Input",
+        "enabled": "aktiviert",
+        "disabled": "deaktiviert",
+        "holder": "gehalten von {{name}} (pid {{pid}})",
+        "holderUnknown": "kein sichtbarer Verursacher",
+        "keyDown": "Taste gedrückt",
+        "keyUp": "Taste losgelassen",
+        "flagsChanged": "Modifikatoren",
+        "mouse": "Maus",
+        "verdictBlocked": "Secure Input blockiert Tastenereignisse — Tastenkürzel mit einer normalen Taste können erst wieder funktionieren, wenn das behoben ist.",
+        "verdictSuspicious": "Es kamen Modifikator-Ereignisse an, aber keine Tastenereignisse — irgendetwas unterdrückt Tasten, obwohl Secure Input als deaktiviert gemeldet wird. Bitte melde das auf GitHub.",
+        "verdictOk": "Tastenereignisse erreichen Phonara normal.",
+        "verdictNoEvents": "Keine Ereignisse erfasst — hast du während des Tests Tasten gedrückt?",
+        "failed": "Diagnose fehlgeschlagen: {{error}}"
       }
     },
     "appearance": {
@@ -853,6 +920,11 @@
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        },
+        "ggml": {
+          "title": "ggml",
+          "description": "Hochleistungs-Inferenz des Whisper-Spracherkennungsmodells von OpenAI",
+          "details": "Phonara verwendet ggml für schnelle, lokale Sprach-zu-Text-Verarbeitung. Dank an Georgi Gerganov und die Mitwirkenden für ihre großartige Arbeit."
         }
       }
     },
@@ -870,11 +942,13 @@
     "preparing": "Wird vorbereitet...",
     "checkForUpdates": "Nach Updates suchen",
     "portableUpdateTitle": "Manuelles Update erforderlich",
-    "portableUpdateMessage": "Portable Installationen können nicht automatisch aktualisiert werden. Zum Aktualisieren: Lade den neuesten NSIS-Installer von GitHub Releases herunter, installiere ihn im selben Ordner und kopiere dann deinen Data/-Ordner (Einstellungen, Modelle, Aufnahmen) von der alten Version in die neue.",
-    "portableUpdateButton": "GitHub Releases öffnen",
+    "portableUpdateMessage": "Portable Installationen können nicht automatisch aktualisiert werden. Lade unten den Installer für dein System herunter, führe ihn aus und installiere in denselben Ordner — dein Data/-Ordner (Einstellungen, Modelle, Aufnahmen) bleibt erhalten.",
+    "portableUpdateButton": "Installer herunterladen",
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "updateInstallFailed": "Failed to install update",
+    "portableUpdateBrowseMessage": "Portable Installationen können nicht automatisch aktualisiert werden. Lade die neueste Version für dein System von GitHub Releases herunter und installiere sie in denselben Ordner — dein Data/-Ordner (Einstellungen, Modelle, Aufnahmen) bleibt erhalten.",
+    "portableUpdateBrowseButton": "GitHub Releases öffnen"
   },
   "whatsNew": {
     "title": "New in Phonara v{{version}}"
@@ -893,7 +967,8 @@
     "no": "Nein",
     "noOptionsFound": "Keine Optionen gefunden",
     "clear": "Löschen",
-    "reset": "Reset"
+    "reset": "Reset",
+    "copy": "Kopieren"
   },
   "accessibility": {
     "permissionsRequired": "Bedienungshilfen-Berechtigungen erforderlich",
@@ -934,5 +1009,25 @@
   "progressBar": {
     "downloading": "{{count}} downloading...",
     "downloadingSingle": "Downloading..."
+  },
+  "theme": {
+    "title": "Anwendungsdesign",
+    "description": "Wählen Sie, ob Phonara dem Systemthema folgt oder hell bzw. dunkel bleibt",
+    "options": {
+      "system": "System",
+      "light": "Hell",
+      "dark": "Dunkel"
+    }
+  },
+  "secureInput": {
+    "blockedWithCulprit_one": "{{name}} blockiert möglicherweise 1 Tastenkürzel",
+    "blockedWithCulprit_other": "{{name}} blockiert möglicherweise {{count}} Tastenkürzel",
+    "blockedNoCulprit_one": "macOS blockiert vorübergehend 1 Tastenkürzel",
+    "blockedNoCulprit_other": "macOS blockiert vorübergehend {{count}} Tastenkürzel",
+    "recorderBlockedWithCulprit": "{{name}} blockiert möglicherweise Änderungen an Tastenkürzeln",
+    "recorderBlockedNoCulprit": "macOS blockiert vorübergehend Änderungen an Tastenkürzeln",
+    "learnMore": "So behebst du das",
+    "recorderBlocked": "Tastenkürzel können gerade nicht aufgezeichnet werden — macOS Secure Input blockiert Tastenereignisse. Behebe zuerst die Secure-Input-Warnung.",
+    "dismiss": "Ausblenden"
   }
 }

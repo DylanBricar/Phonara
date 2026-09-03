@@ -51,12 +51,14 @@ ORT_LIB_LOCATION=$(brew --prefix onnxruntime)/lib ORT_PREFER_DYNAMIC_LINK=1 bun 
 
   Open a new terminal afterward so `VULKAN_SDK` is available.
 
-> [!IMPORTANT]
-> Windows' 260-character path limit can break the nested Vulkan build. Before
-> the first build, enable long paths and set a short `CARGO_TARGET_DIR` as
-> described in
-> [Windows path-limit errors](#windows-path-limit-errors-msb3491--ftk1011--msb6003).
-> Neither measure is sufficient on its own for every MSVC tool.
+> [!NOTE]
+> Windows' 260-character path limit used to break the native Vulkan build in
+> most checkouts. Current `transcribe-cpp` releases work around it
+> automatically (it compiles through a short NTFS junction — no admin rights
+> or setup needed), so a normal checkout just builds. If you still hit
+> path-limit errors, see
+> [Windows build fails with path-limit errors](#windows-build-fails-with-path-limit-errors-msb3491--ftk1011--msb6003)
+> in Troubleshooting.
 
 #### Linux
 
@@ -67,19 +69,19 @@ ORT_LIB_LOCATION=$(brew --prefix onnxruntime)/lib ORT_PREFER_DYNAMIC_LINK=1 bun 
   ```bash
   # Ubuntu/Debian
   sudo apt update
-  sudo apt install build-essential libasound2-dev pkg-config libssl-dev libvulkan-dev vulkan-tools glslc spirv-headers glslang-tools libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libgtk-layer-shell0 libgtk-layer-shell-dev patchelf cmake
+  sudo apt install build-essential clang libclang-dev libevdev-dev libasound2-dev pkg-config libssl-dev libvulkan-dev vulkan-tools glslc spirv-headers glslang-tools libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libgtk-layer-shell0 libgtk-layer-shell-dev patchelf cmake
 
   # Fedora/RHEL
   sudo dnf groupinstall "Development Tools"
-  sudo dnf install alsa-lib-devel pkgconf openssl-devel vulkan-devel \
-    spirv-headers-devel spirv-tools-devel glslang glslc \
+  sudo dnf install alsa-lib-devel pkgconf openssl-devel vulkan-devel glslc \
+    clang clang-devel libevdev-devel \
+    spirv-headers-devel spirv-tools-devel glslang \
     gtk3-devel webkit2gtk4.1-devel libappindicator-gtk3-devel librsvg2-devel \
     gtk-layer-shell gtk-layer-shell-devel \
     cmake
 
   # Arch Linux
-  sudo pacman -S base-devel alsa-lib pkgconf openssl vulkan-devel \
-    spirv-headers glslang shaderc \
+  sudo pacman -S base-devel clang libevdev shaderc spirv-headers glslang alsa-lib pkgconf openssl vulkan-devel \
     gtk3 webkit2gtk-4.1 libappindicator-gtk3 librsvg gtk-layer-shell \
     cmake
   ```
@@ -127,20 +129,53 @@ sudo cp usr/bin/phonara /usr/bin/
 sudo cp -a usr/lib/. /usr/lib/
 sudo cp -r usr/share/icons/hicolor/* /usr/share/icons/hicolor/
 sudo cp usr/share/applications/Phonara.desktop /usr/share/applications/
-sudo ldconfig
 ```
+
+The runtime libraries live in the app-private `/usr/lib/Phonara/` (on the binary's rpath), so no `ldconfig` step is needed.
 
 After subsequent rebuilds, copy the binary and any refreshed runtime libraries:
 
 ```bash
 sudo cp src-tauri/target/release/phonara /usr/bin/
-sudo cp -a src-tauri/transcribe-libs/. /usr/lib/
-sudo ldconfig
+sudo mkdir -p /usr/lib/Phonara
+sudo cp -a src-tauri/transcribe-libs/. /usr/lib/Phonara/
 ```
 
 Resources only need re-copying if they change upstream (new icons, sounds, models, etc.).
 
 ## Troubleshooting
+
+### macOS Accessibility remains enabled after a local rebuild
+
+Local builds use the ad-hoc `signingIdentity: "-"`. A rebuild can have a new macOS code
+identity while the old **System Settings > Privacy & Security > Accessibility** entry
+remains visibly enabled, leaving Phonara on `Waiting...`.
+
+After installing the final bundle at `/Applications/Phonara.app`, quit Phonara, clear only its
+stale Accessibility record, then reopen it:
+
+```bash
+osascript -e 'tell application id "com.dylanbricar.phonara" to quit' || true
+tccutil reset Accessibility com.dylanbricar.phonara
+open /Applications/Phonara.app
+```
+
+Grant Accessibility again when prompted. This does not reset Microphone or other TCC
+services, and official releases normally do not need it.
+
+For optional diagnosis, compare the designated requirements of the previous and rebuilt
+bundles:
+
+```bash
+codesign -dr - /path/to/previous/Phonara.app 2>&1
+codesign -dr - /Applications/Phonara.app 2>&1
+```
+
+An ad-hoc requirement contains a `cdhash`; a changed requirement confirms the rebuild is
+not covered by the old grant. The reset procedure does not require this check.
+
+See [issue #1618](https://github.com/cjpais/Handy/issues/1618) for the related onboarding
+and stale-permission report.
 
 ### AppImage build fails on Arch / rolling-release distros
 
@@ -190,24 +225,22 @@ System.IO.DirectoryNotFoundException: Could not find a part of the path ...
 ```
 
 This is **not** a code or toolchain problem — it's Windows' legacy 260-character
-path limit (`MAX_PATH`). The Vulkan shader generator builds as a nested CMake
-sub-project (`...\vulkan-shaders-gen-prefix\src\vulkan-shaders-gen-build\...`),
-which alone adds ~140 characters on top of Cargo's already-deep
-`target\release\build\<crate>-<hash>\out\build\...` directory. If your checkout
-isn't very shallow, the build overflows the limit.
+path limit (`MAX_PATH`), overflowed by the Vulkan shader generator's nested
+CMake build tree on top of Cargo's already-deep
+`target\release\build\<crate>-<hash>\out\build\...` directory.
 
-You need both fixes. MSBuild's native `FileTracker` ignores the long-path flag,
-while other path operations can still overflow from a short root if long paths
-are disabled.
+Since `transcribe-cpp` 0.1.3 this is mitigated automatically: the native build
+compiles through a short NTFS junction under `%LOCALAPPDATA%\tcs` (created
+without admin rights), so a normal checkout builds with no setup. Enabling
+Windows long paths does **not** reliably help here — MSBuild's native
+`FileTracker` (`tracker.exe`) ignores the long-paths flag — which is why the
+junction, not the registry flag, is the fix.
 
-**1. Enable Windows long paths** in an Administrator PowerShell:
-
-```powershell
-Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -Value 1 -Type DWord
-git config --global core.longpaths true
-```
-
-**2. Use a short target directory:**
+If you still see the errors above, junction creation was likely blocked
+(filesystem or corporate policy) — the failing build's log then contains a
+`transcribe-cpp-sys: could not create short build junction ...` warning — or
+your checkout is deep enough to overflow even the shortened layout. Work
+around either case with a short Cargo target directory:
 
 ```powershell
 $env:CARGO_TARGET_DIR = "C:\p"
@@ -217,8 +250,10 @@ $env:CARGO_TARGET_DIR = "C:\p"
 [Environment]::SetEnvironmentVariable('CARGO_TARGET_DIR', 'C:\p', 'User')
 ```
 
-Artifacts then land under `C:\p\release`. Open a new terminal after changing
-the registry or a persistent environment variable.
+Artifacts then land in `C:\p\release\...` instead of the repo's
+`src-tauri\target\`. Open a **new terminal** if you persisted the variable —
+it is only picked up by freshly started processes. Then `bun run tauri dev`
+and `bun run tauri build` work normally.
 
 ### Windows bundling fails with `program not found`
 

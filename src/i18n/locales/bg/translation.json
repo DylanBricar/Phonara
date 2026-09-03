@@ -6,7 +6,8 @@
     "unloadModel": "Разтоварване на модела",
     "model": "Модел",
     "quit": "Изход",
-    "cancel": "Отказ"
+    "cancel": "Отказ",
+    "secureInputWarning": "⚠ Бързите клавиши са блокирани от Secure Input"
   },
   "sidebar": {
     "general": "Общи",
@@ -20,10 +21,10 @@
   },
   "onboarding": {
     "subtitle": "За да започнете, изберете модел за транскрипция",
-    "existingModelsTitle": "Compatible Models",
-    "downloadModelsTitle": "Available to Download",
-    "showAllModels": "Show all {{total}} models",
-    "showFewerModels": "Show fewer models",
+    "existingModelsTitle": "Съвместими модели",
+    "downloadModelsTitle": "Достъпни за изтегляне",
+    "showAllModels": "Показване на всички {{total}} модела",
+    "showFewerModels": "Показване на по-малко модели",
     "recommended": "Препоръчан",
     "customModelDescription": "Не се поддържа официално",
     "modelCard": {
@@ -117,7 +118,7 @@
       }
     },
     "errors": {
-      "selectModel": "Failed to select model"
+      "selectModel": "Неуспешно избиране на модел"
     },
     "permissions": {
       "title": "Необходими разрешения",
@@ -168,10 +169,11 @@
     "capabilities": {
       "languageSelection": "Поддържа няколко входни езика",
       "singleLanguage": "Поддържа само този език",
-      "languageCount": "{{total}} languages",
+      "languageCount": "{{total}} езика",
       "languageOnly": "Само {{language}}",
       "translation": "Може да превежда на английски",
-      "translate": "Превод на английски"
+      "translate": "Превод на английски",
+      "streaming": "Показва транскрипция на живо, докато говорите"
     },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
@@ -259,6 +261,20 @@
         "noResult": "No transcription result",
         "error": "Transcription failed: {{error}}",
         "audioFiles": "Audio Files"
+      },
+      "shortcutActivation": {
+        "title": "Поведение на клавишната комбинация",
+        "description": "Изберете как бързият клавиш за транскрипция стартира и спира записа.",
+        "options": {
+          "holdOrToggle": "Автоматично",
+          "pushToTalk": "Задържане",
+          "toggle": "Превключване"
+        },
+        "descriptions": {
+          "hold_or_toggle": "Задръжте за запис или натиснете кратко за превключване",
+          "push_to_talk": "Записва, докато държите комбинацията натисната",
+          "toggle": "Натиснете кратко комбинацията, за да започне записът, и отново, за да спре"
+        }
       }
     },
     "models": {
@@ -276,7 +292,9 @@
       "deleteActiveConfirm": "{{modelName}} е вашият активен модел. Изтриването му ще спре транскрипциите, докато не изберете нов модел. Сигурни ли сте?",
       "deleteTitle": "Изтриване на модел",
       "filters": {
-        "allLanguages": "Всички езици"
+        "allLanguages": "Всички езици",
+        "streaming": "Филтриране на моделите, които поддържат транскрипция на живо",
+        "translation": "Филтриране на моделите, които поддържат превод на английски"
       },
       "searchPlaceholder": "Search models...",
       "noModelsMatch": "Няма модели, отговарящи на този филтър.",
@@ -294,6 +312,10 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "rescan": {
+        "label": "Сканиране отново",
+        "tooltip": "Сканиране отново за модели, добавени в папката с модели или кеша на Hugging Face извън Phonara"
       }
     },
     "sound": {
@@ -423,7 +445,7 @@
           "description": "Choose how much recording feedback the overlay shows.",
           "options": {
             "none": "None",
-            "minimal": "Minimal",
+            "minimal": "Минимално",
             "live": "Live transcript"
           }
         },
@@ -495,7 +517,7 @@
       },
       "customWords": {
         "title": "Персонализирани думи",
-        "description": "Добавете думи, които често се чуват или изписват грешно при транскрипция. Системата автоматично ще коригира близки по звучене думи според вашия списък.",
+        "description": "Помогнете на поддържаните модели да разпознават имена и специализирани термини. Приблизителната корекция в момента е ограничена до думи с букви A–Z и цифри.",
         "placeholder": "Добавете дума",
         "add": "Добавяне",
         "remove": "Премахване на {{word}}",
@@ -537,6 +559,22 @@
         "presetJapanese": "Japanese",
         "presetChineseSimplified": "Chinese (Simplified)",
         "presetChineseTraditional": "Chinese (Traditional)"
+      },
+      "voiceActivityDetection": {
+        "title": "Откриване на гласова активност",
+        "description": "Филтрира тишината от записите. Моделите с поддръжка на стрийминг използват по-дълга опашка на VAD; изключването на VAD записва необработен звук."
+      },
+      "vadBackend": {
+        "title": "Бекенд за откриване на глас",
+        "description": "Изберете детектора, използван за филтриране на тишината. Earshot е експериментален; върнете се към Silero, ако речта се отрязва или шумът се запазва.",
+        "options": {
+          "silero": "Silero",
+          "earshot": "Earshot"
+        }
+      },
+      "fillerWordRemoval": {
+        "title": "Премахване на думи паразити",
+        "description": "Премахва често срещаните думи за колебание от транскрипциите. Изключете, за да ги запазите."
       }
     },
     "postProcessing": {
@@ -707,7 +745,8 @@
       },
       "updateChecks": {
         "label": "Проверка за актуализации",
-        "description": "Автоматична проверка за нови версии на Phonara"
+        "description": "Автоматична проверка за нови версии на Phonara",
+        "lockedDescription": "Деактивирано от системната конфигурация (PHONARA_DISABLE_UPDATER)"
       },
       "whatsNewPreview": {
         "title": "Preview What's New",
@@ -789,6 +828,34 @@
       "recordingBuffer": {
         "title": "Допълнителен буфер на записа",
         "description": "Допълнително време (в милисекунди) за запис след пускане на клавиша, за да се улови краят на аудиото. 0 = без допълнителен буфер."
+      },
+      "holdThreshold": {
+        "title": "Праг на задържане",
+        "description": "Само в автоматичен режим: колко дълго (в милисекунди) трябва да се задържи комбинацията, за да се брои за задържане вместо за кратко натискане. Намалете, ако след кратки задържания записът продължава; увеличете, ако умишлените кратки натискания се приемат за задържане."
+      },
+      "reliablePaste": {
+        "title": "Надеждно поставяне (Beta)",
+        "description": "Възстановява клипборда само след като целевото приложение действително прочете транскрипцията, вместо след фиксирано забавяне. Предназначено да отстрани поставянето на старото съдържание на клипборда при натоварване на системата. Изисква начин на поставяне през клипборда; само за macOS и Windows."
+      },
+      "keyboardDiagnostic": {
+        "title": "Диагностика на клавиатурата",
+        "description": "Проверява дали клавиатурните събития достигат до Phonara. Записва се само броят на събитията — никога кои клавиши натискате.",
+        "run": "Стартиране на 10-секундна диагностика",
+        "running": "Слушане… натиснете бързия си клавиш няколко пъти (напр. Option+Space)",
+        "secureInputLabel": "Secure Input",
+        "enabled": "включен",
+        "disabled": "изключен",
+        "holder": "задържан от {{name}} (pid {{pid}})",
+        "holderUnknown": "няма видим държател",
+        "keyDown": "Натиснат клавиш",
+        "keyUp": "Отпуснат клавиш",
+        "flagsChanged": "Модификатори",
+        "mouse": "Мишка",
+        "verdictBlocked": "Secure Input блокира клавишните събития — бързите клавиши с обикновен клавиш не могат да работят, докато това не бъде решено.",
+        "verdictSuspicious": "Пристигнаха събития от модификатори, но нито едно клавишно събитие — нещо потиска клавишите, въпреки че Secure Input се отчита като изключен. Моля, съобщете за това в GitHub.",
+        "verdictOk": "Клавишните събития достигат до Phonara нормално.",
+        "verdictNoEvents": "Не са уловени събития — натиснахте ли някакви клавиши по време на теста?",
+        "failed": "Диагностиката е неуспешна: {{error}}"
       }
     },
     "appearance": {
@@ -853,6 +920,11 @@
           "title": "Whisper.cpp",
           "description": "High-performance inference of OpenAI's Whisper automatic speech recognition model",
           "details": "Phonara uses Whisper.cpp for fast, local speech-to-text processing. Thanks to the amazing work by Georgi Gerganov and contributors."
+        },
+        "ggml": {
+          "title": "ggml",
+          "description": "Високопроизводително изпълнение на автоматичния модел за разпознаване на реч Whisper на OpenAI",
+          "details": "Phonara използва ggml за бързо локално реч-към-текст. Благодарности на Georgi Gerganov и сътрудниците за отличната работа."
         }
       }
     },
@@ -870,11 +942,13 @@
     "preparing": "Подготовка...",
     "checkForUpdates": "Проверка за актуализации",
     "portableUpdateTitle": "Необходима е ръчна актуализация",
-    "portableUpdateMessage": "Преносимите инсталации не могат да бъдат актуализирани автоматично. За актуализация: изтеглете най-новия NSIS инсталатор от GitHub Releases, инсталирайте го в същата папка, след което копирайте папката Data/ (настройки, модели, записи) от старата версия в новата.",
-    "portableUpdateButton": "Отвори GitHub Releases",
+    "portableUpdateMessage": "Преносимите инсталации не могат да бъдат актуализирани автоматично. Изтеглете инсталатора за вашата система от бутона по-долу, стартирайте го и инсталирайте в същата папка — папката Data/ (настройки, модели, записи) остава на мястото си.",
+    "portableUpdateButton": "Изтегляне на инсталатора",
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "updateInstallFailed": "Failed to install update",
+    "portableUpdateBrowseMessage": "Преносимите инсталации не могат да бъдат актуализирани автоматично. Изтеглете най-новата версия за вашата система от GitHub Releases и я инсталирайте в същата папка — папката Data/ (настройки, модели, записи) остава на мястото си.",
+    "portableUpdateBrowseButton": "Отвори GitHub Releases"
   },
   "whatsNew": {
     "title": "New in Phonara v{{version}}"
@@ -893,7 +967,8 @@
     "no": "Не",
     "noOptionsFound": "Няма намерени опции",
     "clear": "Clear",
-    "reset": "Reset"
+    "reset": "Reset",
+    "copy": "Копиране"
   },
   "accessibility": {
     "permissionsRequired": "Необходими са разрешения за достъпност",
@@ -934,5 +1009,25 @@
   "progressBar": {
     "downloading": "{{count}} downloading...",
     "downloadingSingle": "Downloading..."
+  },
+  "theme": {
+    "title": "Тема на приложението",
+    "description": "Изберете дали Phonara да следва системната тема, или да остане светла или тъмна",
+    "options": {
+      "system": "Системна",
+      "light": "Светла",
+      "dark": "Тъмна"
+    }
+  },
+  "secureInput": {
+    "blockedWithCulprit_one": "{{name}} може да блокира 1 бърз клавиш",
+    "blockedWithCulprit_other": "{{name}} може да блокира {{count}} бързи клавиша",
+    "blockedNoCulprit_one": "macOS временно блокира 1 бърз клавиш",
+    "blockedNoCulprit_other": "macOS временно блокира {{count}} бързи клавиша",
+    "recorderBlockedWithCulprit": "{{name}} може да блокира промените на бързите клавиши",
+    "recorderBlockedNoCulprit": "macOS временно блокира промените на бързите клавиши",
+    "learnMore": "Как да поправите това",
+    "recorderBlocked": "В момента не могат да се записват бързи клавиши — Secure Input на macOS блокира клавишните събития. Първо отстранете предупреждението за Secure Input.",
+    "dismiss": "Отхвърляне"
   }
 }

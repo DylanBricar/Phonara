@@ -36,6 +36,7 @@ export const useSettingsStore = create<SettingsStore>()(
     postProcessModelOptions: {},
     initialized: false,
     _unlisten: null,
+    updateChecksLocked: null,
 
     setSettings: (settings) => set({ settings }),
     setDefaultSettings: (defaultSettings) => set({ defaultSettings }),
@@ -415,6 +416,15 @@ export const useSettingsStore = create<SettingsStore>()(
       } catch {}
     },
 
+    loadUpdateChecksLocked: async () => {
+      try {
+        set({ updateChecksLocked: await commands.isUpdateChecksLocked() });
+      } catch (error) {
+        console.error("Failed to check update checks lock state:", error);
+        set({ updateChecksLocked: false });
+      }
+    },
+
     initialize: async () => {
       if (get().initialized) return;
       // Set the in-flight promise synchronously (before any await) so concurrent
@@ -422,12 +432,17 @@ export const useSettingsStore = create<SettingsStore>()(
       if (initInFlight) return initInFlight;
 
       initInFlight = (async () => {
-        const { refreshSettings, checkCustomSounds, loadDefaultSettings } =
-          get();
+        const {
+          refreshSettings,
+          checkCustomSounds,
+          loadDefaultSettings,
+          loadUpdateChecksLocked,
+        } = get();
         await Promise.all([
           loadDefaultSettings(),
           refreshSettings(),
           checkCustomSounds(),
+          loadUpdateChecksLocked(),
         ]);
 
         // Re-fetch settings when the backend changes them (e.g. language

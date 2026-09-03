@@ -1,10 +1,14 @@
 use rustfft::{num_complex::Complex32, Fft, FftPlanner};
 use std::sync::Arc;
 
-const DB_MIN: f32 = -55.0;
-const DB_MAX: f32 = 0.0;
-const GAIN: f32 = 0.8;
-const CURVE_POWER: f32 = 0.55;
+// `db` below is not true dBFS: it is a per-bin average divided by the FFT
+// window size, which lands roughly 20 dB low for speech. This range is
+// calibrated against real microphone input so ordinary speech visibly moves
+// the meter without making room noise twitch.
+const DB_MIN: f32 = -68.0;
+const DB_MAX: f32 = -30.0;
+const GAIN: f32 = 1.3;
+const CURVE_POWER: f32 = 0.7;
 
 pub struct AudioVisualiser {
     fft: Arc<dyn Fft<f32>>,

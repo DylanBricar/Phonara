@@ -547,10 +547,29 @@ pub fn start_phonara_keys_recording(app: AppHandle, binding_id: String) -> Resul
         return Err("phonara-keys is not the active keyboard implementation".into());
     }
 
+    // While Secure Input is active the tap receives no KeyDown/KeyUp, so the
+    // recorder would silently capture just the modifier and overwrite the
+    // binding with it (issue #1578). Refuse instead; the frontend maps this
+    // marker to a localized explanation, and the noted impact makes the
+    // warning banner appear with the full story.
+    if crate::secure_input::is_enabled_now() {
+        crate::secure_input::note_recorder_blocked(&app);
+        return Err("secure-input-active".into());
+    }
+
     let state = app
         .try_state::<PhonaraKeysState>()
         .ok_or("PhonaraKeysState not initialized")?;
-    state.start_recording(&app, binding_id)
+
+    // Suspend every registered shortcut so a combo that overlaps an existing
+    // binding can't fire it (or have its keys swallowed) mid-capture.
+    super::suspend_all_shortcuts(&app);
+
+    let result = state.start_recording(&app, binding_id);
+    if result.is_err() {
+        super::resume_all_shortcuts(&app);
+    }
+    result
 }
 
 #[tauri::command]
@@ -564,5 +583,11 @@ pub fn stop_phonara_keys_recording(app: AppHandle) -> Result<(), String> {
     let state = app
         .try_state::<PhonaraKeysState>()
         .ok_or("PhonaraKeysState not initialized")?;
-    state.stop_recording()
+
+    // Restore shortcuts from settings regardless of how recording ended.
+    // A commit has already registered the new binding via change_binding;
+    // re-registering it here fails cleanly and is ignored.
+    let result = state.stop_recording();
+    super::resume_all_shortcuts(&app);
+    result
 }

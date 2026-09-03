@@ -2,7 +2,7 @@ import type { TranscribeAcceleratorSetting } from "@/bindings";
 
 export interface TranscribeAccelerationSettings {
   transcribe_accelerator?: TranscribeAcceleratorSetting;
-  transcribe_gpu_device?: number;
+  transcribe_gpu_device?: string | null;
 }
 
 type PersistResult = { status: "ok" } | { status: "error"; error: string };
@@ -10,13 +10,13 @@ type PersistResult = { status: "ok" } | { status: "error"; error: string };
 interface AtomicAccelerationUpdate<T extends TranscribeAccelerationSettings> {
   settings: T | null;
   accelerator: TranscribeAcceleratorSetting;
-  gpuDevice: number;
+  gpuDevice: string | null;
   updateSettings: (updater: (settings: T | null) => T | null) => void;
   setUpdating: (key: string, updating: boolean) => void;
   isUpdating?: (key: string) => boolean;
   persist: (
     accelerator: TranscribeAcceleratorSetting,
-    gpuDevice: number,
+    gpuDevice: string | null,
   ) => Promise<PersistResult>;
   reportError?: (message: string, error: unknown) => void;
 }

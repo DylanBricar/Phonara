@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useSettingsStore } from "../stores/settingsStore";
 import { commands } from "@/bindings";
 import type { AccentColor, ThemeMode } from "@/bindings";
+import { applyTheme } from "@/lib/utils/theme";
 
 const ACCENT_PALETTE: Record<
   Exclude<AccentColor, "system">,
@@ -62,6 +63,7 @@ export function useTheme() {
     const accentColor: AccentColor = settings.accent_color ?? "system";
 
     const root = document.documentElement;
+    applyTheme(themeMode);
     root.classList.remove("light", "dark");
 
     if (themeMode === "light") {

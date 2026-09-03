@@ -29,6 +29,7 @@ dist-ssr
 .claude/
 
 /target/
+/.cargo-target/
 recording_*
 .crush/
 
@@ -49,3 +50,6 @@ secrets.env
 # Local release helpers / secrets
 .claude/skills/release-macos/
 .agents/skills/release-macos/
+
+# Python bytecode (scripts/)
+__pycache__/

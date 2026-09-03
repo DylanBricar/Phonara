@@ -6,7 +6,8 @@
     "unloadModel": "モデルをアンロード",
     "model": "モデル",
     "quit": "終了",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "secureInputWarning": "⚠ Secure Input でショートカットがブロック中"
   },
   "sidebar": {
     "general": "一般",
@@ -171,7 +172,8 @@
       "languageCount": "{{total}}言語",
       "languageOnly": "{{language}}のみ",
       "translation": "英語への翻訳が可能",
-      "translate": "英語に翻訳"
+      "translate": "英語に翻訳",
+      "streaming": "話しながらリアルタイムで文字起こしを表示"
     },
     "statusCheckFailed": "Failed to check model status",
     "loadFailed": "Failed to load model",
@@ -259,6 +261,20 @@
         "noResult": "No transcription result",
         "error": "Transcription failed: {{error}}",
         "audioFiles": "Audio Files"
+      },
+      "shortcutActivation": {
+        "title": "ショートカットの動作",
+        "description": "文字起こしのショートカットで録音を開始・停止する方法を選択します。",
+        "options": {
+          "holdOrToggle": "自動",
+          "pushToTalk": "長押し",
+          "toggle": "切り替え"
+        },
+        "descriptions": {
+          "hold_or_toggle": "長押しで録音、タップで切り替え",
+          "push_to_talk": "ショートカットを押している間だけ録音します",
+          "toggle": "ショートカットをタップすると録音を開始し、もう一度タップすると停止します"
+        }
       }
     },
     "models": {
@@ -276,7 +292,9 @@
       "deleteActiveConfirm": "{{modelName}}は現在使用中のモデルです。削除すると、新しいモデルを選択するまで文字起こしが停止します。本当に削除しますか?",
       "deleteTitle": "モデルを削除",
       "filters": {
-        "allLanguages": "すべての言語"
+        "allLanguages": "すべての言語",
+        "streaming": "リアルタイム文字起こしに対応するモデルを絞り込む",
+        "translation": "英語への翻訳に対応するモデルを絞り込む"
       },
       "searchPlaceholder": "モデルを検索...",
       "noModelsMatch": "このフィルターに一致するモデルがありません。",
@@ -294,6 +312,10 @@
         "cancel": "Cancel",
         "fetchModels": "Fetch models",
         "alreadySaved": "This model is already saved."
+      },
+      "rescan": {
+        "label": "再スキャン",
+        "tooltip": "Phonara を使わずに models フォルダーまたは Hugging Face キャッシュに追加されたモデルを再スキャンします"
       }
     },
     "sound": {
@@ -495,7 +517,7 @@
       },
       "customWords": {
         "title": "カスタム単語",
-        "description": "よく誤認識または誤入力される単語を追加します。システムは自動的に類似した発音の単語をリストに合わせて修正します。",
+        "description": "対応モデルが名前や専門用語を認識しやすくします。あいまい補正は現在、A～Zの英字と数字を使用する単語に限定されています。",
         "placeholder": "単語を追加",
         "add": "追加",
         "remove": "{{word}}を削除",
@@ -537,6 +559,22 @@
         "presetJapanese": "Japanese",
         "presetChineseSimplified": "Chinese (Simplified)",
         "presetChineseTraditional": "Chinese (Traditional)"
+      },
+      "voiceActivityDetection": {
+        "title": "音声区間検出 (VAD)",
+        "description": "録音から無音部分を除去します。ストリーミング対応モデルはより長い音声検出区間を使用します。VAD を無効にすると音声をそのまま録音します。"
+      },
+      "vadBackend": {
+        "title": "音声区間検出バックエンド",
+        "description": "無音のフィルタリングに使用する検出器を選択します。Earshot は実験的機能です。音声が途切れたりノイズが残る場合は Silero に戻してください。",
+        "options": {
+          "silero": "Silero",
+          "earshot": "Earshot"
+        }
+      },
+      "fillerWordRemoval": {
+        "title": "フィラー語を削除",
+        "description": "文字起こしから一般的なフィラー語を削除します。残すにはオフにしてください。"
       }
     },
     "postProcessing": {
@@ -707,7 +745,8 @@
       },
       "updateChecks": {
         "label": "アップデートを確認",
-        "description": "Phonaraの新しいバージョンを自動的にチェック"
+        "description": "Phonaraの新しいバージョンを自動的にチェック",
+        "lockedDescription": "システム設定により無効化されています (PHONARA_DISABLE_UPDATER)"
       },
       "whatsNewPreview": {
         "title": "Preview What's New",
@@ -789,6 +828,34 @@
       "recordingBuffer": {
         "title": "追加録音バッファ",
         "description": "キーを離した後に録音を続ける追加時間（ミリ秒）。末尾の音声を捕捉するため。0 = 追加バッファなし。"
+      },
+      "holdThreshold": {
+        "title": "長押しのしきい値",
+        "description": "「自動」モードのみ: タップではなく長押しとみなすためにショートカットを押し続ける必要がある時間（ミリ秒）。短い長押しの後も録音が続いてしまう場合は下げ、意図したタップが長押しと判定される場合は上げてください。"
+      },
+      "reliablePaste": {
+        "title": "確実な貼り付け(Beta)",
+        "description": "固定の遅延ではなく、対象アプリが実際に文字起こしを読み取った後にのみクリップボードを復元します。システム負荷が高いときに古いクリップボードの内容が貼り付けられる問題を解決するための設定です。クリップボードを使う貼り付け方法が必要です。macOS と Windows のみ。"
+      },
+      "keyboardDiagnostic": {
+        "title": "キーボード診断",
+        "description": "キーボードイベントが Phonara に届いているかを確認します。記録されるのはイベント数のみで、押したキーの内容は記録されません。",
+        "run": "10 秒間の診断を実行",
+        "running": "待機中… ショートカットを数回押してください (例: Option+Space)",
+        "secureInputLabel": "Secure Input",
+        "enabled": "有効",
+        "disabled": "無効",
+        "holder": "{{name}} (pid {{pid}}) が保持中",
+        "holderUnknown": "保持元は不明",
+        "keyDown": "キー押下",
+        "keyUp": "キー解放",
+        "flagsChanged": "修飾キー",
+        "mouse": "マウス",
+        "verdictBlocked": "Secure Input がキーイベントをブロックしています。解消されるまで、通常キーを含むショートカットは動作しません。",
+        "verdictSuspicious": "修飾キーのイベントは届いていますが、キーイベントは届いていません。Secure Input は無効と報告されているのに、何かがキーを抑制しています。GitHub で報告してください。",
+        "verdictOk": "キーイベントは Phonara に正常に届いています。",
+        "verdictNoEvents": "イベントを検出できませんでした。テスト中にキーを押しましたか？",
+        "failed": "診断に失敗しました: {{error}}"
       }
     },
     "appearance": {
@@ -853,6 +920,11 @@
           "title": "Whisper.cpp",
           "description": "OpenAIのWhisper自動音声認識モデルの高性能推論",
           "details": "Phonaraは高速でローカルな音声からテキストへの変換にWhisper.cppを使用しています。Georgi Gerganov氏と貢献者の皆様の素晴らしい仕事に感謝します。"
+        },
+        "ggml": {
+          "title": "ggml",
+          "description": "オンデバイス機械学習推論のための高性能テンソルライブラリ",
+          "details": "Phonara のローカルの音声からテキストへの文字起こしは transcribe.cpp と ggml を基盤としています。Georgi Gerganov 氏と貢献者の皆様の素晴らしい仕事に感謝します。"
         }
       }
     },
@@ -874,7 +946,9 @@
     "portableUpdateButton": "Open GitHub Releases",
     "updateCheckFailed": "Failed to check for updates",
     "restartFailed": "Update installed, but restart failed",
-    "updateInstallFailed": "Failed to install update"
+    "updateInstallFailed": "Failed to install update",
+    "portableUpdateBrowseMessage": "ポータブル版は自動的に更新できません。GitHub Releases からお使いのシステム向けの最新版をダウンロードし、同じフォルダーにインストールしてください。Data フォルダー(設定、モデル、録音)はそのまま残ります。",
+    "portableUpdateBrowseButton": "GitHub Releases を開く"
   },
   "whatsNew": {
     "title": "New in Phonara v{{version}}"
@@ -893,7 +967,8 @@
     "no": "いいえ",
     "noOptionsFound": "オプションが見つかりません",
     "clear": "クリア",
-    "reset": "Reset"
+    "reset": "Reset",
+    "copy": "コピー"
   },
   "accessibility": {
     "permissionsRequired": "アクセシビリティ権限が必要です",
@@ -934,5 +1009,25 @@
   "progressBar": {
     "downloading": "{{count}} downloading...",
     "downloadingSingle": "Downloading..."
+  },
+  "theme": {
+    "title": "アプリのテーマ",
+    "description": "Phonara をシステムのテーマに合わせるか、ライトまたはダークで固定するかを選択します",
+    "options": {
+      "system": "システム",
+      "light": "ライト",
+      "dark": "ダーク"
+    }
+  },
+  "secureInput": {
+    "blockedWithCulprit_one": "{{name}} が1個のショートカットをブロックしている可能性があります",
+    "blockedWithCulprit_other": "{{name}} が{{count}}個のショートカットをブロックしている可能性があります",
+    "blockedNoCulprit_one": "macOS が一時的に1個のショートカットをブロックしています",
+    "blockedNoCulprit_other": "macOS が一時的に{{count}}個のショートカットをブロックしています",
+    "recorderBlockedWithCulprit": "{{name}} がショートカットの変更をブロックしている可能性があります",
+    "recorderBlockedNoCulprit": "macOS が一時的にショートカットの変更をブロックしています",
+    "learnMore": "解決方法",
+    "recorderBlocked": "現在ショートカットを記録できません。macOS の Secure Input がキーイベントをブロックしています。先に Secure Input の警告を解消してください。",
+    "dismiss": "閉じる"
   }
 }

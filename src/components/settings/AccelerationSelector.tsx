@@ -8,10 +8,6 @@ import type {
   TranscribeAcceleratorSetting,
   OrtAcceleratorSetting,
 } from "@/bindings";
-import {
-  decodeTranscribeValue,
-  encodeTranscribeValue,
-} from "@/lib/utils/acceleration";
 
 const ORT_LABELS: Record<OrtAcceleratorSetting, string> = {
   auto: "Auto",
@@ -28,11 +24,30 @@ interface AccelerationSelectorProps {
 
 /**
  * transcribe.cpp dropdown encodes accelerator + device in a single value:
- *   "auto"   → accelerator=auto,  gpu_device=-1
- *   "cpu"    → accelerator=cpu,   gpu_device=-1
- *   "gpu:0"  → accelerator=gpu,   gpu_device=0
- *   "gpu:1"  → accelerator=gpu,   gpu_device=1
+ *   "auto"       → accelerator=auto, gpu_device=null
+ *   "cpu"        → accelerator=cpu,  gpu_device=null
+ *   "gpu:<id>"   → accelerator=gpu, stable opaque device identity
  */
+function encodeTranscribeValue(
+  accelerator: TranscribeAcceleratorSetting,
+  gpuDevice: string | null,
+): string {
+  if (accelerator === "cpu") return "cpu";
+  if (accelerator === "gpu" && gpuDevice !== null) return `gpu:${gpuDevice}`;
+  return "auto";
+}
+
+function decodeTranscribeValue(value: string): {
+  accelerator: TranscribeAcceleratorSetting;
+  gpuDevice: string | null;
+} {
+  if (value === "cpu") return { accelerator: "cpu", gpuDevice: null };
+  if (value.startsWith("gpu:")) {
+    return { accelerator: "gpu", gpuDevice: value.slice(4) };
+  }
+  return { accelerator: "auto", gpuDevice: null };
+}
+
 export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
   descriptionMode = "tooltip",
   grouped = false,
@@ -54,30 +69,30 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
   useEffect(() => {
     commands.getAvailableAccelerators().then((available) => {
       // Build combined transcribe.cpp options: Auto, [GPU devices...], CPU
-      const opts: DropdownOption[] = [
-        {
+      const opts: DropdownOption[] = [];
+      if (available.transcribe.includes("auto")) {
+        opts.push({
           value: "auto",
           label: t("settings.advanced.acceleration.gpuDevice.auto"),
-        },
-        {
-          value: "gpu:0",
-          label: `GPU (${t("settings.advanced.acceleration.gpuDevice.auto")})`,
-        },
-      ];
-
-      for (const dev of available.gpu_devices) {
-        if (dev.id === 0) continue;
-        const vramLabel =
-          dev.total_vram_mb >= 1024
-            ? `${(dev.total_vram_mb / 1024).toFixed(1)} GB`
-            : `${dev.total_vram_mb} MB`;
-        opts.push({
-          value: `gpu:${dev.id}`,
-          label: `${dev.name} (${vramLabel})`,
         });
       }
 
-      opts.push({ value: "cpu", label: "CPU" });
+      if (available.transcribe.includes("gpu")) {
+        for (const dev of available.gpu_devices) {
+          const vramLabel =
+            dev.total_vram_mb >= 1024
+              ? `${(dev.total_vram_mb / 1024).toFixed(1)} GB`
+              : `${dev.total_vram_mb} MB`;
+          opts.push({
+            value: `gpu:${dev.id}`,
+            label: `${dev.name} (${vramLabel})`,
+          });
+        }
+      }
+
+      if (available.transcribe.includes("cpu")) {
+        opts.push({ value: "cpu", label: "CPU" });
+      }
       setTranscribeOptions(opts);
 
       // ORT options (unchanged)
@@ -94,11 +109,16 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
   }, [t]);
 
   const currentAccelerator = getSetting("transcribe_accelerator") ?? "auto";
-  const currentGpuDevice = getSetting("transcribe_gpu_device") ?? -1;
+  const currentGpuDevice = getSetting("transcribe_gpu_device") ?? null;
   const currentTranscribe = encodeTranscribeValue(
     currentAccelerator as TranscribeAcceleratorSetting,
-    currentGpuDevice as number,
+    currentGpuDevice as string | null,
   );
+  const displayedTranscribe = transcribeOptions.some(
+    (option) => option.value === currentTranscribe,
+  )
+    ? currentTranscribe
+    : (transcribeOptions[0]?.value ?? null);
   const currentOrt = getSetting("ort_accelerator") ?? "auto";
 
   const handleTranscribeChange = async (value: string) => {
@@ -117,7 +137,7 @@ export const AccelerationSelector: FC<AccelerationSelectorProps> = ({
       >
         <Dropdown
           options={transcribeOptions}
-          selectedValue={currentTranscribe}
+          selectedValue={displayedTranscribe}
           onSelect={handleTranscribeChange}
           disabled={
             isLoading ||

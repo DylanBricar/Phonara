@@ -9,15 +9,18 @@
   font-display: swap;
 }
 
-@theme {
-  /* Design tokens */
-  --color-text: #0f0f0f;
-  --color-background: #fbfbfb;
-  --color-background-ui: #4a7fd4;
-  --color-logo-primary: #5b9bf5;
-  --color-logo-stroke: #1e3a5f;
-  --color-text-stroke: #f6f6f6;
-  --color-mid-gray: #808080;
+/* Register the shared color tokens (src/styles/theme.css) as Tailwind
+   utilities */
+@theme inline {
+  --color-text: var(--color-text);
+  --color-background: var(--color-background);
+  --color-background-ui: var(--color-background-ui);
+  --color-logo-primary: var(--color-logo-primary);
+  --color-logo-stroke: var(--color-logo-stroke);
+  --color-text-stroke: var(--color-text-stroke);
+  --color-mid-gray: var(--color-mid-gray);
+  --color-warning: var(--color-warning);
+  --color-error: var(--color-error);
 }
 
 :root {
@@ -59,30 +62,11 @@
   text-align: center;
 }
 
-/* System theme: only apply when no explicit .light or .dark class is set */
 @media (prefers-color-scheme: dark) {
-  :root:not(.light):not(.dark) {
-    --color-text: #fbfbfb;
-    --color-background: #2c2b29;
-    --color-logo-primary: #6aa3f7;
-    --color-logo-stroke: #b8d4fc;
+  :root {
+    /* Just a bit darker than the (already dark) background, keeping its warm tint */
+    --color-log-surface: color-mix(in srgb, var(--color-background), black 15%);
   }
-}
-
-/* Explicit dark mode via class */
-:root.dark {
-  --color-text: #fbfbfb;
-  --color-background: #2c2b29;
-  --color-logo-primary: #6aa3f7;
-  --color-logo-stroke: #b8d4fc;
-}
-
-/* Explicit light mode via class (matches defaults, but useful for overriding media query) */
-:root.light {
-  --color-text: #0f0f0f;
-  --color-background: #fbfbfb;
-  --color-logo-primary: #5b9bf5;
-  --color-logo-stroke: #1e3a5f;
 }
 
 /* macOS - tint native overlay scrollbar thumb */
@@ -128,47 +112,4 @@
   fill: var(--color-logo-stroke);
   stroke: var(--color-logo-stroke);
   stroke-width: 1;
-}
-
-html,
-body {
-  overflow-x: hidden;
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--color-background-ui);
-  cursor: pointer;
-}
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-mid-gray);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-logo-primary);
-}
-
-@keyframes transcribe-pulse {
-  0%,
-  100% {
-    color: color-mix(in srgb, var(--color-text) 40%, transparent);
-  }
-  50% {
-    color: color-mix(in srgb, var(--color-text) 90%, transparent);
-  }
 }

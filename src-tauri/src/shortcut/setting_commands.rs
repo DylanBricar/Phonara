@@ -1,4 +1,4 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::settings;
 
@@ -30,16 +30,12 @@ pub fn change_whisper_initial_prompt_setting(
 #[specta::specta]
 pub fn change_whisper_use_gpu_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
     let accelerator = if enabled {
-        settings::TranscribeAcceleratorSetting::Gpu
+        settings::TranscribeAcceleratorSetting::Auto
     } else {
         settings::TranscribeAcceleratorSetting::Cpu
     };
     super::update_accelerator_and_reload_next_use(&app, |current| {
-        super::apply_transcribe_acceleration_settings(
-            current,
-            accelerator,
-            if enabled { 0 } else { -1 },
-        )
+        super::apply_transcribe_acceleration_settings(current, accelerator, None)
     })
 }
 
@@ -259,15 +255,18 @@ pub fn preview_overlay_settings(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub fn change_theme_mode_setting(app: AppHandle, mode: String) -> Result<(), String> {
+    let parsed = match mode.as_str() {
+        "light" => settings::ThemeMode::Light,
+        "dark" => settings::ThemeMode::Dark,
+        "system" => settings::ThemeMode::System,
+        _ => settings::ThemeMode::System,
+    };
     settings::update_settings(&app, |settings| {
-        let parsed = match mode.as_str() {
-            "light" => settings::ThemeMode::Light,
-            "dark" => settings::ThemeMode::Dark,
-            "system" => settings::ThemeMode::System,
-            _ => settings::ThemeMode::System,
-        };
         settings.theme_mode = parsed;
     });
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    super::apply_window_theme(&app, parsed);
+    let _ = app.emit("theme-changed", parsed);
     Ok(())
 }
 

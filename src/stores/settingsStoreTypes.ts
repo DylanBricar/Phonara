@@ -14,16 +14,18 @@ export interface SettingsStore {
   postProcessModelOptions: Record<string, string[]>;
   initialized: boolean;
   _unlisten: (() => void) | null;
+  updateChecksLocked: boolean | null;
 
   initialize: () => Promise<void>;
   loadDefaultSettings: () => Promise<void>;
+  loadUpdateChecksLocked: () => Promise<void>;
   updateSetting: <K extends keyof Settings>(
     key: K,
     value: Settings[K],
   ) => Promise<void>;
   updateTranscribeAcceleration: (
     accelerator: TranscribeAcceleratorSetting,
-    gpuDevice: number,
+    gpuDevice: string | null,
   ) => Promise<boolean>;
   resetSetting: (key: keyof Settings) => Promise<void>;
   refreshSettings: () => Promise<void>;

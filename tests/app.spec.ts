@@ -15,4 +15,22 @@ test.describe("Phonara App", () => {
     expect(html).toContain("<html");
     expect(html).toContain("<body");
   });
+
+  test("loads a non-English locale on demand", async ({ page }) => {
+    await page.goto("/");
+
+    const translated = await page.evaluate(async () => {
+      const { default: i18n } = await import("/src/i18n/index.ts");
+      await i18n.changeLanguage("fr");
+      return {
+        language: i18n.language,
+        settings: i18n.t("tray.settings"),
+      };
+    });
+
+    expect(translated).toEqual({
+      language: "fr",
+      settings: "Paramètres...",
+    });
+  });
 });

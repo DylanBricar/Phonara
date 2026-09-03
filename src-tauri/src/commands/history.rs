@@ -4,7 +4,8 @@ use crate::managers::{
     transcription::TranscriptionManager,
 };
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_fs::FsExt;
 
 #[tauri::command]
 #[specta::specta]
@@ -36,13 +37,24 @@ pub async fn toggle_history_entry_saved(
 #[tauri::command]
 #[specta::specta]
 pub async fn get_audio_file_path(
-    _app: AppHandle,
+    app: AppHandle,
     history_manager: State<'_, Arc<HistoryManager>>,
     file_name: String,
 ) -> Result<String, String> {
     let path = history_manager
         .get_audio_file_path(&file_name)
         .map_err(|e| e.to_string())?;
+
+    // The history manager canonicalizes the path and proves that it is inside
+    // the configured recordings directory. Grant only that exact file to the
+    // WebView, including when the user selected a directory outside APPDATA.
+    app.asset_protocol_scope()
+        .allow_file(&path)
+        .map_err(|error| format!("Failed to allow audio playback: {error}"))?;
+    app.fs_scope()
+        .allow_file(&path)
+        .map_err(|error| format!("Failed to allow audio file access: {error}"))?;
+
     path.to_str()
         .ok_or_else(|| "Invalid file path".to_string())
         .map(|s| s.to_string())

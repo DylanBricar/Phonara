@@ -40,6 +40,12 @@ export const SECTIONS_CONFIG = {
     icon: PhonaraHand,
     component: GeneralSettings,
   },
+  history: {
+    labelKey: "sidebar.history",
+    icon: History,
+    component: HistorySettings,
+    enabled: () => true,
+  },
   models: {
     labelKey: "sidebar.models",
     icon: Cpu,
@@ -54,11 +60,6 @@ export const SECTIONS_CONFIG = {
     labelKey: "sidebar.advanced",
     icon: Cog,
     component: AdvancedSettings,
-  },
-  history: {
-    labelKey: "sidebar.history",
-    icon: History,
-    component: HistorySettings,
   },
   postprocessing: {
     labelKey: "sidebar.postProcessing",
@@ -89,19 +90,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSectionChange,
 }) => {
   const { t } = useTranslation();
-  const debugMode = useSettingsStore(
-    (state) => state.settings?.debug_mode ?? false,
-  );
+  const settings = useSettingsStore((state) => state.settings);
 
   const availableSections = useMemo(
     () =>
       Object.entries(SECTIONS_CONFIG)
-        .filter(
-          ([, config]) =>
-            !("debugOnly" in config && config.debugOnly) || debugMode,
-        )
+        .filter(([, config]) => {
+          if ("debugOnly" in config && config.debugOnly) {
+            return settings?.debug_mode ?? false;
+          }
+          return !("enabled" in config) || config.enabled(settings);
+        })
         .map(([id, config]) => ({ id: id as SidebarSection, ...config })),
-    [debugMode],
+    [settings],
   );
 
   return (

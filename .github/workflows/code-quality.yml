@@ -7,6 +7,8 @@ on:
       - "src/**"
       - "tests/unit/**"
       - "src-tauri/**"
+      - "src-tauri/src/catalog/catalog.json"
+      - "scripts/**"
       - "package.json"
       - "bun.lock"
       - "bunfig.toml"
@@ -19,6 +21,8 @@ on:
       - "src/**"
       - "tests/unit/**"
       - "src-tauri/**"
+      - "src-tauri/src/catalog/catalog.json"
+      - "scripts/**"
       - "package.json"
       - "bun.lock"
       - "bunfig.toml"
@@ -54,6 +58,9 @@ jobs:
 
       - name: Scan committed files for obvious secrets
         run: bun run check:secrets
+
+      - name: Check model language coverage
+        run: bun run check:model-languages
 
       - name: Run ESLint
         run: bun run lint

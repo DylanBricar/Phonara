@@ -108,6 +108,12 @@ jobs:
     runs-on: ${{ inputs.platform }}
     environment: ${{ inputs.build-environment }}
     steps:
+      # Kept for git checkout and general tooling headroom. The native
+      # transcribe-cpp-sys build no longer needs path help: since 0.1.3 its
+      # build.rs self-mitigates MAX_PATH by compiling through a short NTFS
+      # junction (and ggml's Vulkan shader-gen ExternalProject is flattened),
+      # so no CARGO_TARGET_DIR redirect is required — upstream CI proves the
+      # deep-path build with long paths forced OFF.
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -516,8 +522,8 @@ jobs:
             }
             $dirs = "$($crt.FullName);$($omp.FullName)"
           }
-          Write-Host "HANDY_VC_REDIST_DIRS=$dirs"
-          Add-Content -Path $env:GITHUB_ENV -Value "HANDY_VC_REDIST_DIRS=$dirs"
+          Write-Host "PHONARA_VC_REDIST_DIRS=$dirs"
+          Add-Content -Path $env:GITHUB_ENV -Value "PHONARA_VC_REDIST_DIRS=$dirs"
 
       # MSI packaging verifies bundled .dll/.exe resources with signtool before
       # custom signing. Tauri's SDK lookup has no ARM64 host mapping, so pass
@@ -574,13 +580,58 @@ jobs:
               cp -L "$f" "$f.real" && mv "$f.real" "$f"
             fi
           done
-          # Add the shared libs to the deb package under /usr/lib
+          # Ship ORT in Phonara's private lib dir under its SONAME only — the one
+          # name the loader resolves (phonara has NEEDED libonnxruntime.so.1).
+          # Shipping the .so/.so.x.y.z aliases too would triplicate the lib as
+          # real files and draw ldconfig warnings (issue #1639).
           # deb.files key = destination in package, value = source on disk
-          jq --arg so "$ORT_DIR/lib/libonnxruntime.so" \
-             --arg so1 "$ORT_DIR/lib/libonnxruntime.so.1" \
-             --arg sov "$ORT_DIR/lib/libonnxruntime.so.1.24.2" \
-            '.bundle.linux.deb.files["/usr/lib/libonnxruntime.so"] = $so | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1"] = $so1 | .bundle.linux.deb.files["/usr/lib/libonnxruntime.so.1.24.2"] = $sov' \
+          jq --arg so1 "$ORT_DIR/lib/libonnxruntime.so.1" \
+            '.bundle.linux.deb.files["/usr/lib/Phonara/libonnxruntime.so.1"] = $so1' \
             src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
+
+      # Use Microsoft's baseline x64 build rather than an AVX2-only ORT binary.
+      # build.rs stages the DLL beside phonara.exe for the packaged application.
+      - name: Install ONNX Runtime (Windows x64)
+        if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = "https://github.com/microsoft/onnxruntime/releases/download/v$env:ORT_VERSION/onnxruntime-win-x64-$env:ORT_VERSION.zip"
+          Invoke-WebRequest -Uri $url -OutFile ort.zip
+          Expand-Archive -Path ort.zip -DestinationPath ort-dist -Force
+          $ortLib = (Resolve-Path "ort-dist/onnxruntime-win-x64-$env:ORT_VERSION/lib").Path
+          Add-Content -Path $env:GITHUB_ENV -Value "ORT_LIB_LOCATION=$ortLib"
+          Add-Content -Path $env:GITHUB_ENV -Value "ORT_PREFER_DYNAMIC_LINK=1"
+
+      # Linux uses transcribe-cpp's dynamic backend modules. Build once before
+      # Tauri packages the application, locate the exact CMake install output,
+      # and expose it to linuxdeploy. The Tauri build then reuses Cargo output.
+      - name: Pre-build and locate transcribe-cpp backend libs (Linux)
+        if: contains(inputs.platform, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE="${{ steps.build-profile.outputs.profile }}"
+          bun run build
+          (
+            cd src-tauri
+            if [ "$PROFILE" = "release" ]; then cargo build --release; else cargo build; fi
+          )
+          LIBDIR="$(find "src-tauri/target/$PROFILE/build" \
+            -type f -name transcribe-link.json -path '*transcribe-cpp-sys*/out/lib/*' \
+            -printf '%T@ %h\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)"
+          if [ -z "${LIBDIR:-}" ] || [ ! -d "$LIBDIR" ]; then
+            echo "ERROR: could not locate transcribe-cpp-sys install lib dir" >&2
+            find src-tauri/target \( -name 'libtranscribe*' -o -name 'libggml*' \) 2>/dev/null >&2 || true
+            exit 1
+          fi
+          LIBDIR="$(cd "$LIBDIR" && pwd)"
+          echo "Located transcribe-cpp libs in: $LIBDIR"
+          ls -la "$LIBDIR"
+          echo "TRANSCRIBE_LIBDIR=$LIBDIR" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$LIBDIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+          sudo cp -vL "$LIBDIR"/libtranscribe.so* "$LIBDIR"/libggml*.so* /usr/local/lib/ 2>/dev/null || true
+          sudo ldconfig
 
       - name: Ensure cargo is the real cargo (macOS only)
         if: contains(inputs.platform, 'macos')
@@ -680,6 +731,40 @@ jobs:
           releaseId: ${{ inputs.release-id }}
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
           args: ${{ inputs.build-args }}
+
+      # tauri-action uploads release assets before returning. All AppImage
+      # filtering therefore happens inside linuxdeploy above; this verifies the
+      # exact artifact Tauri signed and uploaded.
+      - name: Verify AppImage version metadata
+        if: contains(inputs.platform, 'ubuntu')
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROFILE="${{ steps.build-profile.outputs.profile }}"
+          APPIMAGE_PATH="$(find "src-tauri/target/${PROFILE}/bundle/appimage" -name '*.AppImage' -print -quit 2>/dev/null || true)"
+          if [ -z "$APPIMAGE_PATH" ]; then
+            echo "No AppImage produced by this Linux build; skipping metadata verification"
+            exit 0
+          fi
+          APPIMAGE_PATH="$(readlink -f "$APPIMAGE_PATH")"
+          WORKDIR="$(mktemp -d)"
+          trap 'rm -rf "$WORKDIR"' EXIT
+          (
+            cd "$WORKDIR"
+            # AppImage integration tools read the root desktop entry. appimagetool
+            # adds X-AppImage-Version there, not to the source copy under usr/share.
+            "$APPIMAGE_PATH" --appimage-extract '*.desktop' >/dev/null
+            DESKTOP_FILE="$(find squashfs-root -maxdepth 1 -type f -name '*.desktop' -print -quit)"
+            if [ -z "$DESKTOP_FILE" ]; then
+              echo "ERROR: AppImage desktop metadata is missing" >&2
+              exit 1
+            fi
+            if ! grep -Fqx 'X-AppImage-Version=${{ steps.get-version.outputs.version }}' "$DESKTOP_FILE"; then
+              echo "ERROR: AppImage version metadata is missing or incorrect:" >&2
+              grep -E '^X-AppImage-Version=' "$DESKTOP_FILE" >&2 || true
+              exit 1
+            fi
+          )
 
       - name: Verify macOS dylib bundling
         if: inputs.target == 'x86_64-apple-darwin'
@@ -843,7 +928,12 @@ jobs:
             local label="$2"
             # Run under a virtual X server: the app initializes GTK on startup even
             # on the headless --list-devices path, which fails without a display.
-            HANDY_NO_GTK_LAYER_SHELL=1 \
+            # An AppImage audit supplies Mesa's software ICD so GPU registration
+            # is deterministic even on a runner without physical graphics.
+            if [ -n "$vulkan_icd" ]; then
+              export VK_ICD_FILENAMES="$vulkan_icd"
+            fi
+            PHONARA_NO_GTK_LAYER_SHELL=1 \
             LD_LIBRARY_PATH="${root}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
               xvfb-run -a "${root}/usr/bin/${APP_BINARY}" --list-devices >/tmp/phonara-package-smoke.log
             echo "${label} --list-devices smoke passed"
@@ -997,9 +1087,16 @@ jobs:
               }
             }
 
-            & $app.FullName --list-devices | Out-Host
+            $deviceOutput = (& $app.FullName --list-devices | Out-String)
+            $deviceOutput | Write-Host
             if ($LASTEXITCODE -ne 0) {
               throw "$Label phonara.exe --list-devices failed"
+            }
+            if ("${{ inputs.target }}" -like "aarch64*" -and $deviceOutput -match "kind=(vulkan|cuda|metal|gpu)") {
+              throw "$Label Windows ARM64 package unexpectedly exposed a GPU compute device"
+            }
+            if ("${{ inputs.target }}" -like "aarch64*" -and $deviceOutput -notmatch "kind=cpu") {
+              throw "$Label Windows ARM64 package did not expose its required CPU compute device"
             }
           }
 
