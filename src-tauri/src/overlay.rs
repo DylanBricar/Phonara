@@ -52,10 +52,7 @@ use tauri::WebviewUrl;
 use tauri_nspanel::{tauri_panel, CollectionBehavior, PanelBuilder, PanelLevel, StyleMask};
 
 #[cfg(target_os = "linux")]
-use crate::utils;
-
-#[cfg(target_os = "linux")]
-use gtk_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use crate::{linux_layer_shell, linux_layer_shell::Edge, utils};
 
 #[cfg(target_os = "macos")]
 tauri_panel! {
@@ -111,10 +108,10 @@ fn configure_layer_shell_position(gtk_window: &gtk::ApplicationWindow, position:
         OverlayPosition::Bottom => (Edge::Bottom, Edge::Top, OVERLAY_BOTTOM_OFFSET),
     };
 
-    gtk_window.set_anchor(edge, true);
-    gtk_window.set_anchor(opposite_edge, false);
-    gtk_window.set_layer_shell_margin(edge, margin.round() as i32);
-    gtk_window.set_layer_shell_margin(opposite_edge, 0);
+    linux_layer_shell::set_anchor(gtk_window, edge, true);
+    linux_layer_shell::set_anchor(gtk_window, opposite_edge, false);
+    linux_layer_shell::set_margin(gtk_window, edge, margin.round() as i32);
+    linux_layer_shell::set_margin(gtk_window, opposite_edge, 0);
 }
 
 /// Configures a GTK layer surface before it is shown.
@@ -153,21 +150,21 @@ fn init_gtk_layer_shell(overlay_window: &tauri::webview::WebviewWindow) -> bool 
         return false;
     }
 
-    if !gtk_layer_shell::is_supported() {
+    if !linux_layer_shell::is_supported() {
         return false;
     }
 
     // Try to get the GTK window from the Tauri webview
     if let Ok(gtk_window) = overlay_window.gtk_window() {
-        gtk_window.init_layer_shell();
-        gtk_window.set_layer(Layer::Overlay);
-        gtk_window.set_keyboard_mode(KeyboardMode::None);
-        gtk_window.set_exclusive_zone(0);
+        linux_layer_shell::initialize(&gtk_window);
+        linux_layer_shell::set_overlay_layer(&gtk_window);
+        linux_layer_shell::disable_keyboard_input(&gtk_window);
+        linux_layer_shell::set_exclusive_zone(&gtk_window, 0);
 
         let overlay_position = settings::get_settings(overlay_window.app_handle()).overlay_position;
         configure_layer_shell_surface(&gtk_window, overlay_position, OVERLAY_WIDTH, OVERLAY_HEIGHT);
 
-        let initialized = gtk_window.is_layer_window();
+        let initialized = linux_layer_shell::is_layer_window(&gtk_window);
         LAYER_SHELL_ACTIVE.store(initialized, Ordering::SeqCst);
         return initialized;
     }
