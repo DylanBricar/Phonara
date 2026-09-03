@@ -444,6 +444,14 @@ jobs:
           echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
           echo "CC=clang-cl" >> $env:GITHUB_ENV
           echo "CXX=clang-cl" >> $env:GITHUB_ENV
+          if (-not (Get-Command lld-link -ErrorAction SilentlyContinue)) {
+            throw "lld-link is required for the Windows ARM64 build"
+          }
+          # Keep the final Rust link on LLVM as well. MSVC link.exe can reject
+          # large Rust codegen objects with LNK1322 while applying its legacy
+          # Cortex-A53 erratum pass, even though every native object was built
+          # successfully by clang-cl.
+          echo "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=lld-link" >> $env:GITHUB_ENV
           echo "CMAKE_C_COMPILER=clang-cl" >> $env:GITHUB_ENV
           echo "CMAKE_CXX_COMPILER=clang-cl" >> $env:GITHUB_ENV
           echo "CMAKE_C_COMPILER_TARGET=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
@@ -732,12 +740,13 @@ jobs:
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
           args: ${{ inputs.build-args }}
 
-      # tauri-action uploads release assets before returning. All AppImage
-      # filtering therefore happens inside linuxdeploy above; this verifies the
-      # exact artifact Tauri signed and uploaded.
-      - name: Verify AppImage version metadata
+      # tauri-action uploads release assets before returning. Verify the exact
+      # artifact Tauri signed and uploaded by running its extracted AppRun.
+      - name: Verify AppImage version
         if: contains(inputs.platform, 'ubuntu')
         shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version != '' && inputs.version || steps.get-version.outputs.version }}
         run: |
           set -euo pipefail
           PROFILE="${{ steps.build-profile.outputs.profile }}"
@@ -751,19 +760,17 @@ jobs:
           trap 'rm -rf "$WORKDIR"' EXIT
           (
             cd "$WORKDIR"
-            # AppImage integration tools read the root desktop entry. appimagetool
-            # adds X-AppImage-Version there, not to the source copy under usr/share.
-            "$APPIMAGE_PATH" --appimage-extract '*.desktop' >/dev/null
-            DESKTOP_FILE="$(find squashfs-root -maxdepth 1 -type f -name '*.desktop' -print -quit)"
-            if [ -z "$DESKTOP_FILE" ]; then
-              echo "ERROR: AppImage desktop metadata is missing" >&2
+            "$APPIMAGE_PATH" --appimage-extract >/dev/null
+            if [ ! -x squashfs-root/AppRun ]; then
+              echo "ERROR: AppImage AppRun is missing or not executable" >&2
               exit 1
             fi
-            if ! grep -Fqx 'X-AppImage-Version=${{ steps.get-version.outputs.version }}' "$DESKTOP_FILE"; then
-              echo "ERROR: AppImage version metadata is missing or incorrect:" >&2
-              grep -E '^X-AppImage-Version=' "$DESKTOP_FILE" >&2 || true
+            VERSION_OUTPUT="$(squashfs-root/AppRun --version)"
+            if [ "$VERSION_OUTPUT" != "phonara ${EXPECTED_VERSION}" ]; then
+              echo "ERROR: AppImage reports '${VERSION_OUTPUT}', expected 'phonara ${EXPECTED_VERSION}'" >&2
               exit 1
             fi
+            echo "AppImage reports the expected version: ${EXPECTED_VERSION}"
           )
 
       - name: Verify macOS dylib bundling
@@ -926,10 +933,12 @@ jobs:
           smoke_binary() {
             local root="$1"
             local label="$2"
+            local vulkan_icd
+            vulkan_icd="$(find /usr/share/vulkan/icd.d -maxdepth 1 -name 'lvp_icd*.json' -print -quit 2>/dev/null || true)"
             # Run under a virtual X server: the app initializes GTK on startup even
             # on the headless --list-devices path, which fails without a display.
-            # An AppImage audit supplies Mesa's software ICD so GPU registration
-            # is deterministic even on a runner without physical graphics.
+            # Prefer Mesa's software ICD so GPU registration is deterministic even
+            # on a runner without physical graphics.
             if [ -n "$vulkan_icd" ]; then
               export VK_ICD_FILENAMES="$vulkan_icd"
             fi
@@ -941,8 +950,12 @@ jobs:
 
           require_dynamic_transcribe_listing() {
             local listing="$1"
-            require_pattern "$listing" 'usr/lib/libtranscribe\.so' "transcribe runtime library"
-            require_pattern "$listing" 'usr/lib/libggml-cpu.*\.so' "ggml CPU backend module"
+            # Tauri packages external binaries either directly under usr/lib or
+            # under an application-specific subdirectory, and may retain SONAME
+            # suffixes. The runtime smoke below proves that the chosen layout is
+            # actually loadable by the packaged executable.
+            require_pattern "$listing" 'usr/lib(/Phonara)?/libtranscribe\.so(\.[0-9]+)*$' "transcribe runtime library"
+            require_pattern "$listing" 'usr/lib(/Phonara)?/libggml-cpu.*\.so(\.[0-9]+)*$' "ggml CPU backend module"
           }
 
           require_dynamic_transcribe_appimage() {
@@ -964,7 +977,7 @@ jobs:
                 require_dynamic_transcribe_listing "$listing"
               fi
               if [[ "$BUILD_PLATFORM" == *"ubuntu-22.04"* && "$BUILD_TARGET" == "x86_64-unknown-linux-gnu" ]]; then
-                require_pattern "$listing" 'usr/lib/libonnxruntime\.so' "ONNX Runtime library"
+                require_pattern "$listing" 'usr/lib(/Phonara)?/libonnxruntime\.so(\.[0-9]+)*$' "ONNX Runtime library"
               fi
               root="$(mktemp -d)"
               dpkg-deb -x "$deb" "$root"
