@@ -99,7 +99,7 @@ libc = "0.2"
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-single-instance = "2.3.2"
-tauri-plugin-updater = "2.10.1"
+tauri-plugin-updater = "~2.11.0"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = [

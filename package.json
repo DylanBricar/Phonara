@@ -44,7 +44,7 @@
     "@tauri-apps/plugin-os": "~2.3.2",
     "@tauri-apps/plugin-process": "~2.3.1",
     "@tauri-apps/plugin-store": "~2.4.4",
-    "@tauri-apps/plugin-updater": "~2.10.1",
+    "@tauri-apps/plugin-updater": "~2.11.0",
     "i18next": "^25.10.10",
     "immer": "^11.1.18",
     "lucide-react": "^0.542.0",
