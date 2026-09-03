@@ -8,8 +8,11 @@ import {
   Sparkles,
   Cpu,
   Palette,
+  X,
 } from "lucide-react";
+import { platform } from "@tauri-apps/plugin-os";
 import type { LucideProps } from "lucide-react";
+import { commands } from "@/bindings";
 import PhonaraTextLogo from "./icons/PhonaraTextLogo";
 import PhonaraHand from "./icons/PhonaraHand";
 import { useSettingsStore } from "../stores/settingsStore";
@@ -139,6 +142,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
           );
         })}
       </div>
+      {platform() === "linux" && (
+        <button
+          type="button"
+          className="mt-auto mb-2 flex gap-2 items-center p-2 w-full text-left rounded-lg cursor-pointer transition-colors hover:bg-mid-gray/20 hover:opacity-100 opacity-85 focus-visible:bg-logo-primary/80 focus-visible:opacity-100 focus-visible:outline-none"
+          title={t("common.close")}
+          onClick={() => {
+            commands.hideMainWindowCommand().catch((error) => {
+              console.error("Failed to close main window:", error);
+            });
+          }}
+        >
+          <X width={24} height={24} className="shrink-0" />
+          <span className="text-sm font-medium truncate">
+            {t("common.close")}
+          </span>
+        </button>
+      )}
     </nav>
   );
 };

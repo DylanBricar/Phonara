@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../ui/Button";
 import { Dropdown, DropdownOption } from "../ui/Dropdown";
@@ -34,6 +34,14 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
     { value: "marimba", label: "Marimba" },
     { value: "pop", label: "Pop" },
   ];
+
+  const refreshCustomSounds = useCallback(async () => {
+    await checkCustomSounds();
+  }, [checkCustomSounds]);
+
+  useEffect(() => {
+    void refreshCustomSounds();
+  }, [refreshCustomSounds]);
 
   if (
     customSounds.start ||
@@ -109,6 +117,7 @@ export const SoundPicker: React.FC<SoundPickerProps> = ({
               )
             }
             options={options}
+            onOpen={() => void refreshCustomSounds()}
           />
           <Button
             variant="ghost"

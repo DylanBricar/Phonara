@@ -85,6 +85,27 @@ function App() {
         event.preventDefault();
         const currentDebugMode = settings?.debug_mode ?? false;
         updateSetting("debug_mode", !currentDebugMode);
+        return;
+      }
+
+      const primaryModifier =
+        platform() === "macos"
+          ? event.metaKey && !event.ctrlKey
+          : event.ctrlKey && !event.metaKey;
+      const isCloseShortcut =
+        primaryModifier &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "w";
+
+      if (
+        isCloseShortcut &&
+        !document.querySelector("[data-keyboard-capture]")
+      ) {
+        event.preventDefault();
+        commands.hideMainWindowCommand().catch((error) => {
+          console.error("Failed to close main window:", error);
+        });
       }
     };
 

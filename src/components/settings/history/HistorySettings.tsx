@@ -14,6 +14,7 @@ import { useOsType } from "@/hooks/useOsType";
 import { formatDateTime } from "@/utils/dateFormat";
 import { AudioPlayer, AudioPlayerGroup } from "../../ui/AudioPlayer";
 import { Button } from "../../ui/Button";
+import { writeClipboardText } from "./clipboard";
 
 const IconButton: React.FC<{
   onClick: () => void;
@@ -139,9 +140,10 @@ export const HistorySettings: React.FC = () => {
         setEntries((prev) =>
           prev.map((e) => (e.id === payload.entry.id ? payload.entry : e)),
         );
+      } else if (payload.action === "deleted") {
+        setEntries((prev) => prev.filter((e) => e.id !== payload.id));
       }
-      // "deleted" and "toggled" are handled by optimistic updates only,
-      // so we intentionally ignore them here to avoid double-mutation.
+      // "toggled" is handled by optimistic updates only.
     });
 
     return () => {
@@ -170,12 +172,6 @@ export const HistorySettings: React.FC = () => {
       );
     }
   };
-
-  const copyToClipboard = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {}
-  }, []);
 
   const getAudioUrl = useCallback(
     async (fileName: string) => {
@@ -254,7 +250,7 @@ export const HistorySettings: React.FC = () => {
                 key={entry.id}
                 entry={entry}
                 onToggleSaved={() => toggleSaved(entry.id)}
-                onCopyText={() => copyToClipboard(entry.transcription_text)}
+                onCopyText={() => writeClipboardText(entry.transcription_text)}
                 getAudioUrl={getAudioUrl}
                 deleteAudio={deleteAudioEntry}
                 retryTranscription={retryHistoryEntry}
@@ -293,7 +289,7 @@ export const HistorySettings: React.FC = () => {
 interface HistoryEntryProps {
   entry: HistoryEntry;
   onToggleSaved: () => void;
-  onCopyText: () => void;
+  onCopyText: () => Promise<boolean>;
   getAudioUrl: (fileName: string) => Promise<string | null>;
   deleteAudio: (id: number) => Promise<void>;
   retryTranscription: (id: number) => Promise<void>;
@@ -328,12 +324,16 @@ const HistoryEntryComponent: React.FC<HistoryEntryProps> = React.memo(
       };
     }, []);
 
-    const handleCopyText = () => {
+    const handleCopyText = async () => {
       if (!hasTranscription) {
         return;
       }
 
-      onCopyText();
+      const copied = await onCopyText();
+      if (!copied) {
+        return;
+      }
+
       setShowCopied(true);
       clearTimeout(copiedTimerRef.current);
       copiedTimerRef.current = setTimeout(() => setShowCopied(false), 2000);

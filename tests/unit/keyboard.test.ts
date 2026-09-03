@@ -18,6 +18,12 @@ describe("getKeyName", () => {
     ["Numpad4", "numpad 4"],
     ["ArrowLeft", "left"],
     ["Slash", "/"],
+    ["ScrollLock", "scrolllock"],
+    ["CapsLock", "capslock"],
+    ["NumLock", "numlock"],
+    ["PageUp", "pageup"],
+    ["PageDown", "pagedown"],
+    ["PrintScreen", "printscreen"],
   ])("maps keyboard code %s", (code, expected) => {
     expect(getKeyName(keyEvent({ code }))).toBe(expected);
   });
@@ -52,6 +58,16 @@ describe("formatKeyCombination", () => {
       combo: "fn+meta_right",
       os: "macos" as OSType,
       expected: "fn + Right Meta",
+    },
+    {
+      combo: "ctrl+scrolllock",
+      os: "linux" as OSType,
+      expected: "Ctrl + Scroll Lock",
+    },
+    {
+      combo: "pageup+printscreen",
+      os: "windows" as OSType,
+      expected: "Page Up + Print Screen",
     },
   ])("formats $combo", ({ combo, os, expected }) => {
     expect(formatKeyCombination(combo, os)).toBe(expected);
