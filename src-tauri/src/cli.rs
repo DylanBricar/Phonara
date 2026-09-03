@@ -2,7 +2,7 @@ use clap::Parser;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug, Clone, Default)]
-#[command(name = "phonara", about = "Phonara - Speech to Text")]
+#[command(name = "phonara", version, about = "Phonara - Speech to Text")]
 pub struct CliArgs {
     #[arg(long)]
     pub start_hidden: bool,

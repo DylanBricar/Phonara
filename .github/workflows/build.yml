@@ -444,6 +444,14 @@ jobs:
           echo "CMAKE_GENERATOR=Ninja" >> $env:GITHUB_ENV
           echo "CC=clang-cl" >> $env:GITHUB_ENV
           echo "CXX=clang-cl" >> $env:GITHUB_ENV
+          if (-not (Get-Command lld-link -ErrorAction SilentlyContinue)) {
+            throw "lld-link is required for the Windows ARM64 build"
+          }
+          # Keep the final Rust link on LLVM as well. MSVC link.exe can reject
+          # large Rust codegen objects with LNK1322 while applying its legacy
+          # Cortex-A53 erratum pass, even though every native object was built
+          # successfully by clang-cl.
+          echo "CARGO_TARGET_AARCH64_PC_WINDOWS_MSVC_LINKER=lld-link" >> $env:GITHUB_ENV
           echo "CMAKE_C_COMPILER=clang-cl" >> $env:GITHUB_ENV
           echo "CMAKE_CXX_COMPILER=clang-cl" >> $env:GITHUB_ENV
           echo "CMAKE_C_COMPILER_TARGET=aarch64-pc-windows-msvc" >> $env:GITHUB_ENV
@@ -732,10 +740,9 @@ jobs:
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
           args: ${{ inputs.build-args }}
 
-      # tauri-action uploads release assets before returning. All AppImage
-      # filtering therefore happens inside linuxdeploy above; this verifies the
-      # exact artifact Tauri signed and uploaded.
-      - name: Verify AppImage version metadata
+      # tauri-action uploads release assets before returning. Verify the exact
+      # artifact Tauri signed and uploaded by running its extracted AppRun.
+      - name: Verify AppImage version
         if: contains(inputs.platform, 'ubuntu')
         shell: bash
         env:
@@ -753,23 +760,17 @@ jobs:
           trap 'rm -rf "$WORKDIR"' EXIT
           (
             cd "$WORKDIR"
-            # AppImage integration tools read the root desktop entry. appimagetool
-            # adds X-AppImage-Version there, not to the source copy under usr/share.
-            # The root entry may be a symlink, so follow links when locating it.
-            # Extract the complete image so a root desktop-entry symlink can be
-            # resolved to its target under usr/share/applications.
             "$APPIMAGE_PATH" --appimage-extract >/dev/null
-            DESKTOP_FILE="$(find -L squashfs-root -maxdepth 1 -name '*.desktop' -print -quit)"
-            if [ -z "$DESKTOP_FILE" ] || [ ! -f "$DESKTOP_FILE" ]; then
-              echo "ERROR: AppImage desktop metadata is missing" >&2
-              find squashfs-root -name '*.desktop' -print >&2 || true
+            if [ ! -x squashfs-root/AppRun ]; then
+              echo "ERROR: AppImage AppRun is missing or not executable" >&2
               exit 1
             fi
-            if ! grep -Fqx "X-AppImage-Version=${EXPECTED_VERSION}" "$DESKTOP_FILE"; then
-              echo "ERROR: AppImage version metadata is missing or incorrect:" >&2
-              grep -E '^X-AppImage-Version=' "$DESKTOP_FILE" >&2 || true
+            VERSION_OUTPUT="$(squashfs-root/AppRun --version)"
+            if [ "$VERSION_OUTPUT" != "phonara ${EXPECTED_VERSION}" ]; then
+              echo "ERROR: AppImage reports '${VERSION_OUTPUT}', expected 'phonara ${EXPECTED_VERSION}'" >&2
               exit 1
             fi
+            echo "AppImage reports the expected version: ${EXPECTED_VERSION}"
           )
 
       - name: Verify macOS dylib bundling
