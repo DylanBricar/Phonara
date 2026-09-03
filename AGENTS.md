@@ -63,10 +63,10 @@ Phonara is a cross-platform desktop speech-to-text application built with Tauri 
   - `history.rs` - Transcription history storage
 - `audio_toolkit/` - Low-level audio processing:
   - `audio/` - Device enumeration, recording, resampling
-  - `vad/` - Voice Activity Detection (Silero VAD)
+  - `vad/` - Voice Activity Detection (Earshot and Silero VAD)
 - `commands/` - Tauri command handlers for frontend communication
 - `cli.rs` - CLI argument definitions (clap derive)
-- `shortcut.rs` - Global keyboard shortcut handling
+- `shortcut/` - Global keyboard shortcut handling
 - `settings.rs` - Application settings management
 - `overlay.rs` - Recording overlay window (platform-specific)
 - `signal_handle.rs` - `send_transcription_input()` reusable function
@@ -86,7 +86,7 @@ Phonara is a cross-platform desktop speech-to-text application built with Tauri 
 - `stores/settingsStore.ts` - Zustand store for settings
 - `bindings.ts` - Auto-generated Tauri type bindings (via tauri-specta)
 - `overlay/` - Recording overlay window entry point
-- `lib/types.ts` - Shared TypeScript type definitions
+- `lib/types/` - Shared TypeScript type definitions
 
 ### Key Architecture Patterns
 
@@ -152,7 +152,7 @@ src/i18n/
     └── ...
 ```
 
-For translation contribution guidelines, see [CONTRIBUTING_TRANSLATIONS.md](CONTRIBUTING_TRANSLATIONS.md).
+Before committing translation changes, run `bun run check:translations` to verify that every locale matches the English source keys.
 
 ## Code Style
 
@@ -209,6 +209,6 @@ See the [Troubleshooting](README.md#troubleshooting) section in README.md.
 
 Before opening a PR or issue, read and follow the matching template in `.github/`.
 Feature requests belong in [Phonara Discussions](https://github.com/DylanBricar/Phonara/discussions).
-Translations must follow [CONTRIBUTING_TRANSLATIONS.md](CONTRIBUTING_TRANSLATIONS.md), and the full contributor workflow is documented in [CONTRIBUTING.md](CONTRIBUTING.md).
+Translations must pass `bun run check:translations`, and the full contributor workflow is documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Commits:** Use conventional commit prefixes (`feat:`, `fix:`, `docs:`, `refactor:`, `chore:`). Focus the message on _why_, not _what_.

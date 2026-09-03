@@ -76,7 +76,7 @@ Phonara follows a clean architecture pattern:
 - `managers/` - Core business logic (audio, model, transcription)
 - `audio_toolkit/` - Low-level audio processing (recording, VAD)
 - `commands/` - Tauri command handlers for frontend communication
-- `shortcut.rs` - Global keyboard shortcut handling
+- `shortcut/` - Global keyboard shortcut handling
 - `settings.rs` - Application settings management
 
 **Frontend (React/TypeScript - `src/`):**
@@ -84,7 +84,7 @@ Phonara follows a clean architecture pattern:
 - `App.tsx` - Main application component
 - `components/` - React UI components
 - `hooks/` - Reusable React hooks
-- `lib/types.ts` - Shared TypeScript types
+- `lib/types/` - Shared TypeScript types
 
 For more details, see the Architecture section in [README.md](README.md) or [AGENTS.md](AGENTS.md).
 
