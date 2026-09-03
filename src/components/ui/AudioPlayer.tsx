@@ -64,7 +64,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const src = loadedSrc;
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
   const dragTimeRef = useRef<number>(0);
 
   const isPlayingRef = useRef(false);

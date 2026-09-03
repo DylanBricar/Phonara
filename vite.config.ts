@@ -12,22 +12,32 @@ export default defineConfig(async () => ({
   // Path aliases
   resolve: {
     alias: {
-      "@": resolve(__dirname, "./src"),
-      "@/bindings": resolve(__dirname, "./src/bindings.ts"),
+      "@": resolve(import.meta.dirname, "./src"),
+      "@/bindings": resolve(import.meta.dirname, "./src/bindings.ts"),
     },
   },
 
   // Multiple entry points for main app and overlay
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       input: {
-        main: resolve(__dirname, "index.html"),
-        overlay: resolve(__dirname, "src/overlay/index.html"),
+        main: resolve(import.meta.dirname, "index.html"),
+        overlay: resolve(import.meta.dirname, "src/overlay/index.html"),
       },
       output: {
-        manualChunks: {
-          "vendor-react": ["react", "react-dom"],
-          "vendor-i18n": ["i18next", "react-i18next"],
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor-react",
+              test: /node_modules[\\/](?:react|react-dom)[\\/]/,
+              priority: 20,
+            },
+            {
+              name: "vendor-i18n",
+              test: /node_modules[\\/](?:i18next|react-i18next)[\\/]/,
+              priority: 20,
+            },
+          ],
         },
       },
     },
