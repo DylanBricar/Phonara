@@ -229,5 +229,10 @@ chmod +x squashfs-root/AppRun
     expect(sharedBuildWorkflow).toContain(
       "scripts/ci/audit-windows-package.ps1",
     );
+    expect(sharedBuildWorkflow).toContain("$auditParameters = @{");
+    expect(sharedBuildWorkflow).toContain(
+      "scripts/ci/audit-windows-package.ps1 @auditParameters",
+    );
+    expect(sharedBuildWorkflow).not.toContain("$auditArguments = @(");
   });
 });
