@@ -1,0 +1,46 @@
+# Each entry below is informational dependency debt with a tracked removal
+# issue. New advisories and newly introduced informational warnings are denied.
+[advisories]
+ignore = [
+  # Linux GTK3 stack: https://github.com/DylanBricar/Phonara/issues/1
+  "RUSTSEC-2024-0370",
+  "RUSTSEC-2024-0411",
+  "RUSTSEC-2024-0412",
+  "RUSTSEC-2024-0413",
+  "RUSTSEC-2024-0414",
+  "RUSTSEC-2024-0415",
+  "RUSTSEC-2024-0416",
+  "RUSTSEC-2024-0417",
+  "RUSTSEC-2024-0418",
+  "RUSTSEC-2024-0419",
+  "RUSTSEC-2024-0420",
+  "RUSTSEC-2024-0422",
+  "RUSTSEC-2024-0423",
+  "RUSTSEC-2024-0429",
+
+  # Tauri parser/code-generation dependency tree:
+  # https://github.com/DylanBricar/Phonara/issues/2
+  "RUSTSEC-2025-0057",
+  "RUSTSEC-2025-0075",
+  "RUSTSEC-2025-0080",
+  "RUSTSEC-2025-0081",
+  "RUSTSEC-2025-0098",
+  "RUSTSEC-2025-0100",
+  "RUSTSEC-2026-0097",
+
+  # Specta procedural macro: https://github.com/DylanBricar/Phonara/issues/3
+  "RUSTSEC-2024-0436",
+
+  # ferrous-opencc serialization: https://github.com/DylanBricar/Phonara/issues/4
+  "RUSTSEC-2025-0141",
+]
+
+[output]
+deny = ["warnings"]
+format = "terminal"
+quiet = false
+show_tree = true
+
+[yanked]
+enabled = true
+update_index = true

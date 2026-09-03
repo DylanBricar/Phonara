@@ -74,7 +74,6 @@ jobs:
       - uses: actions-rust-lang/audit@72c09e02f132669d52284a3323acdb503cfc1a24 # v1
         with:
           file: src-tauri/Cargo.lock
-          # quick-xml 0.39 remains in wayland-scanner 0.31.10 (build-time
-          # proc-macro XML generation for Wayland). plist now resolves to
-          # quick-xml 0.41; remove this ignore when wayland-rs updates.
-          ignore: RUSTSEC-2026-0194,RUSTSEC-2026-0195
+          # Existing informational advisories are documented and temporarily
+          # allowlisted in .cargo/audit.toml. Any new warning fails this job.
+          denyWarnings: true

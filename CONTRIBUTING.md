@@ -120,17 +120,17 @@ Use the [Bug Report template](.github/ISSUE_TEMPLATE/bug_report.md) when creatin
 
 ## 💡 Suggesting Features
 
-Use GitHub issues for feature requests as well as bugs. Describe the user need and the smallest useful solution so the proposal can be evaluated before implementation.
+Use [GitHub Discussions](https://github.com/DylanBricar/Phonara/discussions) for feature requests and ideas. Describe the user need and the smallest useful solution so the proposal can be evaluated before implementation. Confirmed, actionable work can then be tracked in an issue.
 
 ### Before Suggesting a Feature
 
-1. **Search existing issues** at [github.com/DylanBricar/Phonara/issues](https://github.com/DylanBricar/Phonara/issues)
+1. **Search existing discussions and issues** at [Discussions](https://github.com/DylanBricar/Phonara/discussions) and [Issues](https://github.com/DylanBricar/Phonara/issues)
 2. Check whether the request is already covered by the current settings or roadmap.
 
 ### Submitting a Feature Request
 
-1. Go to [Issues](https://github.com/DylanBricar/Phonara/issues)
-2. Click "New issue"
+1. Go to [Discussions](https://github.com/DylanBricar/Phonara/discussions)
+2. Start a new discussion
 3. Describe your feature idea including:
    - The problem you're trying to solve
    - Your proposed solution
