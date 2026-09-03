@@ -1482,6 +1482,26 @@ pub async fn get_available_accelerators() -> crate::managers::transcription::Ava
 }
 
 #[cfg(test)]
+mod shortcut_key_tests {
+    use handy_keys::Hotkey;
+    use tauri_plugin_global_shortcut::Shortcut;
+
+    #[test]
+    fn compound_shortcut_keys_parse_on_both_backends() {
+        for key in ["scrolllock", "capslock", "numlock", "pageup", "pagedown"] {
+            assert!(
+                key.parse::<Shortcut>().is_ok(),
+                "global shortcut backend should parse '{key}'"
+            );
+            assert!(
+                key.parse::<Hotkey>().is_ok(),
+                "handy-keys backend should parse '{key}'"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::apply_transcribe_acceleration_settings;
     use crate::settings::{get_default_settings, TranscribeAcceleratorSetting};

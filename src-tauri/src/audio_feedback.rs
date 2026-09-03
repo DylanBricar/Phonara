@@ -2,16 +2,38 @@ use crate::settings::SoundTheme;
 use crate::settings::{self, AppSettings};
 use cpal::traits::{DeviceTrait, HostTrait};
 use log::{debug, error, warn};
-use rodio::OutputStreamBuilder;
+use rodio::DeviceSinkBuilder;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
 use std::thread;
+use std::time::Duration;
 use tauri::{AppHandle, Manager};
 
 pub enum SoundType {
     Start,
     Stop,
+}
+
+static PLAYBACK_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+struct PlaybackGuard;
+
+impl PlaybackGuard {
+    fn acquire() -> Option<Self> {
+        PLAYBACK_IN_FLIGHT
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| Self)
+    }
+}
+
+impl Drop for PlaybackGuard {
+    fn drop(&mut self) {
+        PLAYBACK_IN_FLIGHT.store(false, Ordering::Release);
+    }
 }
 
 fn resolve_sound_path(
@@ -81,8 +103,13 @@ pub fn play_test_sound(app: &AppHandle, sound_type: SoundType) {
 }
 
 fn play_sound_async(app: &AppHandle, path: PathBuf) {
+    let Some(playback_guard) = PlaybackGuard::acquire() else {
+        debug!("A feedback sound is already playing; skipping overlapping playback");
+        return;
+    };
     let app_handle = app.clone();
     thread::spawn(move || {
+        let _playback_guard = playback_guard;
         if let Err(e) = play_sound_at_path(&app_handle, path.as_path()) {
             error!("Failed to play sound '{}': {}", path.display(), e);
         }
@@ -90,8 +117,37 @@ fn play_sound_async(app: &AppHandle, path: PathBuf) {
 }
 
 fn play_sound_blocking(app: &AppHandle, path: &Path) {
-    if let Err(e) = play_sound_at_path(app, path) {
-        error!("Failed to play sound '{}': {}", path.display(), e);
+    let Some(playback_guard) = PlaybackGuard::acquire() else {
+        debug!("A feedback sound is already playing; skipping overlapping playback");
+        return;
+    };
+    let app_handle = app.clone();
+    let owned_path = path.to_path_buf();
+    let display_path = owned_path.display().to_string();
+    let (done_tx, done_rx) = mpsc::sync_channel(1);
+
+    thread::spawn(move || {
+        let _playback_guard = playback_guard;
+        let result =
+            play_sound_at_path(&app_handle, &owned_path).map_err(|error| error.to_string());
+        let _ = done_tx.send(result);
+    });
+
+    match done_rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => error!("Failed to play sound '{}': {}", display_path, error),
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            warn!(
+                "Feedback sound '{}' timed out after 5 seconds",
+                display_path
+            )
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            error!(
+                "Feedback sound worker exited unexpectedly for '{}'",
+                display_path
+            )
+        }
     }
 }
 
@@ -136,6 +192,7 @@ fn is_system_muted() -> bool {
     false
 }
 
+#[allow(deprecated)]
 fn play_audio_file(
     path: &std::path::Path,
     selected_device: Option<String>,
@@ -144,9 +201,24 @@ fn play_audio_file(
     let stream_builder = if let Some(device_name) = selected_device {
         if device_name == "Default" {
             debug!("Using default device");
-            OutputStreamBuilder::from_default_device()?
+            DeviceSinkBuilder::from_default_device()?
         } else {
             let host = crate::audio_toolkit::get_cpal_host();
+
+            if let Some(default_device) = host.default_output_device() {
+                if default_device.name().ok().as_deref() == Some(device_name.as_str()) {
+                    debug!(
+                        "Selected device '{}' is the current default, using fast path",
+                        device_name
+                    );
+                    return play_on_stream(
+                        DeviceSinkBuilder::from_device(default_device)?,
+                        path,
+                        volume,
+                    );
+                }
+            }
+
             let devices = host.output_devices()?;
 
             let mut found_device = None;
@@ -158,18 +230,26 @@ fn play_audio_file(
             }
 
             match found_device {
-                Some(device) => OutputStreamBuilder::from_device(device)?,
+                Some(device) => DeviceSinkBuilder::from_device(device)?,
                 None => {
                     warn!("Device '{}' not found, using default device", device_name);
-                    OutputStreamBuilder::from_default_device()?
+                    DeviceSinkBuilder::from_default_device()?
                 }
             }
         }
     } else {
         debug!("Using default device");
-        OutputStreamBuilder::from_default_device()?
+        DeviceSinkBuilder::from_default_device()?
     };
 
+    play_on_stream(stream_builder, path, volume)
+}
+
+fn play_on_stream(
+    stream_builder: DeviceSinkBuilder,
+    path: &std::path::Path,
+    volume: f32,
+) -> Result<(), Box<dyn std::error::Error>> {
     let stream_handle = stream_builder.open_stream()?;
     let mixer = stream_handle.mixer();
 

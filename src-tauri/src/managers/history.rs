@@ -41,7 +41,7 @@ pub struct PaginatedHistory {
     pub has_more: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type, tauri_specta::Event)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type, tauri_specta::Event)]
 #[serde(tag = "action")]
 pub enum HistoryUpdatePayload {
     #[serde(rename = "added")]
@@ -54,7 +54,7 @@ pub enum HistoryUpdatePayload {
     Toggled { id: i64 },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct HistoryEntry {
     pub id: i64,
     pub file_name: String,
@@ -429,29 +429,48 @@ impl HistoryManager {
             return Ok(0);
         }
 
-        let conn = self.get_connection()?;
-        let mut deleted_count = 0;
+        let deleted_ids = {
+            let conn = self.get_connection()?;
+            Self::delete_entries_and_files_with_conn(&conn, &self.recordings_dir, entries)?
+        };
+
+        for id in &deleted_ids {
+            if let Err(e) = (HistoryUpdatePayload::Deleted { id: *id }).emit(&self.app_handle) {
+                error!("Failed to emit history-updated event: {}", e);
+            }
+        }
+
+        Ok(deleted_ids.len())
+    }
+
+    fn delete_entries_and_files_with_conn(
+        conn: &Connection,
+        recordings_dir: &std::path::Path,
+        entries: &[(i64, String)],
+    ) -> Result<Vec<i64>> {
+        let mut deleted_ids = Vec::new();
 
         for (id, file_name) in entries {
-            // Delete database entry
-            conn.execute(
+            let deleted = conn.execute(
                 "DELETE FROM transcription_history WHERE id = ?1",
                 params![id],
             )?;
+            if deleted == 0 {
+                continue;
+            }
 
-            // Delete WAV file
-            let file_path = self.recordings_dir.join(file_name);
+            deleted_ids.push(*id);
+            let file_path = recordings_dir.join(file_name);
             if file_path.exists() {
                 if let Err(e) = fs::remove_file(&file_path) {
                     error!("Failed to delete WAV file {}: {}", file_name, e);
                 } else {
                     debug!("Deleted old WAV file: {}", file_name);
-                    deleted_count += 1;
                 }
             }
         }
 
-        Ok(deleted_count)
+        Ok(deleted_ids)
     }
 
     fn cleanup_by_count(&self, limit: usize) -> Result<()> {
@@ -862,5 +881,48 @@ mod tests {
 
         assert_eq!(entry.timestamp, 100);
         assert_eq!(entry.transcription_text, "completed");
+    }
+
+    #[test]
+    fn retention_cleanup_reports_db_deletions_when_audio_files_are_missing() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "first", None);
+        insert_entry(&conn, 200, "second", None);
+
+        let entries = vec![
+            (1, "phonara-100.wav".to_string()),
+            (2, "phonara-200.wav".to_string()),
+        ];
+        let deleted =
+            HistoryManager::delete_entries_and_files_with_conn(&conn, temp_dir.path(), &entries)
+                .expect("delete entries");
+
+        assert_eq!(deleted, vec![1, 2]);
+        let remaining: i64 = conn
+            .query_row("SELECT COUNT(*) FROM transcription_history", [], |row| {
+                row.get(0)
+            })
+            .expect("count rows");
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn retention_cleanup_deletes_existing_audio_files() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "first", None);
+        let recording = temp_dir.path().join("phonara-100.wav");
+        fs::write(&recording, b"audio").expect("write recording");
+
+        let deleted = HistoryManager::delete_entries_and_files_with_conn(
+            &conn,
+            temp_dir.path(),
+            &[(1, "phonara-100.wav".to_string())],
+        )
+        .expect("delete entry");
+
+        assert_eq!(deleted, vec![1]);
+        assert!(!recording.exists());
     }
 }

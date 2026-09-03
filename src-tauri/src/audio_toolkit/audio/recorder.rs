@@ -176,6 +176,7 @@ impl AudioRecorder {
         self.selected_channel = channel.map(usize::from);
     }
 
+    #[allow(deprecated)]
     pub fn open(&mut self, device: Option<Device>) -> Result<(), Box<dyn std::error::Error>> {
         if self.worker_handle.is_some() {
             if !self.needs_reopen() {
@@ -230,7 +231,7 @@ impl AudioRecorder {
                 };
                 let config_elapsed = config_started.elapsed();
 
-                let sample_rate = config.sample_rate().0;
+                let sample_rate = config.sample_rate();
                 let channels = config.channels() as usize;
 
                 log::info!(
@@ -423,10 +424,12 @@ impl AudioRecorder {
 
     pub fn stop(&self) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
         let (resp_tx, resp_rx) = mpsc::channel();
-        if let Some(tx) = &self.cmd_tx {
-            tx.send(Cmd::Stop(resp_tx))?;
-        }
-        Ok(resp_rx.recv()?) // wait for the samples
+        let tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| Error::other("Recorder is not open"))?;
+        tx.send(Cmd::Stop(resp_tx))?;
+        Ok(resp_rx.recv_timeout(Duration::from_secs(5))?)
     }
 
     /// True when the active capture stream must be rebuilt.
@@ -446,7 +449,16 @@ impl AudioRecorder {
             let _ = tx.send(Cmd::Shutdown);
         }
         if let Some(h) = self.worker_handle.take() {
-            let _ = h.join();
+            let (done_tx, done_rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = h.join();
+                let _ = done_tx.send(());
+            });
+            if done_rx.recv_timeout(Duration::from_secs(3)).is_err() {
+                log::warn!(
+                    "Microphone worker did not stop within 3 seconds; detaching the blocked worker"
+                );
+            }
         }
         self.device = None;
         Ok(())
