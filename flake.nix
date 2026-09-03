@@ -122,6 +122,13 @@
                 package.json > $TMPDIR/package.json
               cp $TMPDIR/package.json package.json
 
+              # extraRegistries above is only needed while fetching the crate
+              # archives. importCargoLock also emits a named source for it,
+              # which aliases crates-io and Cargo rejects as a duplicate.
+              sed -i \
+                '/^\[source\."https:\/\/github.com\/rust-lang\/crates.io-index"\]$/,+2d' \
+                "$cargoDepsCopy/.cargo/config.toml"
+
               # Point libappindicator-sys to the Nix store path
               substituteInPlace \
                 $cargoDepsCopy/libappindicator-sys-*/src/lib.rs \
