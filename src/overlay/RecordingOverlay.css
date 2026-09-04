@@ -1,10 +1,10 @@
 @import "../styles/theme.css";
 
 :root {
-  --s-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  /* Near-opaque app surface (theme.css --color-background at 98%). Auto-flips
-     light/dark with --color-background, so no dark-mode override is needed. */
-  --s-surface: color-mix(in srgb, var(--color-background) 98%, transparent);
+  --s-font: "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  /* A quiet, translucent instrument surface. It stays readable over games while
+     allowing enough of the covered content through to avoid feeling like a bar. */
+  --s-surface: color-mix(in srgb, var(--color-background) 90%, transparent);
   /* Accent = logo pink; flips automatically via --color-logo-primary. */
   --s-accent: var(--color-logo-primary);
   /* Light/dark pairs for the tokens that can't flip through a shared palette
@@ -50,13 +50,11 @@
      the card's max footprint (--ov-work-w for compact, --ov-open-w for Live),
      since the card is anchored flush to the screen edge in CSS. Keep overlay.rs
      in sync when these change. */
-  --ov-rest-w: 172px; /* resting compact pill (minimal, recording) -- roomy enough
-                         for the English working label before the grow starts */
-  --ov-pill-w: 184px; /* base width / Live pill before it opens or collapses */
-  --ov-work-w: 216px; /* working pill (transcribing / polishing) -- wide enough to
-                         center longer labels; shared by Live (collapsed) + minimal */
-  --ov-open-w: 392px; /* Live panel, expanded */
-  --ov-base-h: 40px; /* control-row height (.sbase) */
+  --ov-rest-w: 156px;
+  --ov-pill-w: 164px;
+  --ov-work-w: 196px;
+  --ov-open-w: 352px;
+  --ov-base-h: 36px;
   --ov-cap-max-h: 64px; /* max height of the scrolling live-text region */
 }
 @media (prefers-color-scheme: dark) {
@@ -158,10 +156,11 @@
   margin: 0;
 }
 
-/* Shared base card. Flat: theme surface + hairline border, no shadow or blur. */
+/* Shared base card: a compact instrument HUD, not a toolbar. */
 .scard {
   width: var(--ov-pill-w);
-  border-radius: 24px;
+  box-sizing: border-box;
+  border-radius: 18px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -169,17 +168,20 @@
   transform-origin: bottom center;
   background: var(--s-surface);
   border: var(--phonara-border-width, 1px) solid var(--s-border);
-  /* Flat: no drop shadow, no backdrop blur/saturate (was a glassy gradient look). */
-  /* pop-in plays on mount; morph (width/radius) is a transition */
-  animation: scard-pop 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow:
+    0 8px 22px rgb(0 0 0 / 24%),
+    inset 0 1px 0 color-mix(in srgb, var(--color-text) 8%, transparent);
+  animation: scard-pop 240ms cubic-bezier(0.22, 1, 0.36, 1);
   transition:
-    width 460ms cubic-bezier(0.22, 1, 0.36, 1),
-    border-radius 460ms cubic-bezier(0.22, 1, 0.36, 1);
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 280ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform, width, opacity;
 }
 
 .ov-stage.high-visibility .scard {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--s-accent) 65%, transparent);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--s-accent) 48%, transparent),
+    0 8px 22px rgb(0 0 0 / 28%);
 }
 
 .action-badge {
@@ -227,11 +229,11 @@
 }
 .scard.open {
   width: var(--ov-open-w);
-  border-radius: 16px;
+  border-radius: 14px;
 }
 .scard.working {
   width: var(--ov-work-w);
-  border-radius: 18px;
+  border-radius: 16px;
 }
 
 /* Compact form: two fixed widths so the recording→working change is an animatable
@@ -270,12 +272,12 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  padding-top: 12px;
+  padding-top: 10px;
   padding-bottom: 0px;
-  padding-left: 14px;
-  padding-right: 14px;
-  font-size: 15px;
-  font-style: italic;
+  padding-left: 12px;
+  padding-right: 12px;
+  font-size: 14px;
+  font-style: normal;
   line-height: 1.35;
   letter-spacing: -0.003em;
   color: color-mix(in srgb, var(--color-text) 90%, transparent);
@@ -316,29 +318,26 @@
    Same structure for pill & panel; the dot stays anchored left in both. */
 .sbase {
   height: var(--ov-base-h);
-  padding: 0 10px;
+  padding: 0 7px;
   display: grid;
-  /* Equal side columns (min 22px to hold the cancel button) keep the center item
-     — waveform or label — centered whether the pill is at min width or content-
-     sized. */
-  grid-template-columns: minmax(22px, 1fr) auto minmax(22px, 1fr);
+  grid-template-columns: minmax(44px, 1fr) auto minmax(44px, 1fr);
   align-items: center;
 }
 .sbase-l {
   display: flex;
-  padding-left: 5px;
+  padding-left: 2px;
   align-items: center;
   justify-self: start;
 }
 .sbase-r {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   justify-self: end;
 }
 .sdot {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   flex: none;
   box-sizing: border-box;
@@ -366,7 +365,7 @@
   }
 }
 .stimer {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--s-faint);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -383,15 +382,15 @@
 .swave {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding-right: 8px;
-  height: 18px;
+  gap: 2.5px;
+  height: 16px;
   flex: none;
+  justify-self: center;
 }
 .swave i {
-  width: 4px;
+  width: 3px;
   min-height: 3px;
-  max-height: 18px;
+  max-height: 15px;
   border-radius: 2px;
   background: var(--s-accent);
   transition:
@@ -432,8 +431,8 @@
   }
 }
 .sx {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   flex: none;
   padding: 0;
@@ -444,7 +443,7 @@
   align-items: center;
   justify-content: center;
   color: var(--s-muted);
-  background: var(--s-hair);
+  background: color-mix(in srgb, var(--s-hair) 72%, transparent);
   cursor: pointer;
   transition:
     background-color 150ms ease,
@@ -452,14 +451,14 @@
     transform 100ms ease;
 }
 .sx svg {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   display: block;
 }
 .sx:hover {
   background: var(--s-accent-soft);
   color: var(--color-text);
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 .sx:active {
   transform: scale(0.95);
@@ -467,8 +466,8 @@
 
 /* working state (transcribing / polishing) — spinner + label */
 .sspinner {
-  width: 13px;
-  height: 13px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   border: 2px solid var(--s-hair);
   border-top-color: var(--s-accent);
@@ -481,7 +480,7 @@
   }
 }
 .swork-label {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--s-muted);
   white-space: nowrap;
   padding: 0 8px; /* breathing room from the spinner / cancel when content-sized */
@@ -489,4 +488,15 @@
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scard,
+  .sdot.ready,
+  .swave.arming i,
+  .sspinner,
+  .scaret {
+    animation: none;
+    transition-duration: 0.01ms;
+  }
 }

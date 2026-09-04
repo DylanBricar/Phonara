@@ -66,14 +66,23 @@ tauri_panel! {
 
 // Native overlay window sizes in logical points. Keep these in sync with
 // RecordingOverlay.css so the window never clips an animated card.
-const OVERLAY_WIDTH: f64 = 256.0;
-const OVERLAY_HEIGHT: f64 = 46.0;
-const OVERLAY_STREAM_WIDTH: f64 = 400.0;
-const OVERLAY_STREAM_HEIGHT: f64 = 120.0;
+const OVERLAY_WIDTH: f64 = 216.0;
+const OVERLAY_HEIGHT: f64 = 48.0;
+const OVERLAY_STREAM_WIDTH: f64 = 368.0;
+const OVERLAY_STREAM_HEIGHT: f64 = 128.0;
+const OVERLAY_STREAM_MIN_CARD_WIDTH: u16 = 280;
+const OVERLAY_STREAM_MAX_CARD_WIDTH: u16 = 460;
+const OVERLAY_STREAM_HORIZONTAL_GUTTER: f64 = 16.0;
 
-fn overlay_dimensions(state: &str) -> (f64, f64) {
+fn overlay_dimensions(state: &str, custom_width: u16) -> (f64, f64) {
     if state == "streaming" {
-        (OVERLAY_STREAM_WIDTH, OVERLAY_STREAM_HEIGHT)
+        let width = if custom_width == 0 {
+            OVERLAY_STREAM_WIDTH
+        } else {
+            custom_width.clamp(OVERLAY_STREAM_MIN_CARD_WIDTH, OVERLAY_STREAM_MAX_CARD_WIDTH) as f64
+                + OVERLAY_STREAM_HORIZONTAL_GUTTER
+        };
+        (width, OVERLAY_STREAM_HEIGHT)
     } else {
         (OVERLAY_WIDTH, OVERLAY_HEIGHT)
     }
@@ -620,17 +629,7 @@ fn show_overlay_state(app_handle: &AppHandle, state: &str) {
 
 fn show_overlay_state_on_main(app_handle: &AppHandle, state: &str) {
     let settings = settings::get_settings(app_handle);
-    let (default_width, default_height) = overlay_dimensions(state);
-    let width = if settings.overlay_custom_width > 0 {
-        settings.overlay_custom_width as f64
-    } else {
-        default_width
-    };
-    let height = if settings.overlay_custom_height > 0 {
-        settings.overlay_custom_height as f64
-    } else {
-        default_height
-    };
+    let (width, height) = overlay_dimensions(state, settings.overlay_custom_width);
 
     if let Some(overlay_window) = app_handle.get_webview_window("recording_overlay") {
         // Invalidate any delayed hide still in flight from a previous session
@@ -788,7 +787,8 @@ fn update_overlay_position_on_main(app_handle: &AppHandle) {
             } else {
                 "recording"
             };
-            let (width, height) = overlay_dimensions(state);
+            let settings = settings::get_settings(app_handle);
+            let (width, height) = overlay_dimensions(state, settings.overlay_custom_width);
             if let Err(error) = place_windows_overlay(app_handle, &overlay_window, width, height) {
                 log::error!("Failed to update recording overlay position: {error}");
             }
@@ -895,6 +895,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn streaming_overlay_reserves_room_for_text_without_widening_the_idle_pill() {
+        assert_eq!(overlay_dimensions("streaming", 280), (296.0, 128.0));
+        assert_eq!(overlay_dimensions("streaming", 120), (296.0, 128.0));
+        assert_eq!(overlay_dimensions("streaming", 500), (476.0, 128.0));
+    }
+
+    #[test]
+    fn compact_overlay_uses_a_stable_non_intrusive_window() {
+        assert_eq!(overlay_dimensions("recording", 280), (216.0, 48.0));
+        assert_eq!(overlay_dimensions("processing", 500), (216.0, 48.0));
+    }
+
+    #[test]
     fn monitor_hit_test_uses_half_open_physical_bounds() {
         let position = PhysicalPosition::new(-2560, -200);
         let size = PhysicalSize::new(2560, 1440);
@@ -947,7 +960,7 @@ mod tests {
                 OVERLAY_HEIGHT,
                 OverlayPosition::Bottom,
             ),
-            (3648, 2001, 384, 69)
+            (3678, 1998, 324, 72)
         );
         assert_eq!(
             windows_overlay_bounds(
@@ -958,7 +971,7 @@ mod tests {
                 OVERLAY_HEIGHT,
                 OverlayPosition::Top,
             ),
-            (3648, 6, 384, 69)
+            (3678, 6, 324, 72)
         );
     }
 
@@ -974,7 +987,7 @@ mod tests {
                 OVERLAY_STREAM_HEIGHT,
                 OverlayPosition::Bottom,
             ),
-            (-1530, 1015, 500, 150)
+            (-1510, 1005, 460, 160)
         );
     }
 }

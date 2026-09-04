@@ -231,7 +231,7 @@ pub fn change_overlay_border_width_setting(app: AppHandle, width: u8) -> Result<
 #[specta::specta]
 pub fn change_overlay_custom_width_setting(app: AppHandle, width: u16) -> Result<(), String> {
     settings::update_settings(&app, |settings| {
-        settings.overlay_custom_width = width.clamp(120, 500);
+        settings.overlay_custom_width = width.clamp(280, 460);
     });
     Ok(())
 }
@@ -240,7 +240,7 @@ pub fn change_overlay_custom_width_setting(app: AppHandle, width: u16) -> Result
 #[specta::specta]
 pub fn change_overlay_custom_height_setting(app: AppHandle, height: u16) -> Result<(), String> {
     settings::update_settings(&app, |settings| {
-        settings.overlay_custom_height = height.clamp(30, 80);
+        settings.overlay_custom_height = height.clamp(34, 42);
     });
     Ok(())
 }
