@@ -17,8 +17,8 @@ import type {
 } from "@/bindings";
 import i18n, { syncLanguageFromSettings } from "@/i18n";
 import { getLanguageDirection } from "@/lib/utils/rtl";
-
-type OverlayState = "recording" | "streaming" | "transcribing" | "processing";
+import { buildOverlayStyle } from "./presentation";
+import type { OverlayState } from "./presentation";
 
 interface ShowOverlayPayload {
   state: OverlayState;
@@ -35,12 +35,9 @@ interface ActionInfo {
   name: string;
 }
 
-const isValidHexColor = (value: string): boolean =>
-  /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value);
-
 // Number of reactive bars in the waveform (the simple, smoothed style shared by
 // every overlay form). Mic levels arrive as 16 FFT buckets; we take the first N.
-const WAVE_BARS = 9;
+const WAVE_BARS = 7;
 
 const RecordingOverlay: React.FC = () => {
   const { t } = useTranslation();
@@ -103,46 +100,14 @@ const RecordingOverlay: React.FC = () => {
             typeof payload === "string" ? payload : payload.state;
           if (disposed) return;
 
-          const styles: Record<string, string> = {};
           if (typeof payload === "object") {
-            if (payload.borderColor && isValidHexColor(payload.borderColor)) {
-              styles["--s-border"] = payload.borderColor;
-            }
-            if (
-              payload.backgroundColor &&
-              isValidHexColor(payload.backgroundColor)
-            ) {
-              styles["--s-surface"] = payload.backgroundColor;
-            }
-            if (
-              typeof payload.borderWidth === "number" &&
-              payload.borderWidth >= 0 &&
-              payload.borderWidth <= 10
-            ) {
-              styles["--phonara-border-width"] = `${payload.borderWidth}px`;
-            }
-            if (
-              typeof payload.customWidth === "number" &&
-              payload.customWidth >= 120 &&
-              payload.customWidth <= 500
-            ) {
-              styles["--ov-rest-w"] = `${payload.customWidth}px`;
-              styles["--ov-pill-w"] = `${payload.customWidth}px`;
-              styles["--ov-work-w"] = `${payload.customWidth}px`;
-              styles["--ov-open-w"] = `${payload.customWidth}px`;
-            }
-            if (
-              typeof payload.customHeight === "number" &&
-              payload.customHeight >= 30 &&
-              payload.customHeight <= 120
-            ) {
-              styles["--ov-base-h"] = `${payload.customHeight}px`;
-            }
             setHighVisibility(payload.highVisibility ?? false);
           } else {
             setHighVisibility(false);
           }
-          setCustomStyle(styles);
+          setCustomStyle(
+            typeof payload === "object" ? buildOverlayStyle(payload) : {},
+          );
 
           // Reset synchronously before settings I/O. A fast microphone can emit
           // recording-ready while the awaits below are in flight; resetting after
@@ -345,7 +310,18 @@ const RecordingOverlay: React.FC = () => {
           aria-label={isPaused ? "resume" : "pause"}
           onClick={handleTogglePause}
         >
-          {isPaused ? "▶" : "Ⅱ"}
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            {isPaused ? (
+              <path d="M5 3.5 12 8l-7 4.5z" fill="currentColor" />
+            ) : (
+              <path
+                d="M5 4v8M11 4v8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            )}
+          </svg>
         </button>
         {cancelPending && (
           <span className="cancel-pending">

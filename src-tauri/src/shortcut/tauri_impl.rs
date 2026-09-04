@@ -153,6 +153,17 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
         }
     };
 
+    // Cancellation is intentionally callable from any state. Avoid turning a
+    // harmless no-op (for example, Cancel while already processing) into an
+    // error when the temporary shortcut has already been removed.
+    if !app.global_shortcut().is_registered(shortcut) {
+        debug!(
+            "Shortcut '{}' is already unregistered",
+            binding.current_binding
+        );
+        return Ok(());
+    }
+
     app.global_shortcut().unregister(shortcut).map_err(|e| {
         let error_msg = format!(
             "Failed to unregister shortcut '{}': {}",

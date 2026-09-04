@@ -428,12 +428,12 @@
           "description": "Épaisseur de la bordure de l'overlay d'enregistrement."
         },
         "width": {
-          "label": "Largeur de l'overlay",
-          "description": "Largeur de l'overlay d'enregistrement en pixels."
+          "label": "Largeur de la transcription",
+          "description": "Largeur du transcript déployé. L'indicateur d'écoute reste compact."
         },
         "height": {
-          "label": "Hauteur de l'overlay",
-          "description": "Hauteur de l'overlay d'enregistrement en pixels."
+          "label": "Hauteur des contrôles",
+          "description": "Hauteur des contrôles d'enregistrement compacts en pixels."
         },
         "preview": {
           "label": "Aperçu de l'overlay",

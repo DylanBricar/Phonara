@@ -428,12 +428,12 @@
           "description": "Border thickness of the recording overlay."
         },
         "width": {
-          "label": "Overlay Width",
-          "description": "Width of the recording overlay in pixels."
+          "label": "Transcript Width",
+          "description": "Width of the expanded live transcript. The listening indicator stays compact."
         },
         "height": {
-          "label": "Overlay Height",
-          "description": "Height of the recording overlay in pixels."
+          "label": "Control Height",
+          "description": "Height of the compact recording controls in pixels."
         },
         "preview": {
           "label": "Preview Overlay",

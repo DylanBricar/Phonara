@@ -5,6 +5,7 @@ import { SettingContainer } from "../ui/SettingContainer";
 import { useSettings } from "../../hooks/useSettings";
 import { commands } from "@/bindings";
 import type { OverlayPosition, OverlayStyle } from "@/bindings";
+import { OVERLAY_LIMITS } from "@/overlay/presentation";
 
 interface ShowOverlayProps {
   descriptionMode?: "inline" | "tooltip";
@@ -52,9 +53,27 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
     const borderColor = (getSetting("overlay_border_color") as string) || "";
     const backgroundColor =
       (getSetting("overlay_background_color") as string) || "";
-    const borderWidth = (getSetting("overlay_border_width") as number) || 1;
-    const customWidth = (getSetting("overlay_custom_width") as number) || 200;
-    const customHeight = (getSetting("overlay_custom_height") as number) || 40;
+    const borderWidth = Math.min(
+      (getSetting("overlay_border_width") as number | undefined) ??
+        OVERLAY_LIMITS.borderWidth.default,
+      OVERLAY_LIMITS.borderWidth.max,
+    );
+    const customWidth = Math.min(
+      Math.max(
+        (getSetting("overlay_custom_width") as number | undefined) ??
+          OVERLAY_LIMITS.liveWidth.default,
+        OVERLAY_LIMITS.liveWidth.min,
+      ),
+      OVERLAY_LIMITS.liveWidth.max,
+    );
+    const customHeight = Math.min(
+      Math.max(
+        (getSetting("overlay_custom_height") as number | undefined) ??
+          OVERLAY_LIMITS.controlHeight.default,
+        OVERLAY_LIMITS.controlHeight.min,
+      ),
+      OVERLAY_LIMITS.controlHeight.max,
+    );
 
     return (
       <>
@@ -161,7 +180,7 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                     <input
                       type="range"
                       min={0}
-                      max={5}
+                      max={OVERLAY_LIMITS.borderWidth.max}
                       step={1}
                       value={borderWidth}
                       onChange={(e) =>
@@ -173,9 +192,9 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                       className="flex-grow h-2 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-logo-primary"
                       style={{
                         background: `linear-gradient(to right, var(--color-background-ui) ${
-                          (borderWidth / 5) * 100
+                          (borderWidth / OVERLAY_LIMITS.borderWidth.max) * 100
                         }%, rgba(128, 128, 128, 0.2) ${
-                          (borderWidth / 5) * 100
+                          (borderWidth / OVERLAY_LIMITS.borderWidth.max) * 100
                         }%)`,
                       }}
                     />
@@ -196,54 +215,67 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                 )}
               </div>
             </SettingContainer>
-            <SettingContainer
-              title={t("settings.advanced.overlay.width.label")}
-              description={t("settings.advanced.overlay.width.description")}
-              descriptionMode={descriptionMode}
-              grouped={grouped}
-              layout="horizontal"
-            >
-              <div className="flex items-center gap-2 w-full">
-                <div className="flex-grow">
-                  <div className="flex items-center space-x-1 h-6">
-                    <input
-                      type="range"
-                      min={120}
-                      max={400}
-                      step={10}
-                      value={customWidth}
-                      onChange={(e) =>
+            {selectedStyle === "live" && (
+              <SettingContainer
+                title={t("settings.advanced.overlay.width.label")}
+                description={t("settings.advanced.overlay.width.description")}
+                descriptionMode={descriptionMode}
+                grouped={grouped}
+                layout="horizontal"
+              >
+                <div className="flex items-center gap-2 w-full">
+                  <div className="flex-grow">
+                    <div className="flex items-center space-x-1 h-6">
+                      <input
+                        type="range"
+                        min={OVERLAY_LIMITS.liveWidth.min}
+                        max={OVERLAY_LIMITS.liveWidth.max}
+                        step={10}
+                        value={customWidth}
+                        onChange={(e) =>
+                          updateSetting(
+                            "overlay_custom_width",
+                            Math.round(parseFloat(e.target.value)),
+                          )
+                        }
+                        className="flex-grow h-2 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-logo-primary"
+                        style={{
+                          background: `linear-gradient(to right, var(--color-background-ui) ${
+                            ((customWidth - OVERLAY_LIMITS.liveWidth.min) /
+                              (OVERLAY_LIMITS.liveWidth.max -
+                                OVERLAY_LIMITS.liveWidth.min)) *
+                            100
+                          }%, rgba(128, 128, 128, 0.2) ${
+                            ((customWidth - OVERLAY_LIMITS.liveWidth.min) /
+                              (OVERLAY_LIMITS.liveWidth.max -
+                                OVERLAY_LIMITS.liveWidth.min)) *
+                            100
+                          }%)`,
+                        }}
+                      />
+                      {/* eslint-disable i18next/no-literal-string */}
+                      <span className="text-sm font-medium text-text/90 min-w-10 text-end">
+                        {customWidth}px
+                      </span>
+                      {/* eslint-enable i18next/no-literal-string */}
+                    </div>
+                  </div>
+                  {customWidth !== OVERLAY_LIMITS.liveWidth.default && (
+                    <button
+                      onClick={() =>
                         updateSetting(
                           "overlay_custom_width",
-                          Math.round(parseFloat(e.target.value)),
+                          OVERLAY_LIMITS.liveWidth.default,
                         )
                       }
-                      className="flex-grow h-2 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-logo-primary"
-                      style={{
-                        background: `linear-gradient(to right, var(--color-background-ui) ${
-                          ((customWidth - 120) / (400 - 120)) * 100
-                        }%, rgba(128, 128, 128, 0.2) ${
-                          ((customWidth - 120) / (400 - 120)) * 100
-                        }%)`,
-                      }}
-                    />
-                    {/* eslint-disable i18next/no-literal-string */}
-                    <span className="text-sm font-medium text-text/90 min-w-10 text-end">
-                      {customWidth}px
-                    </span>
-                    {/* eslint-enable i18next/no-literal-string */}
-                  </div>
+                      className="text-xs text-mid-gray hover:text-text"
+                    >
+                      {t("common.reset")}
+                    </button>
+                  )}
                 </div>
-                {customWidth !== 200 && (
-                  <button
-                    onClick={() => updateSetting("overlay_custom_width", 200)}
-                    className="text-xs text-mid-gray hover:text-text"
-                  >
-                    {t("common.reset")}
-                  </button>
-                )}
-              </div>
-            </SettingContainer>
+              </SettingContainer>
+            )}
             <SettingContainer
               title={t("settings.advanced.overlay.height.label")}
               description={t("settings.advanced.overlay.height.description")}
@@ -256,8 +288,8 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                   <div className="flex items-center space-x-1 h-6">
                     <input
                       type="range"
-                      min={30}
-                      max={80}
+                      min={OVERLAY_LIMITS.controlHeight.min}
+                      max={OVERLAY_LIMITS.controlHeight.max}
                       step={2}
                       value={customHeight}
                       onChange={(e) =>
@@ -269,9 +301,15 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                       className="flex-grow h-2 rounded-lg appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-logo-primary"
                       style={{
                         background: `linear-gradient(to right, var(--color-background-ui) ${
-                          ((customHeight - 30) / (80 - 30)) * 100
+                          ((customHeight - OVERLAY_LIMITS.controlHeight.min) /
+                            (OVERLAY_LIMITS.controlHeight.max -
+                              OVERLAY_LIMITS.controlHeight.min)) *
+                          100
                         }%, rgba(128, 128, 128, 0.2) ${
-                          ((customHeight - 30) / (80 - 30)) * 100
+                          ((customHeight - OVERLAY_LIMITS.controlHeight.min) /
+                            (OVERLAY_LIMITS.controlHeight.max -
+                              OVERLAY_LIMITS.controlHeight.min)) *
+                          100
                         }%)`,
                       }}
                     />
@@ -282,9 +320,14 @@ export const ShowOverlay: React.FC<ShowOverlayProps> = React.memo(
                     {/* eslint-enable i18next/no-literal-string */}
                   </div>
                 </div>
-                {customHeight !== 40 && (
+                {customHeight !== OVERLAY_LIMITS.controlHeight.default && (
                   <button
-                    onClick={() => updateSetting("overlay_custom_height", 40)}
+                    onClick={() =>
+                      updateSetting(
+                        "overlay_custom_height",
+                        OVERLAY_LIMITS.controlHeight.default,
+                      )
+                    }
                     className="text-xs text-mid-gray hover:text-text"
                   >
                     {t("common.reset")}

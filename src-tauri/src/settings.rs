@@ -953,11 +953,11 @@ fn default_overlay_border_width() -> u8 {
 }
 
 fn default_overlay_custom_width() -> u16 {
-    200
+    352
 }
 
 fn default_overlay_custom_height() -> u16 {
-    40
+    36
 }
 
 fn default_typing_tool() -> TypingTool {
