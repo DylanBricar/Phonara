@@ -1,5 +1,6 @@
-//! Radio presence for explicitly supported receivers. Unknown and stale results
-//! leave normal OS device selection intact; audio enumeration never performs HID I/O.
+//! Radio presence for explicitly supported receivers. Brief uncertainty retains
+//! an existing absence only until its original expiry; stale or unconfirmed
+//! results leave OS selection intact. Audio enumeration never performs HID I/O.
 
 #[cfg(any(windows, test))]
 mod policy;

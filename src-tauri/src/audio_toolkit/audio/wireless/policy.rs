@@ -60,15 +60,23 @@ pub(super) fn classify(receiver: Query, radio: Query) -> Observation {
 #[derive(Clone, Default)]
 pub(super) struct Tracker {
     checked_at: Option<Instant>,
+    confirmed_unreachable_at: Option<Instant>,
     consecutive_timeouts: u8,
     other_model: bool,
 }
 
 impl Tracker {
     pub(super) fn observe(&mut self, observation: Observation, now: Instant) {
+        let confirmation_is_fresh = self.is_unreachable(now);
         match observation {
-            Observation::OtherModel => self.other_model = true,
-            Observation::Reachable => self.other_model = false,
+            Observation::OtherModel => {
+                self.other_model = true;
+                self.clear_confirmation();
+            }
+            Observation::Reachable => {
+                self.other_model = false;
+                self.clear_confirmation();
+            }
             _ => {}
         }
         if self
@@ -88,6 +96,11 @@ impl Tracker {
                 .consecutive_timeouts
                 .saturating_add(1)
                 .min(REQUIRED_TIMEOUTS);
+            // Once established, another proven absence renews a still-fresh
+            // confirmation. Unknown never establishes or renews that evidence.
+            if self.consecutive_timeouts >= REQUIRED_TIMEOUTS || confirmation_is_fresh {
+                self.confirmed_unreachable_at = Some(now);
+            }
         } else {
             self.consecutive_timeouts = 0;
         }
@@ -95,10 +108,18 @@ impl Tracker {
     }
 
     pub(super) fn is_unreachable(&self, now: Instant) -> bool {
-        self.consecutive_timeouts >= REQUIRED_TIMEOUTS
-            && self
-                .checked_at
-                .is_some_and(|last| now.duration_since(last) <= CACHE_TTL)
+        self.unreachable_until(now).is_some()
+    }
+
+    pub(super) fn unreachable_until(&self, now: Instant) -> Option<Instant> {
+        self.confirmed_unreachable_at
+            .map(|confirmed| confirmed + CACHE_TTL)
+            .filter(|expiry| *expiry >= now)
+    }
+
+    pub(super) fn clear_confirmation(&mut self) {
+        self.confirmed_unreachable_at = None;
+        self.consecutive_timeouts = 0;
     }
 }
 
@@ -203,8 +224,8 @@ mod tests {
     }
 
     #[test]
-    fn reconnect_and_unknown_clear_offline_immediately() {
-        for observation in [Observation::Reachable, Observation::Unknown] {
+    fn reconnect_and_wrong_model_clear_offline_immediately() {
+        for observation in [Observation::Reachable, Observation::OtherModel] {
             let now = Instant::now();
             let mut tracker = Tracker::default();
             for tick in 0..3 {
@@ -213,6 +234,62 @@ mod tests {
             assert!(tracker.is_unreachable(now + POLL_INTERVAL * 2));
             tracker.observe(observation, now + POLL_INTERVAL * 3);
             assert!(!tracker.is_unreachable(now + POLL_INTERVAL * 3));
+        }
+    }
+
+    #[test]
+    fn temporary_unknown_preserves_confirmation_only_until_original_expiry() {
+        let now = Instant::now();
+        let mut tracker = Tracker::default();
+        for tick in 0..3 {
+            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+        }
+        let confirmed = now + POLL_INTERVAL * 2;
+        for tick in 1..4 {
+            let uncertain = confirmed + POLL_INTERVAL * tick;
+            tracker.observe(Observation::Unknown, uncertain);
+            assert!(tracker.is_unreachable(uncertain));
+        }
+        let expired = confirmed + CACHE_TTL + Duration::from_millis(1);
+        tracker.observe(Observation::Unknown, expired);
+        assert!(!tracker.is_unreachable(expired));
+    }
+
+    #[test]
+    fn a_fresh_proven_absence_renews_an_existing_confirmation_after_unknown() {
+        let now = Instant::now();
+        let mut tracker = Tracker::default();
+        for tick in 0..3 {
+            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+        }
+        tracker.observe(Observation::Unknown, now + POLL_INTERVAL * 3);
+        let renewed = now + POLL_INTERVAL * 4;
+        tracker.observe(Observation::RadioTimeout, renewed);
+        assert!(tracker.is_unreachable(renewed));
+        assert!(tracker.is_unreachable(renewed + CACHE_TTL - Duration::from_millis(1)));
+        assert!(!tracker.is_unreachable(renewed + CACHE_TTL + Duration::from_millis(1)));
+    }
+
+    #[test]
+    fn startup_unknown_never_hides_and_expired_confirmation_requires_three_absences() {
+        let now = Instant::now();
+        let mut tracker = Tracker::default();
+        tracker.observe(Observation::Unknown, now);
+        for tick in 1..4 {
+            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+            assert_eq!(
+                tracker.is_unreachable(now + POLL_INTERVAL * tick),
+                tick == 3
+            );
+        }
+        let expired = now + POLL_INTERVAL * 3 + CACHE_TTL + Duration::from_millis(1);
+        tracker.observe(Observation::Unknown, expired);
+        for tick in 1..4 {
+            tracker.observe(Observation::RadioTimeout, expired + POLL_INTERVAL * tick);
+            assert_eq!(
+                tracker.is_unreachable(expired + POLL_INTERVAL * tick),
+                tick == 3
+            );
         }
     }
 
