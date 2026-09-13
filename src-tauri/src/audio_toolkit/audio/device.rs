@@ -26,11 +26,15 @@ pub fn list_input_device_identities() -> Result<Vec<CpalInputDevice>, Box<dyn st
         .map(|device| device.id())
         .transpose()?;
 
+    let unavailable = super::wireless::unavailable_endpoints();
     let mut out = Vec::new();
 
     for device in host.input_devices()? {
         let name = device.name().unwrap_or_else(|_| "Unknown".into());
         let id = device.id()?;
+        if unavailable.contains(&id.to_string()) {
+            continue;
+        }
         let is_default = Some(&id) == default_id.as_ref();
         out.push(CpalInputDevice {
             id: id.to_string(),

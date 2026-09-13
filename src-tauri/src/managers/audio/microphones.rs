@@ -251,6 +251,9 @@ impl AudioRecordingManager {
     }
 
     pub fn refresh_microphone_devices(&self) -> Result<MicrophoneStatus, String> {
+        // USB status queries may wait on a driver. Never run them while holding
+        // capture state, recorder, or microphone snapshot locks.
+        crate::audio_toolkit::audio::wireless::refresh();
         let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
         let scan = self.scan_microphone_candidates(false);
         // A stream error remains authoritative even if enumeration itself failed.
