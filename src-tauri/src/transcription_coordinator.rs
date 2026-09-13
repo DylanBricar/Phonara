@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 const DEBOUNCE: Duration = Duration::from_millis(30);
 const RELEASE_GRACE: Duration = Duration::from_millis(50);
@@ -174,6 +174,7 @@ enum Command {
     Cancel { recording_was_active: bool },
     ProcessingFinished,
     SelectAction { key: u8 },
+    MicrophoneDisconnected { binding_id: String, generation: u64 },
 }
 
 /// Decide whether a key-up should be deferred (so auto-repeat can cancel it)
@@ -504,6 +505,14 @@ impl CoordinatorState {
         }
     }
 
+    fn on_microphone_disconnected(&mut self, binding_id: &str, current: bool) -> Option<Effect> {
+        if !current || !matches!(&self.stage, Stage::Recording(active) if active == binding_id) {
+            return None;
+        }
+        self.pending_release = None;
+        Some(self.begin_processing(binding_id.to_string(), "microphone-disconnected".into()))
+    }
+
     fn on_select_action(&mut self, key: u8) {
         if !matches!(self.stage, Stage::Recording(_)) {
             debug!("Action selection ignored: not in recording state");
@@ -611,6 +620,27 @@ impl TranscriptionCoordinator {
                             }
                         }
                         Command::SelectAction { key } => state.on_select_action(key),
+                        Command::MicrophoneDisconnected {
+                            binding_id,
+                            generation,
+                        } => {
+                            let current =
+                                app.try_state::<Arc<AudioRecordingManager>>().is_some_and(
+                                    |audio| audio.is_recording_readiness_current(generation),
+                                );
+                            if let Some(effect) =
+                                state.on_microphone_disconnected(&binding_id, current)
+                            {
+                                let _ = app.emit(
+                                    "recording-error",
+                                    serde_json::json!({
+                                        "error_type": "microphone_disconnected",
+                                        "detail": null
+                                    }),
+                                );
+                                run_effect(&app, &mut state, effect);
+                            }
+                        }
                     }
                 }
                 debug!("Transcription coordinator exited");
@@ -699,6 +729,21 @@ impl TranscriptionCoordinator {
         }
     }
 
+    /// Finish the affected capture through the normal transcription path.
+    /// A generation token prevents a delayed device event stopping a later dictation.
+    pub fn notify_microphone_disconnected(&self, binding_id: &str, generation: u64) {
+        if self
+            .tx
+            .send(Command::MicrophoneDisconnected {
+                binding_id: binding_id.to_string(),
+                generation,
+            })
+            .is_err()
+        {
+            warn!("Transcription coordinator channel closed");
+        }
+    }
+
     pub fn select_action(&self, key: u8) {
         if self.tx.send(Command::SelectAction { key }).is_err() {
             warn!("Transcription coordinator channel closed");
@@ -768,6 +813,38 @@ fn stop(app: &AppHandle, binding_id: &str, hotkey_string: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn microphone_disconnect_finishes_once_and_keeps_the_selected_action() {
+        let mut state = CoordinatorState::new();
+        state.begin_recording("transcribe".into(), "test".into(), Instant::now(), true);
+        state.on_select_action(2);
+        let effect = state.on_microphone_disconnected("transcribe", true);
+        assert!(matches!(
+            effect,
+            Some(Effect::Stop {
+                selected_action: Some(2),
+                ..
+            })
+        ));
+        assert!(state
+            .on_microphone_disconnected("transcribe", true)
+            .is_none());
+        assert!(matches!(state.stage, Stage::Processing));
+    }
+
+    #[test]
+    fn a_delayed_microphone_disconnect_cannot_stop_another_capture() {
+        let mut state = CoordinatorState::new();
+        state.begin_recording("transcribe".into(), "test".into(), Instant::now(), true);
+        assert!(state
+            .on_microphone_disconnected("transcribe", false)
+            .is_none());
+        assert!(state
+            .on_microphone_disconnected("transcribe_with_post_process", true)
+            .is_none());
+        assert!(matches!(state.stage, Stage::Recording(_)));
+    }
 
     #[test]
     fn action_binding_keys_are_parsed_strictly() {

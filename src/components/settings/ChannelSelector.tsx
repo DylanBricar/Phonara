@@ -4,6 +4,7 @@ import { Dropdown } from "../ui/Dropdown";
 import { SettingContainer } from "../ui/SettingContainer";
 import { commands } from "@/bindings";
 import { useSettings } from "../../hooks/useSettings";
+import { useMicrophones } from "../../hooks/useMicrophones";
 
 interface ChannelSelectorProps {
   descriptionMode?: "inline" | "tooltip";
@@ -16,19 +17,25 @@ export const ChannelSelector: React.FC<ChannelSelectorProps> = React.memo(
     const { getSetting, updateSetting, isUpdating, isLoading } = useSettings();
     const [channelCount, setChannelCount] = useState(1);
 
-    const selectedMicrophone = getSetting("selected_microphone") || "default";
+    const { status } = useMicrophones();
+    const effectiveMicrophone = status?.is_recording
+      ? status.active
+      : status?.next;
+    const selectedMicrophone =
+      effectiveMicrophone?.id ?? effectiveMicrophone?.name;
     const selectedChannel = getSetting("selected_channel");
 
     useEffect(() => {
       let cancelled = false;
       setChannelCount(1);
+      if (!selectedMicrophone) return;
 
       const fetchChannels = async () => {
         try {
-          const deviceName =
-            selectedMicrophone === "Default" ? "default" : selectedMicrophone;
-          const result = await commands.getMicrophoneChannels(deviceName);
-          if (!cancelled && result.status === "ok") {
+          const result =
+            await commands.getMicrophoneChannels(selectedMicrophone);
+          if (result.status === "error") throw new Error(result.error);
+          if (!cancelled) {
             setChannelCount(result.data);
           }
         } catch (error) {
@@ -78,7 +85,9 @@ export const ChannelSelector: React.FC<ChannelSelectorProps> = React.memo(
           options={options}
           selectedValue={currentValue}
           onSelect={handleChannelSelect}
-          disabled={isUpdating("selected_channel") || isLoading}
+          disabled={
+            isUpdating("selected_channel") || isLoading || status?.is_recording
+          }
         />
       </SettingContainer>
     );

@@ -62,7 +62,7 @@ Press a shortcut, speak, and your words appear in any text field. Everything run
 - **Volume slider precision** - 1% step instead of 10% (PR #944)
 - **Double-click tray** - Opens main window (PR #369)
 - **Recording tail preservation** - Samples captured while a recording stops are no longer discarded
-- **Microphone recovery** - Automatically falls back to the default microphone after a selected device disconnects
+- **Microphone priorities** - Remembers an ordered list of microphones, uses the first available one, and keeps disconnected favorites for their return
 - **Reliable paste** - Platform-specific transactions preserve clipboard content and clear stuck modifiers
 - **Shortcut parity** - Toggle presses arriving during transcription are queued instead of being lost
 - **Private release logs** - Production logs no longer contain transcription text
@@ -118,6 +118,24 @@ bun run tauri dev
 # Production build
 bun run tauri build
 ```
+
+## Microphone preferences
+
+In the general settings, add your microphones in order of preference. Move a
+microphone up or down to change its priority, or remove it from the list. An empty
+list follows the system default. If none of your favorites is available or can be
+opened, Phonara tries the system default without forgetting your preferences.
+
+Disconnected microphones remain in the list. Phonara checks for device changes
+in the background and before each dictation. Connecting a higher-priority
+microphone changes the next dictation; it does not interrupt one already in
+progress. The settings show both the active microphone and the next choice.
+If the active microphone disconnects, Phonara ends that dictation, sends the
+audio already captured for transcription, and displays an interruption message.
+
+Device availability comes from the operating system. Some wireless receivers
+remain available while their headset is switched off. Silence alone does not
+cause Phonara to switch microphones.
 
 ## Linux Notes
 

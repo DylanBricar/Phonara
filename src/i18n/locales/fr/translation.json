@@ -324,7 +324,35 @@
         "title": "Microphone",
         "description": "Sélectionnez votre périphérique d'entrée audio",
         "placeholder": "Sélectionner un microphone...",
-        "loading": "Chargement..."
+        "loading": "Chargement...",
+        "priority": {
+          "title": "Priorité des microphones",
+          "description": "Classez vos microphones par ordre de préférence. Phonara utilise automatiquement le premier disponible pour la prochaine dictée.",
+          "hint": "Le premier micro disponible est prioritaire. Les micros déconnectés gardent leur place.",
+          "list": "Microphones par ordre de priorité",
+          "active": "Micro utilisé : {{name}}",
+          "next": "Prochaine dictée : {{name}}",
+          "noDevice": "Aucun microphone disponible pour la prochaine dictée.",
+          "deferred": "Le changement de micro prendra effet après cette dictée.",
+          "connected": "Connecté",
+          "disconnected": "Déconnecté",
+          "systemDefault": "Défaut système",
+          "followDefault": "Phonara suit le microphone par défaut du système.",
+          "fallback": "Si aucun de ces micros n'est disponible, Phonara utilise le défaut système.",
+          "add": "Ajouter un microphone",
+          "allAdded": "Aucun autre micro connecté",
+          "moveUp": "Monter {{name}}",
+          "moveDown": "Descendre {{name}}",
+          "remove": "Retirer {{name}} des priorités",
+          "reset": "Utiliser le défaut système",
+          "refresh": "Actualiser les microphones",
+          "saveError": "Impossible d'enregistrer les priorités des microphones. Votre ordre précédent a été conservé.",
+          "refreshError": "Impossible d'actualiser la disponibilité des microphones. Les derniers appareils connus sont affichés. Réessayez avec le bouton d'actualisation.",
+          "deviceIdentity": "{{name}} ({{id}})",
+          "defaultSuffix": " (défaut système)",
+          "deviceError": "Un microphone n'a pas pu être utilisé ou vérifié. Consultez le micro indiqué ci-dessus et vérifiez vos branchements. Vos priorités sont conservées.",
+          "observationError": "L'affichage ne peut pas suivre automatiquement les changements de micro. Utilisez le bouton d'actualisation ou rouvrez cet onglet."
+        }
       },
       "channel": {
         "title": "Input Channel",
@@ -992,7 +1020,9 @@
     "modelLoadFailedUnknown": "modèle inconnu",
     "pasteFailedTitle": "Échec du collage du texte",
     "pasteFailed": "Le texte n'a pas pu être collé dans l'application active.",
-    "transcriptionFailedTitle": "Échec de la transcription"
+    "transcriptionFailedTitle": "Échec de la transcription",
+    "microphoneDisconnectedTitle": "Microphone déconnecté",
+    "microphoneDisconnected": "La dictée a été interrompue. Phonara conserve l'audio déjà capturé pour tenter de le transcrire. Le prochain micro disponible sera utilisé à la prochaine dictée."
   },
   "appLanguage": {
     "title": "Langue de l'application",

@@ -16,6 +16,7 @@ mod llm_client;
 mod local_llm_cli;
 mod managers;
 mod memory;
+mod microphone;
 mod overlay;
 mod paste_tx;
 pub mod portable;
@@ -269,6 +270,7 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
     app_handle.manage(tray::TrayState::new());
+    recording_manager.start_device_monitor();
 
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
@@ -861,6 +863,9 @@ pub fn run(cli_args: CliArgs) {
             commands::audio::get_windows_microphone_permission_status,
             commands::audio::open_microphone_privacy_settings,
             commands::audio::get_available_microphones,
+            commands::audio::get_microphone_status,
+            commands::audio::refresh_microphone_devices,
+            commands::audio::set_microphone_priority,
             commands::audio::set_selected_microphone,
             commands::audio::get_selected_microphone,
             commands::audio::get_available_output_devices,
