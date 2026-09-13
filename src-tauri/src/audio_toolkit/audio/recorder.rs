@@ -95,10 +95,10 @@ pub struct AudioRecorder {
     pause_flag: Option<Arc<AtomicBool>>,
     /// Which input channel to use. None = average all (original behavior).
     selected_channel: Option<usize>,
-    /// Preferred stream config cached per device name. The two HAL property
+    /// Preferred stream config cached per stable device ID. The two HAL property
     /// queries in `get_preferred_config` cost ~40-85ms per open (worse on
     /// USB/Bluetooth), which lands on the keypress->capture path in on-demand
-    /// mode. Keyed by name so a system-default change misses naturally;
+    /// mode. Keyed by ID so default changes and identical names stay distinct;
     /// cleared whenever an open fails so a stale rate/format self-heals on the
     /// caller's retry.
     config_cache: Arc<Mutex<Option<(String, cpal::SupportedStreamConfig)>>>,
@@ -176,8 +176,35 @@ impl AudioRecorder {
         self.selected_channel = channel.map(usize::from);
     }
 
-    #[allow(deprecated)]
     pub fn open(&mut self, device: Option<Device>) -> Result<(), Box<dyn std::error::Error>> {
+        if self.worker_handle.is_some() && !self.needs_reopen() {
+            return Ok(());
+        }
+        let device = device
+            .or_else(|| crate::audio_toolkit::get_cpal_host().default_input_device())
+            .ok_or_else(|| Error::new(std::io::ErrorKind::NotFound, "No input device found"))?;
+        let device_id = device.id().ok().map(|id| id.to_string());
+        let had_cached_config = self
+            .config_cache
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .is_some_and(|(id, _)| Some(id) == device_id.as_ref());
+        retry_stale_config(had_cached_config, |fresh| {
+            if fresh {
+                log::warn!("Cached microphone configuration failed; retrying this device with a fresh configuration");
+                *self
+                    .config_cache
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner()) = None;
+                let _ = self.close();
+            }
+            self.open_once(Some(device.clone()))
+        })
+    }
+
+    #[allow(deprecated)]
+    fn open_once(&mut self, device: Option<Device>) -> Result<(), Box<dyn std::error::Error>> {
         if self.worker_handle.is_some() {
             if !self.needs_reopen() {
                 return Ok(()); // already open
@@ -216,12 +243,12 @@ impl AudioRecorder {
             let stop_flag_for_stream = stop_flag.clone();
             let init_result = (|| -> Result<(cpal::Stream, u32), String> {
                 let config_started = Instant::now();
-                let device_name = thread_device.name().unwrap_or_default();
+                let device_id = thread_device.id().ok().map(|id| id.to_string());
                 let cached_config = config_cache
                     .lock()
                     .unwrap()
                     .as_ref()
-                    .filter(|(name, _)| !device_name.is_empty() && *name == device_name)
+                    .filter(|(id, _)| Some(id) == device_id.as_ref())
                     .map(|(_, cfg)| cfg.clone());
                 let config_was_cached = cached_config.is_some();
                 let config = match cached_config {
@@ -343,8 +370,10 @@ impl AudioRecorder {
 
                 // The device accepted this config; remember it so the next
                 // open skips the HAL property queries entirely.
-                if !config_was_cached && !device_name.is_empty() {
-                    *config_cache.lock().unwrap() = Some((device_name, config));
+                if !config_was_cached {
+                    if let Some(device_id) = device_id {
+                        *config_cache.lock().unwrap() = Some((device_id, config));
+                    }
                 }
 
                 Ok((stream, sample_rate))
@@ -357,7 +386,7 @@ impl AudioRecorder {
                     // init handshake can't see (hardware dependent).
                     let stream_running_at = Instant::now();
                     // Keep the stream alive while we process samples.
-                    run_consumer(
+                    run_consumer_with_error_flag(
                         sample_rate,
                         vad,
                         sample_rx,
@@ -366,6 +395,7 @@ impl AudioRecorder {
                         audio_cb,
                         stop_flag,
                         stream_running_at,
+                        stream_error,
                     );
                     drop(stream);
                 }
@@ -512,8 +542,12 @@ impl AudioRecorder {
             &config.clone().into(),
             stream_cb,
             move |err| {
-                log::error!("Stream error: {}", err);
-                stream_error.store(true, Ordering::Relaxed);
+                if is_fatal_stream_error(&err) {
+                    log::error!("Stream error: {}", err);
+                    stream_error.store(true, Ordering::Relaxed);
+                } else {
+                    log::warn!("Recoverable microphone audio glitch: {err}");
+                }
             },
             None,
         )
@@ -578,6 +612,24 @@ impl AudioRecorder {
             target_rate
         );
         Ok(default_config)
+    }
+}
+
+/// A buffer underrun is recovered by the audio backend and does not mean that
+/// the microphone vanished. Other stream errors require a new stream.
+fn is_fatal_stream_error(error: &cpal::StreamError) -> bool {
+    !matches!(error, cpal::StreamError::BufferUnderrun)
+}
+
+/// Retry only a potentially stale cached configuration, once, before allowing
+/// the caller to fall back to a lower-priority microphone.
+fn retry_stale_config<T, E>(
+    had_cached_config: bool,
+    mut attempt: impl FnMut(bool) -> Result<T, E>,
+) -> Result<T, E> {
+    match attempt(false) {
+        Err(_) if had_cached_config => attempt(true),
+        result => result,
     }
 }
 
@@ -672,6 +724,7 @@ pub fn is_no_input_device_error(error_message: &str) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 fn run_consumer(
     in_sample_rate: u32,
     vad: Option<VadConfig>,
@@ -681,6 +734,31 @@ fn run_consumer(
     audio_cb: Option<AudioFrameCallback>,
     stop_flag: Arc<AtomicBool>,
     stream_running_at: Instant,
+) {
+    run_consumer_with_error_flag(
+        in_sample_rate,
+        vad,
+        sample_rx,
+        cmd_rx,
+        level_cb,
+        audio_cb,
+        stop_flag,
+        stream_running_at,
+        Arc::new(AtomicBool::new(false)),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_consumer_with_error_flag(
+    in_sample_rate: u32,
+    vad: Option<VadConfig>,
+    sample_rx: mpsc::Receiver<AudioChunk>,
+    cmd_rx: mpsc::Receiver<Cmd>,
+    level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
+    audio_cb: Option<AudioFrameCallback>,
+    stop_flag: Arc<AtomicBool>,
+    stream_running_at: Instant,
+    stream_error: Arc<AtomicBool>,
 ) {
     let frame_samples = vad.as_ref().map_or(
         (constants::WHISPER_SAMPLE_RATE * 30 / 1000) as usize,
@@ -765,17 +843,32 @@ fn run_consumer(
     // Poll commands even when a disconnected device stops producing samples
     // without closing its CoreAudio stream.
     loop {
+        let mut disconnected_command = None;
         let mut pending = match sample_rx.recv_timeout(Duration::from_millis(50)) {
             Ok(chunk) => Some(chunk),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                // The captured buffer still belongs to the active dictation.
+                // Keep its command receiver alive until normal Stop/Shutdown;
+                // waiting here also avoids spinning on a disconnected channel.
+                stream_error.store(true, Ordering::Relaxed);
+                match cmd_rx.recv_timeout(Duration::from_millis(50)) {
+                    Ok(command) => disconnected_command = Some(command),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                }
+                None
+            }
         };
 
         // Handle pending commands BEFORE the in-flight chunk so a Start
         // captures it. Commands used to be polled after processing, which
         // silently dropped one buffer period of audio (~10ms built-in, up to
         // ~100ms on Bluetooth) at every recording start.
-        while let Ok(cmd) = cmd_rx.try_recv() {
+        while let Some(cmd) = disconnected_command
+            .take()
+            .or_else(|| cmd_rx.try_recv().ok())
+        {
             match cmd {
                 Cmd::Start(policy, sent_at, ready_tx) => {
                     log::debug!(
@@ -994,6 +1087,54 @@ mod tests {
     }
 
     #[test]
+    fn a_buffer_underrun_is_recoverable_but_device_and_stream_failures_are_fatal() {
+        assert!(!super::is_fatal_stream_error(
+            &cpal::StreamError::BufferUnderrun
+        ));
+        assert!(super::is_fatal_stream_error(
+            &cpal::StreamError::DeviceNotAvailable
+        ));
+        assert!(super::is_fatal_stream_error(
+            &cpal::StreamError::StreamInvalidated
+        ));
+        assert!(super::is_fatal_stream_error(
+            &cpal::StreamError::BackendSpecific {
+                err: cpal::BackendSpecificError {
+                    description: "capture failed".into()
+                }
+            }
+        ));
+    }
+
+    #[test]
+    fn a_stale_cached_config_is_retried_fresh_before_abandoning_the_device() {
+        let mut attempts = Vec::new();
+        let result = super::retry_stale_config(true, |fresh| {
+            attempts.push(fresh);
+            if fresh {
+                Ok("preferred microphone")
+            } else {
+                Err("unsupported cached format")
+            }
+        });
+        assert_eq!(result, Ok("preferred microphone"));
+        assert_eq!(attempts, vec![false, true]);
+    }
+
+    #[test]
+    fn open_retries_are_bounded_and_uncached_failures_are_not_retried() {
+        for (cached, expected_attempts) in [(false, 1), (true, 2)] {
+            let mut attempts = 0;
+            let result: Result<(), &str> = super::retry_stale_config(cached, |_| {
+                attempts += 1;
+                Err("permission denied")
+            });
+            assert_eq!(result, Err("permission denied"));
+            assert_eq!(attempts, expected_attempts);
+        }
+    }
+
+    #[test]
     fn shutdown_is_processed_without_audio_samples() {
         let (sample_tx, sample_rx) = mpsc::channel();
         let (cmd_tx, cmd_rx) = mpsc::channel();
@@ -1019,6 +1160,94 @@ mod tests {
         drop(sample_tx);
         worker.join().expect("join consumer");
         assert!(stopped.is_ok(), "shutdown waited for an audio sample");
+    }
+
+    #[test]
+    fn disconnected_producer_preserves_audio_until_normal_stop() {
+        let (sample_tx, sample_rx) = mpsc::channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_consumer(
+                16_000,
+                None,
+                sample_rx,
+                cmd_rx,
+                None,
+                None,
+                Arc::new(AtomicBool::new(false)),
+                Instant::now(),
+            )
+        });
+        cmd_tx
+            .send(Cmd::Start(
+                super::VadPolicy::Disabled,
+                Instant::now(),
+                ready_tx,
+            ))
+            .expect("start");
+        sample_tx
+            .send(AudioChunk::Samples(vec![0.5; 960]))
+            .expect("audio");
+        ready_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("captured");
+        drop(sample_tx);
+        let (reply_tx, reply_rx) = mpsc::channel();
+        cmd_tx.send(Cmd::Stop(reply_tx)).expect("stop");
+        let result = reply_rx.recv_timeout(Duration::from_secs(1));
+        let _ = cmd_tx.send(Cmd::Shutdown);
+        worker.join().expect("consumer");
+        let samples = result.expect("disconnection must not drop saved audio");
+        assert!(samples.len() >= 960);
+        assert!(samples
+            .iter()
+            .take(960)
+            .all(|sample| (*sample - 0.5).abs() < 0.001));
+    }
+
+    #[test]
+    fn silent_producer_stop_returns_already_captured_samples() {
+        let (sample_tx, sample_rx) = mpsc::channel();
+        let (cmd_tx, cmd_rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            run_consumer(
+                16_000,
+                None,
+                sample_rx,
+                cmd_rx,
+                None,
+                None,
+                Arc::new(AtomicBool::new(false)),
+                Instant::now(),
+            )
+        });
+        cmd_tx
+            .send(Cmd::Start(
+                super::VadPolicy::Disabled,
+                Instant::now(),
+                ready_tx,
+            ))
+            .expect("start");
+        sample_tx
+            .send(AudioChunk::Samples(vec![0.25; 960]))
+            .expect("audio");
+        ready_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("captured");
+        let (reply_tx, reply_rx) = mpsc::channel();
+        cmd_tx.send(Cmd::Stop(reply_tx)).expect("stop");
+        let result = reply_rx.recv_timeout(Duration::from_secs(3));
+        let _ = cmd_tx.send(Cmd::Shutdown);
+        drop(sample_tx);
+        worker.join().expect("consumer");
+        let samples = result.expect("stop without additional callbacks");
+        assert!(samples.len() >= 960);
+        assert!(samples
+            .iter()
+            .take(960)
+            .all(|sample| (*sample - 0.25).abs() < 0.001));
     }
 
     #[test]

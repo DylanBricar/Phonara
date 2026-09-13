@@ -1,3 +1,4 @@
+use crate::microphone::MicrophonePreference;
 use crate::utils;
 use log::{debug, warn};
 use once_cell::sync::Lazy;
@@ -466,6 +467,9 @@ pub struct AppSettings {
     pub always_on_microphone: bool,
     #[serde(default)]
     pub selected_microphone: Option<String>,
+    /// Ordered microphone preferences. An empty list follows the system default.
+    #[serde(default)]
+    pub microphone_priority: Vec<MicrophonePreference>,
     /// Which input channel to use on the selected microphone device.
     /// None means "average all channels" (original behavior).
     #[serde(default)]
@@ -1121,6 +1125,7 @@ pub fn get_default_settings() -> AppSettings {
         onboarding_completed: false,
         always_on_microphone: false,
         selected_microphone: None,
+        microphone_priority: Vec::new(),
         selected_channel: None,
         clamshell_microphone: None,
         selected_output_device: None,
@@ -1368,6 +1373,23 @@ fn apply_settings_migrations(
 ) -> bool {
     let mut updated = false;
 
+    // Only migrate old documents. An explicit empty list is a deliberate
+    // choice to follow the system default, even if a legacy name remains.
+    if settings_value.get("microphone_priority").is_none() {
+        settings.microphone_priority = settings
+            .selected_microphone
+            .as_ref()
+            .filter(|name| !name.trim().is_empty() && !name.eq_ignore_ascii_case("default"))
+            .map(|name| {
+                vec![MicrophonePreference {
+                    id: None,
+                    name: name.clone(),
+                }]
+            })
+            .unwrap_or_default();
+        updated = true;
+    }
+
     // One-time onboarding migration: users with an explicit selected model have
     // already made it through model selection. Users who merely have compatible
     // files on disk should still see onboarding.
@@ -1599,6 +1621,50 @@ pub fn get_recording_retention_period(app: &AppHandle) -> RecordingRetentionPeri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn microphone_priority_migration_preserves_an_offline_legacy_choice() {
+        let mut raw = default_settings_json();
+        raw.as_object_mut().unwrap().remove("microphone_priority");
+        raw["selected_microphone"] = serde_json::json!("Offline USB microphone");
+        let migrated = deserialize_settings_for_import(&raw).unwrap();
+        assert_eq!(migrated.microphone_priority.len(), 1);
+        assert_eq!(
+            migrated.microphone_priority[0].name,
+            "Offline USB microphone"
+        );
+        assert_eq!(migrated.microphone_priority[0].id, None);
+        let roundtrip = serde_json::to_value(&migrated).unwrap();
+        let again = deserialize_settings_for_import(&roundtrip).unwrap();
+        assert_eq!(again.microphone_priority, migrated.microphone_priority);
+    }
+
+    #[test]
+    fn explicit_system_microphone_mode_does_not_restore_a_legacy_choice() {
+        let mut raw = default_settings_json();
+        raw["selected_microphone"] = serde_json::json!("Old USB microphone");
+        raw["microphone_priority"] = serde_json::json!([]);
+        let settings = deserialize_settings_for_import(&raw).unwrap();
+        assert!(settings.microphone_priority.is_empty());
+    }
+
+    #[test]
+    fn microphone_priority_survives_export_and_import_with_disconnected_ids() {
+        let mut settings = get_default_settings();
+        settings.microphone_priority = vec![
+            MicrophonePreference {
+                id: Some("Wasapi:usb".into()),
+                name: "USB".into(),
+            },
+            MicrophonePreference {
+                id: Some("Wasapi:headset".into()),
+                name: "Headset".into(),
+            },
+        ];
+        let raw = serde_json::to_value(&settings).unwrap();
+        let imported = deserialize_settings_for_import(&raw).unwrap();
+        assert_eq!(imported.microphone_priority, settings.microphone_priority);
+    }
 
     fn default_settings_json() -> serde_json::Value {
         serde_json::to_value(get_default_settings()).unwrap()
@@ -2161,7 +2227,8 @@ mod tests {
             "whats_new_last_seen_version": default_whats_new_last_seen_version(),
             "overlay_style": "live",
             "transcribe_accelerator": "gpu",
-            "transcribe_gpu_device": settings.transcribe_gpu_device
+            "transcribe_gpu_device": settings.transcribe_gpu_device,
+            "microphone_priority": []
         });
 
         assert!(!apply_settings_migrations(&mut settings, &raw));

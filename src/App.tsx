@@ -147,6 +147,11 @@ function App() {
         toast.error(t("errors.noInputDeviceTitle"), {
           description: t("errors.noInputDevice"),
         });
+      } else if (error_type === "microphone_disconnected") {
+        toast.error(t("errors.microphoneDisconnectedTitle"), {
+          description: t("errors.microphoneDisconnected"),
+          duration: 10000,
+        });
       } else {
         toast.error(
           t("errors.recordingFailed", { error: detail ?? "Unknown error" }),

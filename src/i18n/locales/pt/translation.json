@@ -324,7 +324,35 @@
         "title": "Microfone",
         "description": "Selecione seu dispositivo de microfone preferido",
         "placeholder": "Selecionar microfone...",
-        "loading": "Carregando..."
+        "loading": "Carregando...",
+        "priority": {
+          "title": "Microphone priority",
+          "description": "Arrange your microphones in order of preference. Phonara automatically uses the first available one for the next dictation.",
+          "hint": "First available microphone wins. Disconnected microphones keep their place.",
+          "list": "Microphones in priority order",
+          "active": "In use: {{name}}",
+          "next": "Next dictation: {{name}}",
+          "noDevice": "No microphone available for the next dictation.",
+          "deferred": "The microphone will change after this dictation.",
+          "connected": "Connected",
+          "disconnected": "Disconnected",
+          "systemDefault": "System default",
+          "followDefault": "Following the system default microphone.",
+          "fallback": "If none of these microphones is available, Phonara uses the system default.",
+          "add": "Add a microphone",
+          "allAdded": "No other connected microphone",
+          "moveUp": "Move {{name}} up",
+          "moveDown": "Move {{name}} down",
+          "remove": "Remove {{name}} from priorities",
+          "reset": "Use system default",
+          "refresh": "Refresh microphones",
+          "saveError": "Could not save microphone priorities. Your previous order has been kept.",
+          "refreshError": "Could not update microphone availability. The last known devices are shown. Try refreshing.",
+          "deviceIdentity": "{{name}} ({{id}})",
+          "defaultSuffix": " (system default)",
+          "deviceError": "A microphone could not be used or checked. Review the microphone shown above and check your connections. Your priorities have been kept.",
+          "observationError": "Automatic microphone display updates are unavailable. Refresh manually or reopen this tab."
+        }
       },
       "channel": {
         "title": "Input Channel",
@@ -992,7 +1020,9 @@
     "modelLoadFailedUnknown": "modelo desconhecido",
     "pasteFailedTitle": "Falha ao colar o texto",
     "pasteFailed": "Não foi possível colar o texto no aplicativo ativo.",
-    "transcriptionFailedTitle": "Falha na transcrição"
+    "transcriptionFailedTitle": "Falha na transcrição",
+    "microphoneDisconnectedTitle": "Microphone disconnected",
+    "microphoneDisconnected": "Dictation was interrupted. Phonara keeps the audio already captured and will try to transcribe it. The next available microphone will be used for your next dictation."
   },
   "appLanguage": {
     "title": "Idioma da Aplicação",

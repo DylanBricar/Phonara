@@ -1012,6 +1012,30 @@ async getAvailableMicrophones() : Promise<Result<AudioDevice[], string>> {
     else return { status: "error", error: e  as any };
 }
 },
+async getMicrophoneStatus() : Promise<Result<MicrophoneStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_microphone_status") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async refreshMicrophoneDevices() : Promise<Result<MicrophoneStatus, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("refresh_microphone_devices") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+async setMicrophonePriority(priority: MicrophonePreference[]) : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("set_microphone_priority", { priority }) };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
 async setSelectedMicrophone(deviceName: string) : Promise<Result<null, string>> {
     try {
     return { status: "ok", data: await TAURI_INVOKE("set_selected_microphone", { deviceName }) };
@@ -1251,6 +1275,10 @@ hold_threshold_ms?: number; audio_feedback?: boolean; audio_feedback_volume?: nu
  */
 whats_new_last_seen_version?: string; selected_model?: string; onboarding_completed?: boolean; always_on_microphone?: boolean; selected_microphone?: string | null;
 /**
+ * Ordered microphone preferences. An empty list follows the system default.
+ */
+microphone_priority?: MicrophonePreference[];
+/**
  * Which input channel to use on the selected microphone device.
  * None means "average all channels" (original behavior).
  */
@@ -1310,6 +1338,9 @@ key_down: number; key_up: number; flags_changed: number; mouse: number; duration
 export type KeyboardImplementation = "tauri" | "phonara_keys"
 export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
+export type MicrophoneDevice = { id: string; name: string; is_default: boolean }
+export type MicrophonePreference = { id: string | null; name: string }
+export type MicrophoneStatus = { revision: number; devices: MicrophoneDevice[]; active: MicrophoneDevice | null; next: MicrophoneDevice | null; is_recording: boolean; error: string | null }
 export type ModelInfo = { id: string; name: string; description: string; filename: string; source: ModelSource; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; supports_streaming: boolean; supports_language_detection: boolean }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 /**

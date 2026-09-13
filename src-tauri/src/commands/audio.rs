@@ -1,7 +1,8 @@
 use crate::audio_feedback;
 use crate::audio_toolkit::audio::{list_input_devices, list_output_devices, AudioRecorder};
 use crate::managers::audio::{AudioRecordingManager, MicrophoneMode};
-use crate::settings::{get_settings, write_settings};
+use crate::microphone::{MicrophonePreference, MicrophoneStatus};
+use crate::settings::{get_settings, update_settings, write_settings};
 use log::warn;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -215,22 +216,88 @@ pub async fn get_available_microphones() -> Result<Vec<AudioDevice>, String> {
 #[tauri::command]
 #[specta::specta]
 pub async fn set_selected_microphone(app: AppHandle, device_name: String) -> Result<(), String> {
-    let mut settings = get_settings(&app);
-    settings.selected_microphone = if device_name == "default" {
-        None
+    let priority = if device_name.eq_ignore_ascii_case("default") {
+        Vec::new()
     } else {
-        Some(device_name)
+        vec![MicrophonePreference {
+            id: None,
+            name: device_name,
+        }]
     };
-    write_settings(&app, settings);
+    set_microphone_priority(app, priority).await
+}
 
-    // Update the audio manager to use the new device. update_selected_device
-    // can restart the cpal stream (blocking CoreAudio) — run it on a blocking
-    // thread, not inline on the webview/main run loop.
-    let rm = app.state::<Arc<AudioRecordingManager>>().inner().clone();
-    tokio::task::spawn_blocking(move || rm.update_selected_device())
+const MAX_MICROPHONE_PREFERENCES: usize = 32;
+
+fn validate_microphone_priority(priority: &[MicrophonePreference]) -> Result<(), String> {
+    if priority.len() > MAX_MICROPHONE_PREFERENCES {
+        return Err(format!(
+            "At most {MAX_MICROPHONE_PREFERENCES} microphones can be prioritized"
+        ));
+    }
+    let mut identities = std::collections::HashSet::new();
+    for preference in priority {
+        if preference.name.trim().is_empty() || preference.name.len() > 1024 {
+            return Err("A microphone must have a non-empty name of at most 1024 bytes".into());
+        }
+        let identity = match &preference.id {
+            Some(id) if id.trim().is_empty() || id.len() > 4096 => {
+                return Err("Invalid microphone identifier".into());
+            }
+            Some(id) => (true, id.as_str()),
+            None => (false, preference.name.as_str()),
+        };
+        if !identities.insert(identity) {
+            return Err("A microphone can only appear once in the priority list".into());
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn set_microphone_priority(
+    app: AppHandle,
+    priority: Vec<MicrophonePreference>,
+) -> Result<(), String> {
+    validate_microphone_priority(&priority)?;
+    tokio::task::spawn_blocking(move || {
+        update_settings(&app, |settings| {
+            settings.selected_microphone = priority.first().map(|device| device.name.clone());
+            settings.microphone_priority = priority.clone();
+        });
+        let _ = app.emit(
+            "settings-changed",
+            serde_json::json!({
+                "setting": "microphone_priority", "value": priority
+            }),
+        );
+        let manager = app.state::<Arc<AudioRecordingManager>>();
+        // Preferences remain valid when every device is disconnected. Capture
+        // failures are reported separately through the microphone status.
+        if let Err(error) = manager.update_selected_device() {
+            warn!("Microphone priority saved; capture could not be updated: {error}");
+        }
+    })
+    .await
+    .map_err(|error| format!("audio task join failed: {error}"))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_microphone_status(app: AppHandle) -> Result<MicrophoneStatus, String> {
+    Ok(app
+        .state::<Arc<AudioRecordingManager>>()
+        .microphone_status())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn refresh_microphone_devices(app: AppHandle) -> Result<MicrophoneStatus, String> {
+    let manager = app.state::<Arc<AudioRecordingManager>>().inner().clone();
+    tokio::task::spawn_blocking(move || manager.refresh_microphone_devices())
         .await
-        .map_err(|e| format!("audio task join failed: {}", e))?
-        .map_err(|e| format!("Failed to update selected device: {}", e))
+        .map_err(|error| format!("audio task join failed: {error}"))?
 }
 
 #[tauri::command]
@@ -344,11 +411,19 @@ pub async fn get_microphone_channels(device_name: String) -> Result<u16, String>
         let device = if device_name.eq_ignore_ascii_case("default") {
             crate::audio_toolkit::get_cpal_host().default_input_device()
         } else {
-            list_input_devices()
-                .map_err(|e| format!("Failed to list audio devices: {e}"))?
-                .into_iter()
-                .find(|device| device.name == device_name)
-                .map(|device| device.device)
+            let devices =
+                list_input_devices().map_err(|e| format!("Failed to list audio devices: {e}"))?;
+            if let Some(device) = devices.iter().find(|device| device.id == device_name) {
+                Some(device.device.clone())
+            } else {
+                let mut matches = devices
+                    .into_iter()
+                    .filter(|device| device.name == device_name);
+                match (matches.next(), matches.next()) {
+                    (Some(device), None) => Some(device.device),
+                    _ => None,
+                }
+            }
         };
 
         match device {
@@ -393,4 +468,56 @@ pub fn toggle_pause(app: AppHandle) -> Result<bool, String> {
     app.emit("recording-paused", paused)
         .map_err(|e| format!("Failed to emit pause state: {e}"))?;
     Ok(paused)
+}
+
+#[cfg(test)]
+mod microphone_priority_tests {
+    use super::*;
+
+    fn preference(id: Option<&str>, name: &str) -> MicrophonePreference {
+        MicrophonePreference {
+            id: id.map(str::to_string),
+            name: name.to_string(),
+        }
+    }
+
+    #[test]
+    fn offline_preferences_and_homonymous_devices_are_valid() {
+        assert!(validate_microphone_priority(&[]).is_ok());
+        assert!(validate_microphone_priority(&[
+            preference(Some("offline:1"), "Microphone"),
+            preference(Some("offline:2"), "Microphone"),
+        ])
+        .is_ok());
+    }
+
+    #[test]
+    fn priority_rejects_duplicate_ids_and_duplicate_legacy_names() {
+        assert!(validate_microphone_priority(&[
+            preference(Some("id:1"), "Old name"),
+            preference(Some("id:1"), "New name"),
+        ])
+        .is_err());
+        assert!(validate_microphone_priority(&[
+            preference(None, "Same name"),
+            preference(None, "Same name"),
+        ])
+        .is_err());
+    }
+
+    #[test]
+    fn priority_rejects_empty_or_unbounded_metadata() {
+        for item in [
+            preference(Some(""), "Microphone"),
+            preference(None, "  "),
+            preference(Some(&"a".repeat(4097)), "Microphone"),
+            preference(None, &"a".repeat(1025)),
+        ] {
+            assert!(validate_microphone_priority(&[item]).is_err());
+        }
+        let too_many = (0..33)
+            .map(|i| preference(Some(&i.to_string()), "Microphone"))
+            .collect::<Vec<_>>();
+        assert!(validate_microphone_priority(&too_many).is_err());
+    }
 }

@@ -11,6 +11,7 @@ import { settingUpdaters } from "./settingUpdaters";
 import type { Settings, SettingsStore } from "./settingsStoreTypes";
 import { asRuntimeSettings } from "./runtimeSettings";
 import { updateTranscribeAccelerationAtomically } from "./transcribeAccelerationUpdate";
+import { isMicrophonePriority } from "../lib/microphonePreferences";
 
 const DEFAULT_AUDIO_DEVICE: AudioDevice = {
   index: "default",
@@ -53,6 +54,8 @@ export const useSettingsStore = create<SettingsStore>()(
     isUpdatingKey: (key) => get().isUpdating[key] || false,
 
     refreshSettings: async () => {
+      const microphonePriorityBeforeRefresh =
+        get().settings?.microphone_priority;
       try {
         const result = await commands.getAppSettings();
         if (result.status === "ok") {
@@ -61,11 +64,25 @@ export const useSettingsStore = create<SettingsStore>()(
             ...settings,
             always_on_microphone: settings.always_on_microphone ?? false,
             selected_microphone: settings.selected_microphone ?? "Default",
+            microphone_priority: settings.microphone_priority ?? [],
             clamshell_microphone: settings.clamshell_microphone ?? "Default",
             selected_output_device:
               settings.selected_output_device ?? "Default",
           });
-          set({ settings: normalizedSettings, isLoading: false });
+          set((state) => ({
+            settings:
+              state.settings &&
+              state.settings.microphone_priority !==
+                microphonePriorityBeforeRefresh
+                ? {
+                    ...normalizedSettings,
+                    // A save or backend event confirmed a new order while this
+                    // older snapshot was in flight. Preserve that newer order.
+                    microphone_priority: state.settings.microphone_priority,
+                  }
+                : normalizedSettings,
+            isLoading: false,
+          }));
         } else {
           set({ isLoading: false });
         }
@@ -450,7 +467,29 @@ export const useSettingsStore = create<SettingsStore>()(
         const unlisten = await listen("model-state-changed", () => {
           get().refreshSettings();
         });
-        set({ initialized: true, _unlisten: unlisten });
+        const unlistenSettings = await listen<{
+          setting: string;
+          value: unknown;
+        }>("settings-changed", (event) => {
+          const { setting, value } = event.payload;
+          if (
+            setting === "microphone_priority" &&
+            isMicrophonePriority(value)
+          ) {
+            set((state) => ({
+              settings: state.settings
+                ? { ...state.settings, microphone_priority: value }
+                : null,
+            }));
+          }
+        });
+        set({
+          initialized: true,
+          _unlisten: () => {
+            unlisten();
+            unlistenSettings();
+          },
+        });
       })();
 
       return initInFlight;
