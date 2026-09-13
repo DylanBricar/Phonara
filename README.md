@@ -133,9 +133,14 @@ progress. The settings show both the active microphone and the next choice.
 If the active microphone disconnects, Phonara ends that dictation, sends the
 audio already captured for transcription, and displays an interruption message.
 
-Device availability comes from the operating system. Some wireless receivers
-remain available while their headset is switched off. Silence alone does not
-cause Phonara to switch microphones.
+Device availability normally comes from the operating system. On Windows,
+Phonara also checks the radio connection of the Corsair Virtuoso XT wireless
+receiver. If the receiver responds but the headset repeatedly does not, Phonara
+uses the next microphone after a few seconds. It detects the headset again when
+it reconnects, including after sleep or a switch to USB mode without a cable.
+This check does not need iCUE or record audio. Other wireless receivers may still
+appear available while their headsets are off. Silence alone does not cause
+Phonara to switch microphones.
 
 ## Linux Notes
 

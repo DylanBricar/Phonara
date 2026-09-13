@@ -3,6 +3,7 @@ mod recorder;
 mod resampler;
 mod utils;
 mod visualizer;
+pub(crate) mod wireless;
 
 pub use device::{
     list_input_device_identities, list_input_devices, list_output_devices, CpalDeviceInfo,
