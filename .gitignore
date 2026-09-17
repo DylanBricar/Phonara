@@ -46,6 +46,15 @@ result
 
 # Secrets
 secrets.env
+.env
+.env.*
+!.env.example
+
+# Local temporary files
+*.tmp
+*.bak
+Thumbs.db
+Desktop.ini
 
 # Local release helpers / secrets
 .claude/skills/release-macos/
