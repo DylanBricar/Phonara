@@ -30,6 +30,11 @@ taille et SHA256. Les anciens chemins multitalker restent inchangés.
 | Audit Bun                 | Aucune vulnérabilité, 369 paquets.                                                                                                                                                                                                   |
 | Audit RustSec             | Mode strict réussi : aucune vulnérabilité connue ni nouvel avertissement de maintenance, sans ajout d'exception. Voir le [rapport sécurité](security-review-2026-10-21.md).                                                          |
 
+Après la migration des dépendances D-Bus, les 370 tests Windows et Clippy ont
+été réexécutés avec succès. En CI Linux, 369 tests applicatifs et les quatre
+tests D-Bus privés passent : instance unique, transfert Unicode, libération et
+réacquisition du nom, URI FileManager1 et repli portail par descripteur de fichier.
+
 Les quatre essais streaming lancés initialement avec Whisper échouaient sur
 `stream begin: not implemented` : ce modèle batch ne satisfait pas leur
 prérequis. Ils ont été réexécutés avec le modèle streaming épinglé et son SHA256
@@ -44,9 +49,8 @@ Les données et rapports de diagnostic privés ne sont pas publiés.
 
 L'installateur NSIS 0.9.6 est compilé en local et installé avec succès. Les 22
 bibliothèques déployées sont identiques par SHA256 aux fichiers préparés pour le
-bundle. L'exécutable installé a pour SHA256
-`c7f5e360cc673972a500bab21edb3c75bbd17b8540fa6db4b2872fbb26773e69`.
-Il correspond exactement au build après remplacement du seul marqueur Tauri de
+bundle. L'empreinte SHA256 de l'exécutable installé est rapprochée du build
+local : il correspond exactement après remplacement du seul marqueur Tauri de
 bundle `UNK` par `NSS` (trois octets documentés dans tauri-utils).
 
 L'identifiant de la première priorité Corsair a été corrigé. Une comparaison
@@ -59,5 +63,10 @@ l'utilisateur et restent en attente de son retour.
 Les parcours Playwright utilisent un backend Tauri simulé. Les tests de framing
 VAD ne démontrent pas l'exécution de chacun des modèles natifs. Les quatre
 nouveaux modèles du catalogue et toutes les combinaisons quantification/GPU ne
-sont pas téléchargés ni exécutés sur ce PC. La compilation Linux/macOS et les
+sont pas téléchargés ni exécutés sur ce PC. La compilation macOS et les
 fournisseurs cloud restent distincts de la validation Windows décrite ici.
+
+Les résultats des cinq contrôles GitHub, dont la compilation Nix complète, sont
+rattachés à la révision publiée dans la [PR #15](https://github.com/DylanBricar/Phonara/pull/15).
+Leurs états doivent être lus sur cette révision ; un résultat local ou un ancien
+run ne remplace pas le contrôle de la révision effectivement intégrée.

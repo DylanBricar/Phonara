@@ -45,8 +45,10 @@ See [provenance and removal criteria](../src-tauri/vendor/README.md).
 
 The resulting strict local audit passes: zero known vulnerabilities and zero
 new maintenance warnings. No new advisory ignore was added. Existing documented
-advisory exceptions in `.cargo/audit.toml` remain separate. Linux compilation and
-private-bus test results must be checked on the exact published revision.
+advisory exceptions in `.cargo/audit.toml` remain separate. Linux CI passed
+compilation, Clippy, the application tests and all four private-bus tests on
+`25ff4d406083bb9563e46c4ab220bfa46fab139a`. Subsequent results are attached to the
+exact published revision in [PR #15](https://github.com/DylanBricar/Phonara/pull/15).
 
 Reproduce from the repository root:
 
