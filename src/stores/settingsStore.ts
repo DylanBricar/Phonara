@@ -13,6 +13,15 @@ import { asRuntimeSettings } from "./runtimeSettings";
 import { updateTranscribeAccelerationAtomically } from "./transcribeAccelerationUpdate";
 import { updateSettingOptimistically } from "./settingPersistence";
 import { isMicrophonePriority } from "../lib/microphonePreferences";
+import {
+  modelListConnection,
+  PostProcessModelRequests,
+  sameModelListConnection,
+} from "./postProcessModelRequests";
+
+const modelListRequests = new PostProcessModelRequests();
+let settingsRefreshSequence = 0;
+let latestSettingsRefresh: Promise<void> | null = null;
 
 const DEFAULT_AUDIO_DEVICE: AudioDevice = {
   index: "default",
@@ -40,7 +49,30 @@ export const useSettingsStore = create<SettingsStore>()(
     _unlisten: null,
     updateChecksLocked: null,
 
-    setSettings: (settings) => set({ settings }),
+    setSettings: (settings) => {
+      const state = get();
+      const providerIds = new Set([
+        ...Object.keys(state.postProcessModelOptions),
+        ...(state.settings?.post_process_providers ?? []).map((p) => p.id),
+        ...(settings?.post_process_providers ?? []).map((p) => p.id),
+      ]);
+      const postProcessModelOptions = { ...state.postProcessModelOptions };
+      const isUpdating = { ...state.isUpdating };
+      for (const providerId of providerIds) {
+        if (
+          !sameModelListConnection(
+            modelListConnection(state.settings, providerId),
+            modelListConnection(settings, providerId),
+          )
+        ) {
+          modelListRequests.invalidate(providerId);
+          postProcessModelOptions[providerId] = [];
+          isUpdating[`post_process_models_fetch:${providerId}`] =
+            modelListRequests.hasCurrent(providerId);
+        }
+      }
+      set({ settings, postProcessModelOptions, isUpdating });
+    },
     setDefaultSettings: (defaultSettings) => set({ defaultSettings }),
     setLoading: (isLoading) => set({ isLoading }),
     setUpdating: (key, updating) =>
@@ -54,42 +86,54 @@ export const useSettingsStore = create<SettingsStore>()(
     getSetting: (key) => get().settings?.[key],
     isUpdatingKey: (key) => get().isUpdating[key] || false,
 
-    refreshSettings: async () => {
+    refreshSettings: () => {
+      const request = ++settingsRefreshSequence;
       const microphonePriorityBeforeRefresh =
         get().settings?.microphone_priority;
-      try {
-        const result = await commands.getAppSettings();
-        if (result.status === "ok") {
-          const settings = result.data;
-          const normalizedSettings = asRuntimeSettings({
-            ...settings,
-            always_on_microphone: settings.always_on_microphone ?? false,
-            selected_microphone: settings.selected_microphone ?? "Default",
-            microphone_priority: settings.microphone_priority ?? [],
-            clamshell_microphone: settings.clamshell_microphone ?? "Default",
-            selected_output_device:
-              settings.selected_output_device ?? "Default",
-          });
-          set((state) => ({
-            settings:
-              state.settings &&
-              state.settings.microphone_priority !==
-                microphonePriorityBeforeRefresh
+      const refresh = async () => {
+        try {
+          const result = await commands.getAppSettings();
+          if (request !== settingsRefreshSequence) {
+            // A caller waiting for its save's read-back must also wait for a
+            // newer refresh that superseded it before releasing queued reads.
+            await latestSettingsRefresh;
+            return;
+          }
+          if (result.status === "ok") {
+            const settings = result.data;
+            const normalizedSettings = asRuntimeSettings({
+              ...settings,
+              always_on_microphone: settings.always_on_microphone ?? false,
+              selected_microphone: settings.selected_microphone ?? "Default",
+              microphone_priority: settings.microphone_priority ?? [],
+              clamshell_microphone: settings.clamshell_microphone ?? "Default",
+              selected_output_device:
+                settings.selected_output_device ?? "Default",
+            });
+            const currentSettings = get().settings;
+            get().setSettings(
+              currentSettings &&
+                currentSettings.microphone_priority !==
+                  microphonePriorityBeforeRefresh
                 ? {
                     ...normalizedSettings,
                     // A save or backend event confirmed a new order while this
                     // older snapshot was in flight. Preserve that newer order.
-                    microphone_priority: state.settings.microphone_priority,
+                    microphone_priority: currentSettings.microphone_priority,
                   }
                 : normalizedSettings,
-            isLoading: false,
-          }));
-        } else {
-          set({ isLoading: false });
+            );
+            set({ isLoading: false });
+          } else {
+            set({ isLoading: false });
+          }
+        } catch {
+          if (request === settingsRefreshSequence) set({ isLoading: false });
+          else await latestSettingsRefresh;
         }
-      } catch {
-        set({ isLoading: false });
-      }
+      };
+      latestSettingsRefresh = refresh();
+      return latestSettingsRefresh;
     },
 
     refreshAudioDevices: async () => {
@@ -284,7 +328,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setPostProcessModelOptions(providerId, []);
 
       try {
-        await commands.setPostProcessProvider(providerId);
+        const result = await commands.setPostProcessProvider(providerId);
+        if (result.status === "error") throw new Error(result.error);
         await refreshSettings();
       } catch (error) {
         if (previousId !== null) {
@@ -312,23 +357,29 @@ export const useSettingsStore = create<SettingsStore>()(
     ) => {
       const { setUpdating, refreshSettings } = get();
       const updateKey = `post_process_${settingType}:${providerId}`;
+      const endEdit =
+        settingType !== "model"
+          ? modelListRequests.beginEdit(providerId)
+          : undefined;
+      if (endEdit) get().setPostProcessModelOptions(providerId, []);
 
       setUpdating(updateKey, true);
 
       try {
-        if (settingType === "base_url") {
-          await commands.changePostProcessBaseUrlSetting(providerId, value);
-        } else if (settingType === "api_key") {
-          await commands.changePostProcessApiKeySetting(providerId, value);
-        } else if (settingType === "model") {
-          await commands.changePostProcessModelSetting(providerId, value);
-        }
+        const result =
+          settingType === "base_url"
+            ? await commands.changePostProcessBaseUrlSetting(providerId, value)
+            : settingType === "api_key"
+              ? await commands.changePostProcessApiKeySetting(providerId, value)
+              : await commands.changePostProcessModelSetting(providerId, value);
+        if (result.status === "error") throw new Error(result.error);
       } catch (error) {
         console.error(`Failed to update post-process ${settingType}:`, error);
       } finally {
         // Re-sync the UI to backend truth even on failure, otherwise the
         // component keeps showing the user-typed (unpersisted) value.
         await refreshSettings();
+        endEdit?.();
         setUpdating(updateKey, false);
       }
     },
@@ -336,6 +387,8 @@ export const useSettingsStore = create<SettingsStore>()(
     updatePostProcessBaseUrl: async (providerId, baseUrl) => {
       const { setUpdating, refreshSettings } = get();
       const updateKey = `post_process_base_url:${providerId}`;
+      const endEdit = modelListRequests.beginEdit(providerId);
+      get().setPostProcessModelOptions(providerId, []);
 
       setUpdating(updateKey, true);
 
@@ -351,29 +404,18 @@ export const useSettingsStore = create<SettingsStore>()(
           "",
         );
         if (modelResult.status === "error") return;
-
-        set((state) => ({
-          postProcessModelOptions: {
-            ...state.postProcessModelOptions,
-            [providerId]: [],
-          },
-        }));
-
-        await refreshSettings();
       } catch (error) {
         console.error("Failed to update post-process base URL:", error);
       } finally {
+        // The URL can be saved even if clearing the selected model fails.
+        // Synchronize the effective connection before releasing queued reads.
+        await refreshSettings();
+        endEdit();
         setUpdating(updateKey, false);
       }
     },
 
     updatePostProcessApiKey: async (providerId, apiKey) => {
-      set((state) => ({
-        postProcessModelOptions: {
-          ...state.postProcessModelOptions,
-          [providerId]: [],
-        },
-      }));
       return get().updatePostProcessSetting("api_key", providerId, apiKey);
     },
 
@@ -383,31 +425,63 @@ export const useSettingsStore = create<SettingsStore>()(
 
     fetchPostProcessModels: async (providerId) => {
       const updateKey = `post_process_models_fetch:${providerId}`;
-      const { setUpdating, setPostProcessModelOptions } = get();
+      const { setUpdating } = get();
+      const request = modelListRequests.start(providerId);
+      let connection: ReturnType<typeof modelListConnection>;
+      const isCurrent = () =>
+        modelListRequests.isCurrent(providerId, request) &&
+        sameModelListConnection(
+          connection,
+          modelListConnection(get().settings, providerId),
+        );
 
       setUpdating(updateKey, true);
 
       try {
+        let pendingEdit;
+        while ((pendingEdit = modelListRequests.pendingEdit(providerId))) {
+          await pendingEdit;
+          if (!modelListRequests.isCurrent(providerId, request)) return [];
+        }
+        if (!modelListRequests.isCurrent(providerId, request)) return [];
+        connection = modelListConnection(get().settings, providerId);
+        if (!connection) return [];
+        modelListRequests.markStarted(providerId, request);
         const result = await commands.fetchPostProcessModels(providerId);
+        if (!isCurrent()) return [];
         if (result.status === "ok") {
-          setPostProcessModelOptions(providerId, result.data);
+          set((state) => ({
+            postProcessModelOptions: {
+              ...state.postProcessModelOptions,
+              [providerId]: result.data,
+            },
+          }));
           return result.data;
         }
         return [];
       } catch {
         return [];
       } finally {
-        setUpdating(updateKey, false);
+        if (modelListRequests.finish(providerId, request)) {
+          setUpdating(updateKey, false);
+        }
       }
     },
 
-    setPostProcessModelOptions: (providerId, models) =>
+    setPostProcessModelOptions: (providerId, models) => {
+      modelListRequests.invalidate(providerId);
       set((state) => ({
         postProcessModelOptions: {
           ...state.postProcessModelOptions,
           [providerId]: models,
         },
-      })),
+        isUpdating: {
+          ...state.isUpdating,
+          [`post_process_models_fetch:${providerId}`]:
+            modelListRequests.hasCurrent(providerId),
+        },
+      }));
+    },
 
     loadDefaultSettings: async () => {
       try {

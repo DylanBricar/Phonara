@@ -26,3 +26,25 @@ The explicitly supported Corsair XT receiver is identified by VID/PID, HID colle
 Protocol facts were checked against [ckb-next's property table](https://github.com/ckb-next/ckb-next/blob/833ab50951e230674bda02e8448ef6ef365dfd81/src/daemon/bragi_proto.h), [slot enumeration](https://github.com/ckb-next/ckb-next/blob/833ab50951e230674bda02e8448ef6ef365dfd81/src/daemon/bragi_common.c), and [Corsair's Multipoint FAQ](https://help.corsair.com/hc/en-us/articles/4403176744717-SLIPSTREAM-Multipoint-FAQ). These sources document the protocol and receiver capability; the actual slot assignment and physical power/mute transitions still require testing on the user's headset.
 
 Stable IDs remain authoritative. An unambiguous replacement with the same name, or its hardware-qualified Windows display name, is offered as an explicit reconnect action when Windows has assigned a different ID. No automatic guess changes a saved identity. During a capture interruption, Phonara preserves the captured audio and finishes that dictation; the next dictation uses the available fallback. It does not splice a different microphone into the middle of a sentence.
+
+## Windows capture discontinuities
+
+The recorder's `xruns` warning reports WASAPI discontinuity events before audio
+reaches the application's bounded ring. It does not count the duration or number
+of missing samples. The first packet is excluded by handy-cpal; later
+`AUDCLNT_BUFFERFLAGS_DATA_DISCONTINUITY` flags become xrun events. See
+[Microsoft's capture buffer documentation](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudiocaptureclient-getbuffer).
+
+From Phonara 0.9.7, the Windows handy-cpal capture dependency enables `realtime`.
+It requests MMCSS scheduling for the capture thread through
+`audio_thread_priority` 0.35.1, whose Windows profile is
+[`Audio`](https://github.com/mozilla/audio_thread_priority/blob/0.35.1/src/rt_win.rs).
+Rodio's independent output dependency and the Linux PulseAudio feature selection
+are unchanged. This does not change process-wide priority, Windows power policy,
+drivers or service configuration.
+
+This improves the capture thread's scheduling opportunity; it cannot guarantee
+zero discontinuities under every driver or workload. A failure of MMCSS falls
+back to CPAL's thread-priority request. If both requests fail, the capture error
+must remain visible rather than being suppressed. A successful capture probe
+and the multimedia-priority initialization log validate this setup on a given PC.

@@ -169,11 +169,11 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 
 | Source                                              | Reviewed Through |
 | --------------------------------------------------- | ---------------- |
-| [cjpais/Handy](https://github.com/cjpais/Handy)     | `93c9ee05`       |
+| [cjpais/Handy](https://github.com/cjpais/Handy)     | `5a9451e7`       |
 | [Melvynx/Parler](https://github.com/Melvynx/Parler) | `1aaa38b6`       |
 
 The [2026-10-21 upstream review](docs/upstream-review-2026-10-21.md)
-records all 61 newer Handy commits and the 103 open pull requests. Compatible
+records all 62 newer Handy commits and the refreshed inventory of 105 open pull requests. Compatible
 reliability fixes are integrated selectively. The C++ engine now runs in a
 supervised worker with transcribe-cpp 0.4.0, while the existing ONNX engines and
 model identities remain available. Four new ASR packages extend the bundled

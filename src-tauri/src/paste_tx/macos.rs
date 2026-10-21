@@ -13,7 +13,6 @@
 //! guarded restore is dispatched back to the main thread.
 
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant};
 
 use log::{error, info};
@@ -24,7 +23,7 @@ use objc2_foundation::{NSArray, NSInteger, NSObject, NSString};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
-use super::{evaluate, send_chord, TxState, WaitDecision};
+use super::{send_chord, TxState, WaitDecision};
 use crate::clipboard::send_return_key;
 use crate::input::EnigoState;
 use crate::settings::{AutoSubmitKey, ClipboardHandling, PasteMethod};
@@ -108,6 +107,7 @@ struct MacPending {
     /// The transcript, for the `preserve_transcript` re-write at settle time.
     transcript: String,
     settled: bool,
+    transaction: Arc<super::PasteTransaction>,
 }
 
 /// The transaction currently holding the clipboard, if any. A new paste
@@ -139,7 +139,9 @@ fn settle(
 
     // Auto-submit only once the target demonstrably read the transcript;
     // pressing Enter after an unconfirmed paste could submit stale content.
-    if p.auto_submit && receipt_seen {
+    if p.transaction
+        .should_auto_submit(p.auto_submit, receipt_seen)
+    {
         match enigo {
             Some(e) => {
                 let _ = send_return_key(e, p.auto_submit_key);
@@ -147,7 +149,9 @@ fn settle(
             None => {
                 if let Some(enigo_state) = app_handle.try_state::<EnigoState>() {
                     if let Ok(mut e) = enigo_state.0.lock() {
-                        let _ = send_return_key(&mut e, p.auto_submit_key);
+                        if !p.transaction.is_cancelled() {
+                            let _ = send_return_key(&mut e, p.auto_submit_key);
+                        }
                     }
                 }
             }
@@ -179,6 +183,17 @@ fn settle(
     // Release the owner; any outstanding promise dies with the pasteboard
     // contents we just replaced (or with the external change).
     p.provider = None;
+    let injection_failed = p
+        .state
+        .lock()
+        .map(|state| state.injection_failed)
+        .unwrap_or(true);
+    p.transaction
+        .complete(if injection_failed && !p.transaction.is_cancelled() {
+            Err("Reliable paste could not inject the paste chord".to_string())
+        } else {
+            Ok(())
+        });
 }
 
 /// If a previous transaction is still holding the clipboard, settle it now so
@@ -194,14 +209,13 @@ fn flush_pending(app_handle: &AppHandle, enigo: &mut enigo::Enigo) {
 }
 
 fn spawn_waiter(pending: Arc<Mutex<MacPending>>, app_handle: AppHandle) {
-    thread::spawn(move || {
+    tauri::async_runtime::spawn(async move {
         let outcome = loop {
-            thread::sleep(Duration::from_millis(15));
+            tokio::time::sleep(Duration::from_millis(15)).await;
             let (decision, state_snapshot) = {
-                let p = match pending.lock() {
-                    Ok(p) => p,
-                    Err(_) => return,
-                };
+                let p = pending
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 if p.settled {
                     // A newer paste settled this transaction already.
                     return;
@@ -214,9 +228,10 @@ fn spawn_waiter(pending: Arc<Mutex<MacPending>>, app_handle: AppHandle) {
                             st.ownership_lost,
                             st.injection_failed,
                         );
-                        (evaluate(&st, now), snapshot)
+                        let decision = p.transaction.wait_decision(&st, now);
+                        (decision, snapshot)
                     }
-                    Err(_) => return,
+                    Err(_) => (WaitDecision::Finish, (false, false, true)),
                 };
                 result
             };
@@ -238,7 +253,12 @@ fn spawn_waiter(pending: Arc<Mutex<MacPending>>, app_handle: AppHandle) {
 
         let pending_for_finish = pending.clone();
         let app_for_finish = app_handle.clone();
-        let _ = app_handle.run_on_main_thread(move || {
+        let transaction = pending
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .transaction
+            .clone();
+        if let Err(error) = app_handle.run_on_main_thread(move || {
             settle(&pending_for_finish, &app_for_finish, None);
             if let Ok(mut slot) = PENDING.lock() {
                 let is_us = slot
@@ -249,7 +269,11 @@ fn spawn_waiter(pending: Arc<Mutex<MacPending>>, app_handle: AppHandle) {
                     *slot = None;
                 }
             }
-        });
+        }) {
+            transaction.complete(Err(format!(
+                "Could not schedule clipboard restoration: {error}"
+            )));
+        }
     });
 }
 
@@ -258,9 +282,8 @@ pub(super) fn run(
     app_handle: &AppHandle,
     paste_method: &PasteMethod,
     enigo: &mut enigo::Enigo,
-    auto_submit: bool,
-    auto_submit_key: AutoSubmitKey,
-    clipboard_handling: ClipboardHandling,
+    options: super::PasteOptions,
+    transaction: Arc<super::PasteTransaction>,
 ) -> Result<(), String> {
     // Settle any previous transaction first so the snapshot below captures the
     // user's original clipboard, not the previous transcript.
@@ -298,20 +321,32 @@ pub(super) fn run(
 
     // Mark injection *before* sending: enigo holds the chord for ~100ms and a
     // fast target may legitimately read while the chord is still held.
-    if let Ok(mut st) = state.lock() {
-        st.injected_at = Some(Instant::now());
-    }
-    match send_chord(enigo, paste_method) {
-        Ok(()) => {
-            info!("[reliable-paste] paste chord sent ({paste_method:?})");
-        }
-        Err(e) => {
-            // Keep the transaction alive: the waiter restores the clipboard
-            // after the short failed-injection timeout.
-            if let Ok(mut st) = state.lock() {
-                st.injection_failed = true;
+    let should_inject = {
+        let mut state = state
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        transaction.begin_injection(&mut state, Instant::now())
+    };
+    if should_inject {
+        if transaction.is_cancelled() {
+            state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .injection_failed = true;
+        } else {
+            match send_chord(enigo, paste_method) {
+                Ok(()) => {
+                    info!("[reliable-paste] paste chord sent ({paste_method:?})");
+                }
+                Err(e) => {
+                    // A partial chord may still have queued input, so keep
+                    // the normal failed-injection drain before restoration.
+                    if let Ok(mut st) = state.lock() {
+                        st.injection_failed = true;
+                    }
+                    error!("[reliable-paste] failed to send paste chord: {e}");
+                }
             }
-            error!("[reliable-paste] failed to send paste chord: {e}");
         }
     }
 
@@ -321,11 +356,12 @@ pub(super) fn run(
         saved_image,
         change_count,
         provider: Some(provider),
-        auto_submit,
-        auto_submit_key,
-        preserve_transcript: clipboard_handling == ClipboardHandling::CopyToClipboard,
+        auto_submit: options.auto_submit,
+        auto_submit_key: options.auto_submit_key,
+        preserve_transcript: options.clipboard_handling == ClipboardHandling::CopyToClipboard,
         transcript: text.to_string(),
         settled: false,
+        transaction,
     }));
     if let Ok(mut slot) = PENDING.lock() {
         *slot = Some(pending.clone());

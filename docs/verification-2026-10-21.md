@@ -55,10 +55,17 @@ bundle `UNK` par `NSS` (trois octets documentés dans tauri-utils).
 
 L'identifiant de la première priorité Corsair a été corrigé. Une comparaison
 sémantique JSON confirme que tous les autres réglages sont conservés. Les
-entrées de l'historique et sa version de schéma 5 sont préservées. Le contrôle
-Windows ayant été arrêté par Échap, aucune nouvelle action UI n'est envoyée ;
-l'essai visuel et la dictée depuis le raccourci habituel sont demandés à
-l'utilisateur et restent en attente de son retour.
+entrées de l'historique et sa version de schéma 5 sont préservées. Le lancement
+manuel a ensuite été confirmé dans le vrai profil Windows. Les journaux réels
+de la séquence observée de 14 h 21 à 14 h 23 (Europe/Brussels) confirment le
+Corsair, Silero et Whisper Medium sur Vulkan, puis plusieurs dictées avec
+sauvegarde dans l'historique et collage terminé, sans avertissement ni erreur
+sur cette séquence. Deux sessions ultérieures signalent des discontinuités
+WASAPI ; elles finissent normalement mais cela ne prouve pas l'absence de son
+perdu. Le [diagnostic audio](audio-diagnostics.md#windows-capture-discontinuities)
+précise leur sens et la priorité multimédia ajoutée en 0.9.7. L'utilisateur confirme également
+la dictée en arrière-plan. Le raccourci temporaire de diagnostic a été retiré ;
+les raccourcis Bureau et menu Démarrer n'ont aucun argument de diagnostic.
 
 Les parcours Playwright utilisent un backend Tauri simulé. Les tests de framing
 VAD ne démontrent pas l'exécution de chacun des modèles natifs. Les quatre
@@ -68,5 +75,10 @@ fournisseurs cloud restent distincts de la validation Windows décrite ici.
 
 Les résultats des cinq contrôles GitHub, dont la compilation Nix complète, sont
 rattachés à la révision publiée dans la [PR #15](https://github.com/DylanBricar/Phonara/pull/15).
-Leurs états doivent être lus sur cette révision ; un résultat local ou un ancien
-run ne remplace pas le contrôle de la révision effectivement intégrée.
+Les cinq contrôles requis ont réussi, puis les contrôles post-fusion sur
+`f94d3c0e3d52c3ad0bc7b442a4c3c99c04e1d1fb` ont également réussi : qualité,
+Playwright, tests/audit Rust, Nix et builds Windows/macOS. Un résultat local ou
+un ancien run ne remplace pas le contrôle de la révision effectivement intégrée.
+
+Ce rapport décrit la base 0.9.6. Les compléments de revue des PR #2302, #2307,
+#2308 et #2309 sont suivis séparément pour la version 0.9.7.

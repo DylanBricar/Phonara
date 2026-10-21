@@ -1,6 +1,6 @@
 [package]
 name = "phonara"
-version = "0.9.6"
+version = "0.9.7"
 description = "Phonara"
 authors = ["Dylan Bricar"]
 edition = "2021"
@@ -108,6 +108,9 @@ tauri-plugin-single-instance = "=2.4.4"
 tauri-plugin-updater = { version = "~2.11.0", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [target.'cfg(windows)'.dependencies]
+# Give the shared recorder's WASAPI capture thread multimedia scheduling. This
+# affects only that thread; Rodio's independent cpal 0.17 output is unchanged.
+cpal = { package = "handy-cpal", version = "=0.18.2", features = ["realtime"] }
 hidapi = { version = "=2.6.7", default-features = false, features = ["windows-native"] }
 windows = { version = "0.61.3", features = [
   "Win32_Devices_FunctionDiscovery",

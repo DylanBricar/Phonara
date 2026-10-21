@@ -25,7 +25,7 @@ use windows::Win32::Foundation::{
     SetLastError, ERROR_SUCCESS, HANDLE, HGLOBAL, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
 };
 
-use super::{evaluate, send_chord, TxState, WaitDecision};
+use super::{send_chord, PasteOptions, PasteTransaction, TxState, WaitDecision};
 use crate::clipboard::send_return_key;
 use crate::input::EnigoState;
 use crate::settings::{AutoSubmitKey, ClipboardHandling, PasteMethod};
@@ -76,6 +76,7 @@ pub(super) struct WinTxShared {
     /// ClipboardHandling::CopyToClipboard — settle by leaving the transcript
     /// on the clipboard as plain text instead of restoring the snapshot.
     preserve_transcript: bool,
+    transaction: Arc<PasteTransaction>,
 }
 
 /// The transaction currently holding the clipboard, if any. A new
@@ -93,6 +94,9 @@ unsafe fn shared_ptr(hwnd: HWND) -> *const WinTxShared {
 /// Sends the auto-submit Enter. Uses `try_lock` because the paste caller may
 /// currently hold the enigo lock while waiting for this worker.
 fn send_auto_submit(shared: &WinTxShared) {
+    if shared.transaction.is_cancelled() {
+        return;
+    }
     {
         let mut st = match shared.state.lock() {
             Ok(st) => st,
@@ -106,7 +110,9 @@ fn send_auto_submit(shared: &WinTxShared) {
     if let Some(enigo_state) = shared.app_handle.try_state::<EnigoState>() {
         match enigo_state.0.try_lock() {
             Ok(mut enigo) => {
-                let _ = send_return_key(&mut enigo, shared.auto_submit_key);
+                if !shared.transaction.is_cancelled() {
+                    let _ = send_return_key(&mut enigo, shared.auto_submit_key);
+                }
             }
             Err(_) => warn!("[reliable-paste] skipping auto-submit: input state busy"),
         }
@@ -229,7 +235,10 @@ fn flush_pending() {
         st.cancelled = true;
         st.any_receipt_after_injection()
     };
-    if previous.auto_submit && receipt {
+    if previous
+        .transaction
+        .should_auto_submit(previous.auto_submit, receipt)
+    {
         send_auto_submit(&previous);
     }
     let sequence = *previous.sequence.lock().unwrap();
@@ -237,6 +246,7 @@ fn flush_pending() {
     if still_ours {
         unsafe { settle_clipboard(&previous) };
     }
+    previous.transaction.complete(Ok(()));
 }
 
 /// Settle-time clipboard handling once we know we still own the clipboard:
@@ -417,15 +427,11 @@ fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
             Ok(st) => st,
             Err(_) => return,
         };
-        if st.cancelled {
-            true
-        } else {
-            match evaluate(&st, now) {
-                WaitDecision::KeepWaiting => false,
-                WaitDecision::Finish => {
-                    st.cancelled = true;
-                    true
-                }
+        match shared.transaction.wait_decision(&st, now) {
+            WaitDecision::KeepWaiting => false,
+            WaitDecision::Finish => {
+                st.cancelled = true;
+                true
             }
         }
     };
@@ -456,7 +462,10 @@ fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
 
     // Auto-submit only once the target demonstrably read the transcript;
     // pressing Enter after an unconfirmed paste could submit stale content.
-    if shared.auto_submit && receipt {
+    if shared
+        .transaction
+        .should_auto_submit(shared.auto_submit, receipt)
+    {
         send_auto_submit(shared);
     }
 
@@ -476,6 +485,14 @@ fn on_timer(_hwnd: HWND, shared: &WinTxShared) {
             *slot = None;
         }
     }
+
+    shared
+        .transaction
+        .complete(if injection_failed && !shared.transaction.is_cancelled() {
+            Err("Reliable paste could not inject the paste chord".to_string())
+        } else {
+            Ok(())
+        });
 
     unsafe {
         PostQuitMessage(0);
@@ -557,12 +574,58 @@ fn pump_thread(shared: Arc<WinTxShared>, ready: Sender<Result<(), String>>) {
         if let Ok(mut slot) = PENDING.lock() {
             *slot = Some(shared.clone());
         }
-        let _ = SetTimer(Some(hwnd), TIMER_ID, TIMER_INTERVAL_MS, None);
+        if SetTimer(Some(hwnd), TIMER_ID, TIMER_INTERVAL_MS, None) == 0 {
+            restore_snapshot(&shared);
+            if let Ok(mut slot) = PENDING.lock() {
+                *slot = None;
+            }
+            destroy_window_and_shared(hwnd);
+            let _ = ready.send(Err(
+                "Could not start the reliable paste restoration timer".to_string()
+            ));
+            return;
+        }
         let _ = ready.send(Ok(()));
 
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-            let _ = DispatchMessageW(&msg);
+        loop {
+            let message = GetMessageW(&mut msg, None, 0, 0).0;
+            if message > 0 {
+                let _ = DispatchMessageW(&msg);
+            } else if message == 0 && !shared.transaction.is_completed() {
+                // A premature WM_QUIT must not restore underneath a chord
+                // the target has not read yet. Keep servicing receipts and
+                // the timer, but prohibit any remaining input/auto-submit.
+                shared.transaction.cancel();
+            } else {
+                break;
+            }
+        }
+
+        if !shared.transaction.is_completed() {
+            // An unexpected message-pump shutdown must still release its
+            // snapshot and wake the finishing pipeline.
+            shared.transaction.cancel();
+            let sequence = *shared.sequence.lock().unwrap();
+            let ownership_lost = shared
+                .state
+                .lock()
+                .map(|state| state.ownership_lost)
+                .unwrap_or(true);
+            if !ownership_lost && GetClipboardSequenceNumber() == sequence {
+                settle_clipboard(&shared);
+            }
+            shared.transaction.complete(Err(
+                "Reliable paste message loop ended before restoration".to_string(),
+            ));
+            if let Ok(mut slot) = PENDING.lock() {
+                if slot
+                    .as_ref()
+                    .is_some_and(|pending| Arc::ptr_eq(pending, &shared))
+                {
+                    *slot = None;
+                }
+            }
         }
 
         let _ = KillTimer(Some(hwnd), TIMER_ID);
@@ -575,9 +638,8 @@ pub(super) fn run(
     app_handle: &tauri::AppHandle,
     paste_method: &PasteMethod,
     enigo: &mut enigo::Enigo,
-    auto_submit: bool,
-    auto_submit_key: AutoSubmitKey,
-    clipboard_handling: ClipboardHandling,
+    options: PasteOptions,
+    transaction: Arc<PasteTransaction>,
 ) -> Result<(), String> {
     let shared = Arc::new(WinTxShared {
         state: Mutex::new(TxState::new()),
@@ -586,14 +648,18 @@ pub(super) fn run(
         saved_bitmap: Mutex::new(None),
         sequence: Mutex::new(0),
         app_handle: app_handle.clone(),
-        auto_submit,
-        auto_submit_key,
-        preserve_transcript: clipboard_handling == ClipboardHandling::CopyToClipboard,
+        auto_submit: options.auto_submit,
+        auto_submit_key: options.auto_submit_key,
+        preserve_transcript: options.clipboard_handling == ClipboardHandling::CopyToClipboard,
+        transaction,
     });
 
     let (ready_tx, ready_rx) = std::sync::mpsc::channel();
     let shared_for_pump = shared.clone();
-    thread::spawn(move || pump_thread(shared_for_pump, ready_tx));
+    thread::Builder::new()
+        .name("paste-clipboard".to_string())
+        .spawn(move || pump_thread(shared_for_pump, ready_tx))
+        .map_err(|error| format!("Could not start reliable paste worker: {error}"))?;
 
     // Wait until the transcript is actually published (or the worker reports
     // why it could not) before injecting the chord.
@@ -606,7 +672,19 @@ pub(super) fn run(
 
     // Mark injection *before* sending: enigo holds the chord for ~100ms and a
     // fast target may legitimately read while the chord is still held.
-    shared.state.lock().unwrap().injected_at = Some(Instant::now());
+    let should_inject = {
+        let mut state = shared.state.lock().unwrap();
+        shared
+            .transaction
+            .begin_injection(&mut state, Instant::now())
+    };
+    if !should_inject {
+        return Ok(());
+    }
+    if shared.transaction.is_cancelled() {
+        shared.state.lock().unwrap().injection_failed = true;
+        return Ok(());
+    }
     match send_chord(enigo, paste_method) {
         Ok(()) => {
             info!("[reliable-paste] paste chord sent ({paste_method:?})");
