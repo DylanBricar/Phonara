@@ -37,6 +37,19 @@ pub struct CliArgs {
     #[arg(long)]
     pub list_devices: bool,
 
+    #[arg(
+        long,
+        help = "Print microphone identities, mute and wireless diagnostics without recording"
+    )]
+    pub audio_diagnostics: bool,
+
+    #[arg(
+        long,
+        value_name = "ID",
+        help = "Probe raw input and the production recorder for 1.5 seconds each, without saving or transcribing audio"
+    )]
+    pub probe_microphone: Option<String>,
+
     #[arg(long)]
     pub list_models: bool,
 

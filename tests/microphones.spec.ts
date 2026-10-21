@@ -42,6 +42,7 @@ async function mockMicrophones(page: Page) {
       const saved = sessionStorage.getItem("test-microphone-priority");
       let priority: MicrophonePreference[] = saved ? JSON.parse(saved) : [];
       let status: MicrophoneStatus = {
+        unavailable: [],
         revision: 1,
         devices,
         active: null,
@@ -73,15 +74,20 @@ async function mockMicrophones(page: Page) {
       };
       const choose = () =>
         priority.flatMap((preference) => {
-          const matches = status.devices.filter((device) =>
-            preference.id === null
-              ? device.name === preference.name
-              : device.id === preference.id,
+          const matches = status.devices.filter(
+            (device) =>
+              !status.unavailable.some((item) => item.id === device.id) &&
+              (preference.id === null
+                ? device.name === preference.name
+                : device.id === preference.id),
           );
           return matches.length === 1 ? matches : [];
         })[0] ??
-        status.devices.find((device) => device.is_default) ??
-        status.devices[0] ??
+        status.devices.find(
+          (device) =>
+            device.is_default &&
+            !status.unavailable.some((item) => item.id === device.id),
+        ) ??
         null;
       status.next = choose();
       window.microphoneHarness = {
@@ -643,4 +649,64 @@ test("new devices are offered without promotion and identical names stay disting
       ),
     )
     .toBe(1);
+});
+
+test("explains mute and wireless fallback while keeping the preferred identity", async ({
+  page,
+}) => {
+  await add(page, "headset-usb");
+  await add(page, "studio-usb");
+  for (const reason of ["muted", "wireless_unreachable"] as const) {
+    await page.evaluate(
+      (reason) =>
+        window.microphoneHarness.patch({
+          unavailable: [{ id: "headset-usb", reason }],
+        }),
+      reason,
+    );
+    await expect(editor(page).getByRole("status")).toContainText(
+      "Next dictation: Studio microphone",
+    );
+    await expect(editor(page).getByRole("listitem").first()).toContainText(
+      reason === "muted" ? "Microphone muted" : "Wireless headset unreachable",
+    );
+    await expect
+      .poll(() => orderedIds(page))
+      .toEqual(["headset-usb", "studio-usb"]);
+    await page.evaluate(() =>
+      window.microphoneHarness.patch({ unavailable: [] }),
+    );
+    await expect(editor(page).getByRole("status")).toContainText(
+      "Next dictation: Headset",
+    );
+  }
+});
+
+test("repairs a changed Windows endpoint identity only through explicit reconnection", async ({
+  page,
+}) => {
+  await add(page, "headset-usb");
+  await page.evaluate(() =>
+    window.microphoneHarness.patch({
+      devices: [
+        {
+          id: "headset-reenumerated",
+          name: "Headset (CORSAIR VIRTUOSO XT)",
+          is_default: false,
+        },
+        { id: "builtin", name: "Built-in microphone", is_default: true },
+      ],
+    }),
+  );
+  await expect(editor(page).getByRole("listitem").first()).toContainText(
+    "Disconnected",
+  );
+  await expect.poll(() => orderedIds(page)).toEqual(["headset-usb"]);
+  await editor(page)
+    .getByRole("button", { name: "Reconnect the detected microphone" })
+    .click();
+  await expect.poll(() => orderedIds(page)).toEqual(["headset-reenumerated"]);
+  await expect(editor(page).getByRole("status")).toContainText(
+    "Next dictation: Headset",
+  );
 });

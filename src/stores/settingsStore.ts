@@ -11,6 +11,7 @@ import { settingUpdaters } from "./settingUpdaters";
 import type { Settings, SettingsStore } from "./settingsStoreTypes";
 import { asRuntimeSettings } from "./runtimeSettings";
 import { updateTranscribeAccelerationAtomically } from "./transcribeAccelerationUpdate";
+import { updateSettingOptimistically } from "./settingPersistence";
 import { isMicrophonePriority } from "../lib/microphonePreferences";
 
 const DEFAULT_AUDIO_DEVICE: AudioDevice = {
@@ -146,33 +147,17 @@ export const useSettingsStore = create<SettingsStore>()(
       key: K,
       value: Settings[K],
     ) => {
-      const { settings, setUpdating } = get();
-      const updateKey = String(key);
-      const originalValue = settings?.[key];
-
-      setUpdating(updateKey, true);
-
-      try {
-        set((state) => ({
-          settings: state.settings ? { ...state.settings, [key]: value } : null,
-        }));
-
-        const updater = settingUpdaters[key];
-        if (updater) {
-          await updater(value);
-        }
-      } catch (error) {
-        // Roll back only this key off the *current* state, so an unrelated key
-        // that changed successfully in the meantime isn't clobbered.
-        set((state) => ({
-          settings: state.settings
-            ? { ...state.settings, [key]: originalValue }
-            : null,
-        }));
-        console.error(`Failed to update setting "${updateKey}":`, error);
-      } finally {
-        setUpdating(updateKey, false);
-      }
+      const { settings, setUpdating, isUpdatingKey } = get();
+      await updateSettingOptimistically({
+        settings,
+        key,
+        value,
+        updateSettings: (updater) =>
+          set((state) => ({ settings: updater(state.settings) })),
+        setUpdating,
+        isUpdating: isUpdatingKey,
+        persist: async (nextValue) => settingUpdaters[key]?.(nextValue),
+      });
     },
 
     updateTranscribeAcceleration: async (accelerator, gpuDevice) => {

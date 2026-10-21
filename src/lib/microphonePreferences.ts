@@ -29,6 +29,28 @@ export function findPreferredDevice(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+/** Offer a user-confirmed repair when Windows has assigned a new endpoint ID. */
+export function findReplacementMicrophone(
+  preference: MicrophonePreference,
+  devices: MicrophoneDevice[],
+): MicrophoneDevice | undefined {
+  if (
+    preference.id === null ||
+    devices.some((device) => device.id === preference.id)
+  )
+    return undefined;
+  // WASAPI now includes the hardware suffix in its display name. An old short
+  // name can still offer this explicit repair, without silently rebinding an ID.
+  const matches = devices.filter(
+    (device) =>
+      device.name === preference.name ||
+      (preference.name.length > 0 &&
+        device.name.startsWith(`${preference.name} (`) &&
+        device.name.endsWith(")")),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 /** Resolving a legacy name can collide with an existing ID. Keep its first rank. */
 export function resolveMicrophonePriority(
   priority: MicrophonePreference[],

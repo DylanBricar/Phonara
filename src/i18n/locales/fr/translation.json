@@ -351,7 +351,10 @@
           "deviceIdentity": "{{name}} ({{id}})",
           "defaultSuffix": " (défaut système)",
           "deviceError": "Un microphone n'a pas pu être utilisé ou vérifié. Consultez le micro indiqué ci-dessus et vérifiez vos branchements. Vos priorités sont conservées.",
-          "observationError": "L'affichage ne peut pas suivre automatiquement les changements de micro. Utilisez le bouton d'actualisation ou rouvrez cet onglet."
+          "observationError": "L'affichage ne peut pas suivre automatiquement les changements de micro. Utilisez le bouton d'actualisation ou rouvrez cet onglet.",
+          "muted": "Micro muet - utilisation du micro suivant",
+          "wirelessUnreachable": "Casque sans fil injoignable - utilisation du micro suivant",
+          "reconnect": "Relier le microphone détecté"
         }
       },
       "channel": {

@@ -1,6 +1,6 @@
 [package]
 name = "phonara"
-version = "0.9.1"
+version = "0.9.6"
 description = "Phonara"
 authors = ["Dylan Bricar"]
 edition = "2021"
@@ -38,7 +38,7 @@ tauri = { version = "2.11.5", features = [
   'image-png',
 ] }
 tauri-plugin-log = "2.7.1"
-tauri-plugin-opener = "2.5.2"
+tauri-plugin-opener = "=2.5.5"
 tauri-plugin-store = "2.4.1"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-clipboard-manager = "2.3.2"
@@ -49,7 +49,10 @@ tauri-plugin-fs = "~2.4.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tempfile = "3"
-cpal = "0.17"
+# Share the recorder's host and stable identities (including PulseAudio on Linux).
+cpal = { package = "handy-cpal", version = "=0.18.2" }
+handy-recorder = "=0.1.0"
+libc = "0.2"
 anyhow = "1.0.95"
 rubato = "0.16.2"
 hound = "3.5.1"
@@ -80,7 +83,7 @@ sha2 = "0.10"
 # transcribe-rs is now ONNX-only (Parakeet, Moonshine, SenseVoice, GigaAM,
 # Canary, Cohere). Per-platform backend features are added in the target tables.
 transcribe-rs = { version = "0.3.8", features = ["onnx"] }
-transcribe-cpp = { version = "0.2.0", default-features = false }
+transcribe-cpp = { version = "=0.4.0", default-features = false, features = ["serde"] }
 handy-keys = "0.3.4"
 ferrous-opencc = "0.2.3"
 clap = { version = "4", features = ["derive"] }
@@ -94,13 +97,15 @@ hf-hub = { git = "https://github.com/cjpais/hf-hub", branch = "cancellable-downl
 
 [target.'cfg(unix)'.dependencies]
 signal-hook = "0.3"
-libc = "0.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-global-shortcut = "2.3.1"
-tauri-plugin-single-instance = "2.3.2"
-tauri-plugin-updater = "~2.11.0"
+tauri-plugin-single-instance = "=2.4.4"
+# Published Windows updates are signed NSIS executables. Disable legacy ZIP
+# extraction; it is unused and pulls in vulnerable zip 4.x. Linux publishes raw
+# AppImages, while macOS tar extraction is available without this feature.
+tauri-plugin-updater = { version = "~2.11.0", default-features = false, features = ["rustls-tls", "system-proxy"] }
 
 [target.'cfg(windows)'.dependencies]
 hidapi = { version = "=2.6.7", default-features = false, features = ["windows-native"] }
@@ -140,19 +145,19 @@ winreg = "0.55"
 # signtool verify entirely. CI pins -DGGML_NATIVE=OFF (see build.yml) so the
 # static build targets a portable ARM baseline, not the build runner's CPU.
 [target.'cfg(all(windows, target_arch = "x86_64"))'.dependencies]
-transcribe-cpp = { version = "0.2.0", default-features = false, features = [
+transcribe-cpp = { version = "=0.4.0", default-features = false, features = [
   "dynamic-backends",
   "vulkan",
 ] }
 
 [target.'cfg(all(windows, target_arch = "aarch64"))'.dependencies]
-transcribe-cpp = { version = "0.2.0", default-features = false }
+transcribe-cpp = { version = "=0.4.0", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"
 core-graphics = "0.25"
 tauri-nspanel = { git = "https://github.com/ahkohd/tauri-nspanel", branch = "v2.1" }
-transcribe-cpp = { version = "0.2.0", default-features = false, features = ["metal"] }
+transcribe-cpp = { version = "=0.4.0", default-features = false, features = ["metal"] }
 # Used by the receipt-sequenced ("reliable") paste path for lazy NSPasteboard
 # promises. Versions track what Tauri already pulls in.
 objc2 = "0.6"
@@ -162,7 +167,8 @@ objc2-service-management = "0.3.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
-transcribe-cpp = { version = "0.2.0", default-features = false, features = [
+cpal = { package = "handy-cpal", version = "=0.18.2", features = ["pulseaudio"] }
+transcribe-cpp = { version = "=0.4.0", default-features = false, features = [
   "dynamic-backends",
   "vulkan",
 ] }
@@ -184,8 +190,17 @@ transcribe-cpp = { version = "0.2.0", default-features = false, features = [
 # that, but Nix's importCargoLock vendors both to the same `tao-macros-0.1.3`
 # dir and fails with a symlink collision. Unifying the source removes the dup.
 [patch.crates-io]
+# Stable Tauri 2 plugins still use the retired zbus 5 split crates. Keep their
+# published platform code and apply the minimal zbus 6 port locally; provenance
+# and removal criteria are recorded in vendor/README.md.
+tauri-plugin-opener = { path = "vendor/tauri-plugin-opener" }
+tauri-plugin-single-instance = { path = "vendor/tauri-plugin-single-instance" }
 tao = { git = "https://github.com/cjpais/tao", rev = "c3bee28c1d446d95f08c95c3b6f8d4bde052b876" }
 tao-macros = { git = "https://github.com/cjpais/tao", rev = "c3bee28c1d446d95f08c95c3b6f8d4bde052b876" }
+
+[dev-dependencies]
+handy-recorder = { version = "=0.1.0", features = ["test-backend"] }
+
 [profile.release]
 lto = "thin"
 opt-level = 3

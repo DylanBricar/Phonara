@@ -13,7 +13,7 @@ pub(crate) fn refresh() {
     windows::refresh();
 }
 
-pub(super) fn unavailable_endpoints() -> std::collections::HashSet<String> {
+pub(crate) fn unavailable_endpoints() -> std::collections::HashSet<String> {
     #[cfg(windows)]
     {
         windows::unavailable_endpoints()
@@ -21,5 +21,16 @@ pub(super) fn unavailable_endpoints() -> std::collections::HashSet<String> {
     #[cfg(not(windows))]
     {
         std::collections::HashSet::new()
+    }
+}
+
+pub(crate) fn diagnostics() -> serde_json::Value {
+    #[cfg(windows)]
+    {
+        windows::diagnostics()
+    }
+    #[cfg(not(windows))]
+    {
+        serde_json::json!({"supported": false})
     }
 }

@@ -17,6 +17,7 @@ pub mod tauri_impl;
 use log::{debug, error, info, warn};
 use serde::Serialize;
 use specta::Type;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -59,6 +60,53 @@ pub fn init_shortcuts(app: &AppHandle) {
     }
 }
 
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+#[derive(Clone, PartialEq, Eq)]
+#[cfg(not(target_os = "linux"))]
+struct CancelRegistration {
+    implementation: KeyboardImplementation,
+    binding: String,
+}
+
+#[cfg(not(target_os = "linux"))]
+static CANCEL_REGISTERED: std::sync::Mutex<Option<CancelRegistration>> =
+    std::sync::Mutex::new(None);
+
+/// Reconcile the actual registration with the latest desired state. Restore the
+/// previous registration if replacing it fails, preserving a working cancel key.
+#[cfg(any(not(target_os = "linux"), test))]
+fn reconcile_registration<T: Clone + PartialEq>(
+    registered: &mut Option<T>,
+    desired: Option<T>,
+    mut unregister: impl FnMut(&T) -> Result<(), String>,
+    mut register: impl FnMut(&T) -> Result<(), String>,
+) -> Result<(), String> {
+    if *registered == desired {
+        return Ok(());
+    }
+    let previous = registered.clone();
+    if let Some(previous) = previous.as_ref() {
+        unregister(previous)?;
+        *registered = None;
+    }
+    if let Some(next) = desired {
+        if let Err(error) = register(&next) {
+            if let Some(previous) = previous {
+                if let Err(restore_error) = register(&previous) {
+                    return Err(format!(
+                        "{error}; restoring the previous cancel shortcut also failed: {restore_error}"
+                    ));
+                }
+                *registered = Some(previous);
+            }
+            return Err(error);
+        }
+        *registered = Some(next);
+    }
+    Ok(())
+}
+
 /// Register the cancel shortcut (called when recording starts)
 pub fn register_cancel_shortcut(app: &AppHandle) {
     // A confirmed cancel latches CANCEL_SUPPRESSED to true to absorb Escape spam;
@@ -69,21 +117,71 @@ pub fn register_cancel_shortcut(app: &AppHandle) {
     // Track recording lifecycle independently of the current implementation so
     // switching implementations mid-recording cannot leave stale fallback state.
     crate::secure_input::register_cancel_fallback(app);
-    let settings = get_settings(app);
-    match settings.keyboard_implementation {
-        KeyboardImplementation::Tauri => tauri_impl::register_cancel_shortcut(app),
-        KeyboardImplementation::PhonaraKeys => phonara_keys::register_cancel_shortcut(app),
-    }
+    CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+    schedule_cancel_reconcile(app);
 }
 
 /// Unregister the cancel shortcut (called when recording stops)
 pub fn unregister_cancel_shortcut(app: &AppHandle) {
     crate::secure_input::unregister_cancel_fallback(app);
 
-    let settings = get_settings(app);
-    match settings.keyboard_implementation {
-        KeyboardImplementation::Tauri => tauri_impl::unregister_cancel_shortcut(app),
-        KeyboardImplementation::PhonaraKeys => phonara_keys::unregister_cancel_shortcut(app),
+    CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+    schedule_cancel_reconcile(app);
+}
+
+fn schedule_cancel_reconcile(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    let _ = app;
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let mut registered = CANCEL_REGISTERED.lock().unwrap_or_else(|e| e.into_inner());
+            let settings = get_settings(&app);
+            let desired = if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+                settings
+                    .bindings
+                    .get("cancel")
+                    .map(|binding| CancelRegistration {
+                        implementation: settings.keyboard_implementation,
+                        binding: binding.current_binding.clone(),
+                    })
+            } else {
+                None
+            };
+            let apply = |registration: &CancelRegistration, enable: bool| {
+                let binding = ShortcutBinding {
+                    id: "cancel".to_string(),
+                    name: String::new(),
+                    description: String::new(),
+                    default_binding: String::new(),
+                    current_binding: registration.binding.clone(),
+                };
+                match (registration.implementation, enable) {
+                    (KeyboardImplementation::Tauri, true) => {
+                        tauri_impl::register_shortcut(&app, binding)
+                    }
+                    (KeyboardImplementation::Tauri, false) => {
+                        tauri_impl::unregister_shortcut(&app, binding)
+                    }
+                    (KeyboardImplementation::PhonaraKeys, true) => {
+                        phonara_keys::register_shortcut(&app, binding)
+                    }
+                    (KeyboardImplementation::PhonaraKeys, false) => {
+                        phonara_keys::unregister_shortcut(&app, binding)
+                    }
+                }
+            };
+            if let Err(error) = reconcile_registration(
+                &mut registered,
+                desired,
+                |registration| apply(registration, false),
+                |registration| apply(registration, true),
+            ) {
+                error!("Failed to reconcile cancel shortcut: {}", error);
+            }
+        });
     }
 }
 
@@ -160,18 +258,19 @@ pub fn change_binding(
     // If this is the cancel binding, just update the settings and return
     // It's managed dynamically, so we don't register/unregister here
     if id == "cancel" {
-        if let Some(mut b) = settings.bindings.get(&id).cloned() {
-            b.current_binding = binding;
-            settings::update_settings(&app, |settings| {
-                settings.bindings.insert(id, b.clone());
-            });
-            crate::secure_input::reconcile_fallback(&app);
-            return Ok(BindingResponse {
-                success: true,
-                binding: Some(b),
-                error: None,
-            });
-        }
+        validate_shortcut_for_implementation(&binding, settings.keyboard_implementation)?;
+        let mut updated_binding = binding_to_modify;
+        updated_binding.current_binding = binding;
+        settings::update_settings(&app, |settings| {
+            settings.bindings.insert(id, updated_binding.clone());
+        });
+        crate::secure_input::reconcile_fallback(&app);
+        schedule_cancel_reconcile(&app);
+        return Ok(BindingResponse {
+            success: true,
+            binding: Some(updated_binding),
+            error: None,
+        });
     }
 
     // Unregister the existing binding
@@ -349,6 +448,7 @@ pub fn change_keyboard_implementation_setting(
     {
         // Shortcuts already registered during init.
         crate::secure_input::reconcile_fallback(&app);
+        schedule_cancel_reconcile(&app);
         return Ok(ImplementationChangeResult {
             success: true,
             reset_bindings: vec![],
@@ -358,6 +458,7 @@ pub fn change_keyboard_implementation_setting(
     // Register all shortcuts with new implementation, resetting invalid ones
     let reset_bindings = register_all_shortcuts_for_implementation(&app, new_impl);
     crate::secure_input::reconcile_fallback(&app);
+    schedule_cancel_reconcile(&app);
 
     // Emit event to notify frontend of the change
     let _ = app.emit(
@@ -1503,8 +1604,123 @@ mod shortcut_key_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::apply_transcribe_acceleration_settings;
+    use super::{apply_transcribe_acceleration_settings, reconcile_registration};
     use crate::settings::{get_default_settings, TranscribeAcceleratorSetting};
+
+    #[test]
+    fn late_start_task_cannot_register_after_the_latest_stop_request() {
+        let mut registered = None;
+        let requested = std::sync::atomic::AtomicBool::new(false);
+        requested.store(true, std::sync::atomic::Ordering::SeqCst);
+        requested.store(false, std::sync::atomic::Ordering::SeqCst);
+        for _ in 0..2 {
+            let desired = requested
+                .load(std::sync::atomic::Ordering::SeqCst)
+                .then_some("escape");
+            reconcile_registration(
+                &mut registered,
+                desired,
+                |_| panic!("nothing registered"),
+                |_| panic!("recording already stopped"),
+            )
+            .unwrap();
+        }
+        assert_eq!(registered, None);
+    }
+
+    #[test]
+    fn cancel_reconcile_removes_the_original_backend_and_binding() {
+        let mut registered = Some(("phonara_keys", "escape"));
+        let mut removed = Vec::new();
+        let mut added = Vec::new();
+        reconcile_registration(
+            &mut registered,
+            Some(("tauri", "ctrl+escape")),
+            |key| {
+                removed.push(*key);
+                Ok(())
+            },
+            |key| {
+                added.push(*key);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(removed, [("phonara_keys", "escape")]);
+        assert_eq!(added, [("tauri", "ctrl+escape")]);
+        reconcile_registration(
+            &mut registered,
+            None,
+            |key| {
+                removed.push(*key);
+                Ok(())
+            },
+            |_| panic!("stop must not register"),
+        )
+        .unwrap();
+        assert_eq!(removed[1], ("tauri", "ctrl+escape"));
+        assert_eq!(registered, None);
+    }
+
+    #[test]
+    fn failed_cancel_unregister_keeps_the_previous_identity_for_retry() {
+        let mut registered = Some("escape");
+        let result = reconcile_registration(
+            &mut registered,
+            None,
+            |_| Err("backend unavailable".into()),
+            |_| Ok(()),
+        );
+        assert!(result.is_err());
+        assert_eq!(registered, Some("escape"));
+        reconcile_registration(&mut registered, None, |_| Ok(()), |_| Ok(())).unwrap();
+        assert_eq!(registered, None);
+    }
+
+    #[test]
+    fn failed_cancel_replacement_restores_the_previous_working_shortcut() {
+        let mut registered = Some("escape");
+        let mut removed = Vec::new();
+        let mut attempted = Vec::new();
+        let result = reconcile_registration(
+            &mut registered,
+            Some("ctrl+escape"),
+            |key| {
+                removed.push(*key);
+                Ok(())
+            },
+            |key| {
+                attempted.push(*key);
+                if *key == "ctrl+escape" {
+                    Err("shortcut already registered by another application".into())
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(removed, ["escape"]);
+        assert_eq!(attempted, ["ctrl+escape", "escape"]);
+        assert_eq!(registered, Some("escape"));
+        assert_eq!(
+            result.unwrap_err(),
+            "shortcut already registered by another application"
+        );
+    }
+
+    #[test]
+    fn failed_cancel_rollback_does_not_claim_the_old_shortcut_is_registered() {
+        let mut registered = Some("escape");
+        let result = reconcile_registration(
+            &mut registered,
+            Some("ctrl+escape"),
+            |_| Ok(()),
+            |_| Err("backend unavailable".into()),
+        );
+        assert_eq!(registered, None);
+        assert!(result
+            .unwrap_err()
+            .contains("restoring the previous cancel shortcut also failed"));
+    }
 
     #[test]
     fn transcribe_acceleration_normalizes_non_gpu_devices() {

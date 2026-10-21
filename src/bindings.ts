@@ -1340,7 +1340,12 @@ export type LLMPrompt = { id: string; name: string; prompt: string }
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error"
 export type MicrophoneDevice = { id: string; name: string; is_default: boolean }
 export type MicrophonePreference = { id: string | null; name: string }
-export type MicrophoneStatus = { revision: number; devices: MicrophoneDevice[]; active: MicrophoneDevice | null; next: MicrophoneDevice | null; is_recording: boolean; error: string | null }
+export type MicrophoneStatus = { revision: number; devices: MicrophoneDevice[]; active: MicrophoneDevice | null; next: MicrophoneDevice | null; is_recording: boolean; error: string | null;
+/**
+ * OS-present endpoints skipped by the selection policy, with a visible reason.
+ */
+unavailable: UnavailableMicrophone[] }
+export type MicrophoneUnavailableReason = "muted" | "wireless_unreachable"
 export type ModelInfo = { id: string; name: string; description: string; filename: string; source: ModelSource; size_mb: number; is_downloaded: boolean; is_downloading: boolean; partial_size: number; is_directory: boolean; engine_type: EngineType; accuracy_score: number; speed_score: number; supports_translation: boolean; is_recommended: boolean; supported_languages: string[]; supports_language_selection: boolean; is_custom: boolean; supports_streaming: boolean; supports_language_detection: boolean }
 export type ModelLoadStatus = { is_loaded: boolean; current_model: string | null }
 /**
@@ -1473,6 +1478,7 @@ export type TextReplacement = { find: string; replace: string; case_sensitive: b
 export type ThemeMode = "light" | "dark" | "system"
 export type TranscribeAcceleratorSetting = "auto" | "cpu" | "gpu"
 export type TypingTool = "auto" | "wtype" | "kwtype" | "dotool" | "ydotool" | "xdotool"
+export type UnavailableMicrophone = { id: string; reason: MicrophoneUnavailableReason }
 export type VadBackend = "silero" | "earshot"
 export type WindowsMicrophonePermissionStatus = { supported: boolean; overall_access: PermissionAccess; device_access: PermissionAccess; app_access: PermissionAccess; desktop_app_access: PermissionAccess }
 

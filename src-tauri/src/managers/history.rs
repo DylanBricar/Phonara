@@ -6,7 +6,7 @@ use rusqlite_migration::{Error as MigrationError, MigrationDefinitionError, Migr
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter};
 use tauri_specta::Event;
@@ -70,7 +70,127 @@ pub struct HistoryEntry {
 pub struct HistoryManager {
     app_handle: AppHandle,
     recordings_dir: PathBuf,
+    recording_roots: Mutex<RecordingRoots>,
     conn: Mutex<Connection>,
+}
+
+/// Explicit recording locations survive preference changes without moving WAVs
+/// or changing the history schema. The registry is independent of frontend types.
+struct RecordingRoots {
+    path: PathBuf,
+    roots: Vec<PathBuf>,
+    load_error: Option<String>,
+}
+
+impl RecordingRoots {
+    fn load(path: PathBuf, initial_roots: &[PathBuf]) -> Self {
+        let (mut roots, load_error) = match fs::read(&path) {
+            Ok(bytes) => match serde_json::from_slice::<Vec<PathBuf>>(&bytes) {
+                Ok(roots) => (roots, None),
+                Err(error) => (Vec::new(), Some(error.to_string())),
+            },
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (Vec::new(), None),
+            Err(error) => (Vec::new(), Some(error.to_string())),
+        };
+        roots.retain(|root| root.is_absolute());
+        for root in initial_roots {
+            if root.is_absolute() && !roots.contains(root) {
+                roots.push(root.clone());
+            }
+        }
+        if let Some(error) = &load_error {
+            warn!("Cannot read recording directory registry; preserving it unchanged: {error}");
+        }
+        Self {
+            path,
+            roots,
+            load_error,
+        }
+    }
+
+    fn remember(&mut self, directories: &[PathBuf]) -> Result<()> {
+        if let Some(error) = &self.load_error {
+            return Err(anyhow!(
+                "Cannot update recording directory registry: {error}"
+            ));
+        }
+        let mut roots = self.roots.clone();
+        for directory in directories {
+            if !directory.is_absolute() {
+                return Err(anyhow!("Recording directory must be absolute"));
+            }
+            if !roots.contains(directory) {
+                roots.push(directory.clone());
+            }
+        }
+        let parent = self
+            .path
+            .parent()
+            .ok_or_else(|| anyhow!("Invalid registry path"))?;
+        let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+        serde_json::to_writer(&mut temporary, &roots)?;
+        temporary.as_file().sync_all()?;
+        temporary.persist(&self.path).map_err(|error| error.error)?;
+        self.roots = roots;
+        Ok(())
+    }
+}
+
+fn validate_recording_filename(file_name: &str) -> Result<()> {
+    if file_name.is_empty()
+        || file_name == "."
+        || file_name == ".."
+        || file_name.contains(['/', '\\', ':'])
+        || file_name.chars().any(char::is_control)
+        || file_name.ends_with('.')
+        || file_name.ends_with(' ')
+        || Path::new(file_name).components().count() != 1
+        || !Path::new(file_name)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("wav"))
+    {
+        return Err(anyhow!("Invalid recording file name"));
+    }
+    Ok(())
+}
+
+fn find_recording_in_roots(roots: &[PathBuf], file_name: &str) -> Result<Option<PathBuf>> {
+    validate_recording_filename(file_name)?;
+    let mut found = None;
+    for root in roots {
+        let root = match root.canonicalize() {
+            Ok(root) => root,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                debug!("Recording directory is unavailable: {error}");
+                continue;
+            }
+        };
+        let candidate = root.join(file_name);
+        let metadata = match fs::symlink_metadata(&candidate) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error.into()),
+        };
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(anyhow!("Recording must be a regular file"));
+        }
+        let canonical = candidate.canonicalize()?;
+        if canonical.parent() != Some(root.as_path()) {
+            return Err(anyhow!("Recording path escapes its directory"));
+        }
+        if found
+            .as_ref()
+            .is_some_and(|previous| previous != &canonical)
+        {
+            return Err(anyhow!(
+                "Recording filename exists in more than one directory"
+            ));
+        }
+        found = Some(canonical);
+    }
+    Ok(found)
 }
 
 impl HistoryManager {
@@ -85,6 +205,17 @@ impl HistoryManager {
             fs::create_dir_all(&recordings_dir)?;
             debug!("Created recordings directory: {:?}", recordings_dir);
         }
+        let recordings_dir = recordings_dir.canonicalize()?;
+        let custom = crate::settings::get_settings(app_handle)
+            .custom_recordings_directory
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute());
+        let mut initial_roots = vec![recordings_dir.clone()];
+        if let Some(custom) = custom {
+            initial_roots.push(custom.canonicalize().unwrap_or(custom));
+        }
+        let recording_roots =
+            RecordingRoots::load(app_data_dir.join("recording-roots.json"), &initial_roots);
 
         // Open the connection once and run migrations on it
         let conn = Self::init_database(&db_path)?;
@@ -92,6 +223,7 @@ impl HistoryManager {
         let manager = Self {
             app_handle: app_handle.clone(),
             recordings_dir,
+            recording_roots: Mutex::new(recording_roots),
             conn: Mutex::new(conn),
         };
 
@@ -284,12 +416,62 @@ impl HistoryManager {
         })
     }
 
-    pub fn recordings_dir(&self) -> &std::path::Path {
-        &self.recordings_dir
+    pub fn recordings_dir(&self) -> PathBuf {
+        let custom = crate::settings::get_settings(&self.app_handle)
+            .custom_recordings_directory
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute());
+        let directory = custom
+            .map(|path| path.canonicalize().unwrap_or(path))
+            .unwrap_or_else(|| self.recordings_dir.clone());
+        let mut registry = self
+            .recording_roots
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        // This runs only once for a new imported setting, never on repeated reads.
+        if !registry.roots.contains(&directory) {
+            if let Err(error) = registry.remember(std::slice::from_ref(&directory)) {
+                warn!("Cannot persist the recording directory; retaining it for this session: {error}");
+                registry.roots.push(directory.clone());
+            }
+        }
+        directory
+    }
+
+    /// Validate and remember a newly selected location before changing settings.
+    pub fn prepare_recordings_directory(&self, directory: Option<&Path>) -> Result<PathBuf> {
+        let directory = match directory {
+            Some(path) => path.canonicalize()?,
+            None => self.recordings_dir.clone(),
+        };
+        if !directory.is_dir() {
+            return Err(anyhow!("Recording directory does not exist"));
+        }
+        // A reversible probe catches read-only/full locations before saving the preference.
+        let probe = tempfile::Builder::new()
+            .prefix(".phonara-write-test-")
+            .tempfile_in(&directory)?;
+        drop(probe);
+        let previous = self.recordings_dir();
+        self.recording_roots
+            .lock()
+            .map_err(|_| anyhow!("Recording directory registry lock poisoned"))?
+            .remember(&[previous, directory.clone()])?;
+        Ok(directory)
+    }
+
+    fn known_recording_roots(&self) -> Vec<PathBuf> {
+        let _ = self.recordings_dir();
+        self.recording_roots
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .roots
+            .clone()
     }
 
     /// Save a new history entry to the database.
-    /// The WAV file should already have been written to the recordings directory.
+    /// Audio is normally saved first; a missing audio reference is allowed so
+    /// storage failures never discard an otherwise successful transcription.
     pub fn save_entry(
         &self,
         file_name: String,
@@ -298,6 +480,7 @@ impl HistoryManager {
         post_processed_text: Option<String>,
         post_process_prompt: Option<String>,
     ) -> Result<HistoryEntry> {
+        validate_recording_filename(&file_name)?;
         let timestamp = Utc::now().timestamp();
         let title = self.format_timestamp_title(timestamp);
 
@@ -429,9 +612,10 @@ impl HistoryManager {
             return Ok(0);
         }
 
+        let roots = self.known_recording_roots();
         let deleted_ids = {
             let conn = self.get_connection()?;
-            Self::delete_entries_and_files_with_conn(&conn, &self.recordings_dir, entries)?
+            Self::delete_entries_and_files_with_conn(&conn, &roots, entries)?
         };
 
         for id in &deleted_ids {
@@ -445,7 +629,7 @@ impl HistoryManager {
 
     fn delete_entries_and_files_with_conn(
         conn: &Connection,
-        recordings_dir: &std::path::Path,
+        recording_roots: &[PathBuf],
         entries: &[(i64, String)],
     ) -> Result<Vec<i64>> {
         let mut deleted_ids = Vec::new();
@@ -460,13 +644,16 @@ impl HistoryManager {
             }
 
             deleted_ids.push(*id);
-            let file_path = recordings_dir.join(file_name);
-            if file_path.exists() {
-                if let Err(e) = fs::remove_file(&file_path) {
-                    error!("Failed to delete WAV file {}: {}", file_name, e);
-                } else {
-                    debug!("Deleted old WAV file: {}", file_name);
+            match find_recording_in_roots(recording_roots, file_name) {
+                Ok(Some(file_path)) => {
+                    if let Err(e) = fs::remove_file(&file_path) {
+                        error!("Failed to delete WAV file {}: {}", file_name, e);
+                    } else {
+                        debug!("Deleted old WAV file: {}", file_name);
+                    }
                 }
+                Ok(None) => {}
+                Err(error) => warn!("Skipping unsafe or ambiguous recording deletion: {error}"),
             }
         }
 
@@ -677,25 +864,8 @@ impl HistoryManager {
     }
 
     pub fn get_audio_file_path(&self, file_name: &str) -> Result<PathBuf> {
-        // Reject path traversal components and absolute paths upfront
-        if file_name.contains("..") || std::path::Path::new(file_name).is_absolute() {
-            return Err(anyhow!("Invalid file name"));
-        }
-        let path = self.recordings_dir.join(file_name);
-        // If the file exists, verify the resolved path stays within recordings_dir
-        if path.exists() {
-            let canonical = path
-                .canonicalize()
-                .map_err(|e| anyhow!("Failed to resolve path: {}", e))?;
-            let canonical_dir = self
-                .recordings_dir
-                .canonicalize()
-                .map_err(|e| anyhow!("Failed to resolve recordings dir: {}", e))?;
-            if !canonical.starts_with(&canonical_dir) {
-                return Err(anyhow!("Path traversal detected"));
-            }
-        }
-        Ok(path)
+        find_recording_in_roots(&self.known_recording_roots(), file_name)?
+            .ok_or_else(|| anyhow!("Audio file not found"))
     }
 
     #[allow(dead_code)]
@@ -756,10 +926,8 @@ impl HistoryManager {
         };
 
         if let Some(ref file_name) = file_name_opt {
-            // Use recordings_dir directly to avoid path traversal issues
-            let file_path = self.recordings_dir.join(file_name);
-            if file_path.exists() {
-                if let Err(e) = fs::remove_file(&file_path) {
+            if let Ok(file_path) = self.get_audio_file_path(file_name) {
+                if let Err(e) = fs::remove_file(file_path) {
                     error!("Failed to delete audio file {}: {}", file_name, e);
                     // Continue with database deletion even if file deletion fails
                 }
@@ -894,9 +1062,12 @@ mod tests {
             (1, "phonara-100.wav".to_string()),
             (2, "phonara-200.wav".to_string()),
         ];
-        let deleted =
-            HistoryManager::delete_entries_and_files_with_conn(&conn, temp_dir.path(), &entries)
-                .expect("delete entries");
+        let deleted = HistoryManager::delete_entries_and_files_with_conn(
+            &conn,
+            &[temp_dir.path().to_path_buf()],
+            &entries,
+        )
+        .expect("delete entries");
 
         assert_eq!(deleted, vec![1, 2]);
         let remaining: i64 = conn
@@ -917,12 +1088,192 @@ mod tests {
 
         let deleted = HistoryManager::delete_entries_and_files_with_conn(
             &conn,
-            temp_dir.path(),
+            &[temp_dir.path().to_path_buf()],
             &[(1, "phonara-100.wav".to_string())],
         )
         .expect("delete entry");
 
         assert_eq!(deleted, vec![1]);
         assert!(!recording.exists());
+    }
+
+    #[test]
+    fn recording_roots_survive_directory_changes_and_restart_without_moving_audio() {
+        let directory = tempfile::tempdir().expect("create test directories");
+        let default = directory.path().join("default");
+        let first = directory.path().join("first");
+        let second = directory.path().join("second");
+        for path in [&default, &first, &second] {
+            fs::create_dir(path).expect("create recording root");
+        }
+        let default = default.canonicalize().expect("resolve default root");
+        let first = first.canonicalize().expect("resolve first root");
+        let second = second.canonicalize().expect("resolve second root");
+        let registry_path = directory.path().join("recording-roots.json");
+        let mut registry =
+            RecordingRoots::load(registry_path.clone(), std::slice::from_ref(&default));
+        fs::write(default.join("phonara-default.wav"), b"default audio")
+            .expect("write old default recording");
+
+        registry
+            .remember(std::slice::from_ref(&first))
+            .expect("select first root");
+        fs::write(first.join("phonara-first.wav"), b"first audio").expect("write first recording");
+        registry
+            .remember(std::slice::from_ref(&second))
+            .expect("select second root");
+        fs::write(second.join("phonara-second.wav"), b"second audio")
+            .expect("write second recording");
+        let reloaded = RecordingRoots::load(registry_path, &[default.clone(), second.clone()]);
+
+        for (root, name, audio) in [
+            (&default, "phonara-default.wav", b"default audio".as_slice()),
+            (&first, "phonara-first.wav", b"first audio".as_slice()),
+            (&second, "phonara-second.wav", b"second audio".as_slice()),
+        ] {
+            let found = find_recording_in_roots(&reloaded.roots, name)
+                .expect("resolve historical audio")
+                .expect("historical recording remains present");
+            assert_eq!(found, root.join(name));
+            assert_eq!(fs::read(found).expect("read preserved recording"), audio);
+        }
+        assert_eq!(
+            fs::read_dir(&first).expect("list first directory").count(),
+            1
+        );
+        assert_eq!(
+            fs::read_dir(&second)
+                .expect("list second directory")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn cleanup_finds_recordings_in_previous_directories() {
+        let directory = tempfile::tempdir().expect("create recording directory");
+        let previous = directory.path().join("previous");
+        let current = directory.path().join("current");
+        fs::create_dir(&previous).expect("create previous root");
+        fs::create_dir(&current).expect("create current root");
+        fs::write(previous.join("phonara-100.wav"), b"old recording")
+            .expect("write previous audio");
+        fs::write(current.join("phonara-200.wav"), b"current recording")
+            .expect("write current audio");
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "first", None);
+        insert_entry(&conn, 200, "second", None);
+
+        let deleted = HistoryManager::delete_entries_and_files_with_conn(
+            &conn,
+            &[previous.clone(), current.clone()],
+            &[(1, "phonara-100.wav".into()), (2, "phonara-200.wav".into())],
+        )
+        .expect("clean up both recording locations");
+
+        assert_eq!(deleted, vec![1, 2]);
+        assert!(!previous.join("phonara-100.wav").exists());
+        assert!(!current.join("phonara-200.wav").exists());
+    }
+
+    #[test]
+    fn recording_lookup_and_cleanup_reject_path_traversal() {
+        let directory = tempfile::tempdir().expect("create test directory");
+        let root = directory.path().join("recordings");
+        fs::create_dir(&root).expect("create recording root");
+        let outside = directory.path().join("outside.wav");
+        fs::write(&outside, b"unrelated audio").expect("write unrelated file");
+        for name in [
+            "",
+            ".",
+            "..",
+            "../outside.wav",
+            "..\\outside.wav",
+            "/outside.wav",
+            "C:\\outside.wav",
+            "recording.wav:stream",
+            "nested/recording.wav",
+            "secrets.txt",
+        ] {
+            assert!(
+                find_recording_in_roots(std::slice::from_ref(&root), name).is_err(),
+                "unsafe filename: {name}"
+            );
+        }
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "first", None);
+        HistoryManager::delete_entries_and_files_with_conn(
+            &conn,
+            &[root],
+            &[(1, "../outside.wav".into())],
+        )
+        .expect("remove unsafe history reference without deleting unrelated files");
+        assert_eq!(
+            fs::read(outside).expect("read unrelated file"),
+            b"unrelated audio"
+        );
+    }
+
+    #[test]
+    fn ambiguous_legacy_names_never_delete_an_arbitrary_recording() {
+        let first = tempfile::tempdir().expect("create first recording directory");
+        let second = tempfile::tempdir().expect("create second recording directory");
+        let name = "phonara-100.wav";
+        fs::write(first.path().join(name), b"first").expect("write first audio");
+        fs::write(second.path().join(name), b"second").expect("write second audio");
+        let roots = [first.path().to_path_buf(), second.path().to_path_buf()];
+        assert!(find_recording_in_roots(&roots, name).is_err());
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "first", None);
+
+        HistoryManager::delete_entries_and_files_with_conn(&conn, &roots, &[(1, name.into())])
+            .expect("remove ambiguous history reference without deleting either file");
+
+        assert_eq!(
+            fs::read(first.path().join(name)).expect("first audio remains"),
+            b"first"
+        );
+        assert_eq!(
+            fs::read(second.path().join(name)).expect("second audio remains"),
+            b"second"
+        );
+    }
+
+    #[test]
+    fn corrupted_recording_registry_is_preserved() {
+        let directory = tempfile::tempdir().expect("create recording directory");
+        let path = directory.path().join("recording-roots.json");
+        let corrupt = b"{broken registry";
+        fs::write(&path, corrupt).expect("write corrupt registry");
+        let mut registry = RecordingRoots::load(path.clone(), &[directory.path().to_path_buf()]);
+
+        assert!(registry.remember(&[]).is_err());
+        assert_eq!(fs::read(path).expect("read original registry"), corrupt);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recording_lookup_and_cleanup_never_follow_file_symlinks() {
+        let directory = tempfile::tempdir().expect("create test directory");
+        let root = directory.path().join("recordings");
+        fs::create_dir(&root).expect("create root");
+        let outside = directory.path().join("outside.wav");
+        fs::write(&outside, b"unrelated audio").expect("write unrelated file");
+        std::os::unix::fs::symlink(&outside, root.join("phonara-100.wav"))
+            .expect("create escaping symlink");
+        assert!(find_recording_in_roots(std::slice::from_ref(&root), "phonara-100.wav").is_err());
+        let conn = setup_conn();
+        insert_entry(&conn, 100, "first", None);
+
+        HistoryManager::delete_entries_and_files_with_conn(
+            &conn,
+            &[root],
+            &[(1, "phonara-100.wav".into())],
+        )
+        .expect("remove unsafe history reference");
+        assert_eq!(
+            fs::read(outside).expect("unrelated audio remains"),
+            b"unrelated audio"
+        );
     }
 }

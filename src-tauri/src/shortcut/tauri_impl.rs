@@ -7,8 +7,6 @@ use log::{debug, error, warn};
 use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-#[cfg(not(target_os = "linux"))]
-use crate::settings::get_settings;
 use crate::settings::{self, ShortcutBinding};
 
 use super::handler::handle_shortcut_event;
@@ -66,11 +64,12 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
     // Check for at least one non-modifier key
     let has_non_modifier = parts.iter().any(|part| !modifiers.contains(&part.as_str()));
 
-    if has_non_modifier {
-        Ok(())
-    } else {
-        Err("Tauri shortcuts must include a main key (letter, number, F-key, etc.) in addition to modifiers".into())
+    if !has_non_modifier {
+        return Err("Tauri shortcuts must include a main key (letter, number, F-key, etc.) in addition to modifiers".into());
     }
+    raw.parse::<Shortcut>()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to parse shortcut '{}': {}", raw, e))
 }
 
 /// Register a shortcut using Tauri's global-shortcut plugin
@@ -176,47 +175,6 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
     Ok(())
 }
 
-/// Register the cancel shortcut (called when recording starts)
-pub fn register_cancel_shortcut(app: &AppHandle) {
-    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                if let Err(e) = register_shortcut(&app_clone, cancel_binding) {
-                    error!("Failed to register cancel shortcut: {}", e);
-                }
-            }
-        });
-    }
-}
-
-/// Unregister the cancel shortcut (called when recording stops)
-pub fn unregister_cancel_shortcut(app: &AppHandle) {
-    // Cancel shortcut is disabled on Linux due to instability with dynamic shortcut registration
-    #[cfg(target_os = "linux")]
-    {
-        let _ = app;
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    {
-        let app_clone = app.clone();
-        tauri::async_runtime::spawn(async move {
-            if let Some(cancel_binding) = get_settings(&app_clone).bindings.get("cancel").cloned() {
-                // We ignore errors here as it might already be unregistered
-                let _ = unregister_shortcut(&app_clone, cancel_binding);
-            }
-        });
-    }
-}
-
 /// Register an action shortcut (ctrl+digit, called when recording starts)
 #[allow(dead_code)]
 pub fn register_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
@@ -250,5 +208,35 @@ pub fn unregister_action_shortcut(app: &AppHandle, binding: ShortcutBinding) {
         tauri::async_runtime::spawn(async move {
             let _ = unregister_shortcut(&app_clone, binding);
         });
+    }
+}
+
+#[cfg(test)]
+mod validation_tests {
+    use super::validate_shortcut;
+
+    #[test]
+    fn rejects_bindings_the_accelerator_parser_cannot_register() {
+        for raw in [
+            "option_left+space",
+            "ctrl_right+space",
+            "ctrl+not_a_key",
+            "ctrl",
+        ] {
+            assert!(validate_shortcut(raw).is_err(), "{raw}");
+        }
+    }
+
+    #[test]
+    fn accepts_default_bindings() {
+        for raw in [
+            "option+space",
+            "ctrl+space",
+            "ctrl+shift+space",
+            "alt+space",
+            "escape",
+        ] {
+            assert_eq!(validate_shortcut(raw), Ok(()), "{raw}");
+        }
     }
 }

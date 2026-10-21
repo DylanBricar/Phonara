@@ -75,12 +75,19 @@ export const ModelsSettings: React.FC = () => {
     if (switchingModelId === modelId) {
       return "switching";
     }
+    const model = models.find((m: ModelInfo) => m.id === modelId);
+    if (
+      modelId !== "gemini-api" &&
+      modelId !== "openai-api" &&
+      !model?.is_downloaded
+    ) {
+      return "downloadable";
+    }
     if (modelId === currentModel) {
       if (modelId === "gemini-api" && !hasGeminiKey) return "available";
       if (modelId === "openai-api" && !hasOpenaiKey) return "available";
       return "active";
     }
-    const model = models.find((m: ModelInfo) => m.id === modelId);
     if (model?.is_downloaded) return "available";
     return "downloadable";
   };

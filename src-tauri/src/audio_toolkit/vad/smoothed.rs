@@ -2,8 +2,8 @@ use super::{VadFrame, VadTailReport, VoiceActivityDetector};
 use anyhow::Result;
 use std::collections::VecDeque;
 
-/// One pre-roll buffer slot. `emitted` and `voiced` exist only to power the
-/// end-of-recording `tail_report()` diagnostic; they never affect emission.
+/// One pre-roll buffer slot. Already-emitted audio must not be replayed when
+/// a new speech onset overlaps the previous segment's pre-roll window.
 struct BufferedFrame {
     samples: Vec<f32>,
     emitted: bool,
@@ -81,7 +81,7 @@ impl VoiceActivityDetector for SmoothedVad {
 
                     // Collect prefill + current frame
                     self.temp_out.clear();
-                    for buffered in self.frame_buffer.iter_mut() {
+                    for buffered in self.frame_buffer.iter_mut().filter(|frame| !frame.emitted) {
                         self.temp_out.extend(buffered.samples.iter());
                         buffered.emitted = true;
                     }
@@ -240,5 +240,36 @@ mod tests {
         let report = vad.tail_report().unwrap();
         assert_eq!(report.withheld_frames, 2);
         assert_eq!(report.withheld_voiced_frames, 0);
+    }
+
+    #[test]
+    fn a_new_onset_never_replays_previously_emitted_speech_or_hangover() {
+        let script = [true, true, false, false, false, true, true];
+        // The pre-roll still contains the previous utterance when speech
+        // resumes. Each numbered frame represents a distinct point in time.
+        let mut vad = SmoothedVad::new(Box::new(ScriptedVad::new(&script)), 10, 2, 2);
+        let mut output = Vec::new();
+        for index in 1..=script.len() {
+            let samples = frame(index as f32);
+            if let VadFrame::Speech(samples) = vad.push_frame(&samples).unwrap() {
+                output.extend_from_slice(samples);
+            }
+        }
+
+        assert_eq!(
+            output,
+            (1..=7)
+                .flat_map(|index| frame(index as f32))
+                .collect::<Vec<_>>()
+        );
+        for index in 1..=7 {
+            assert_eq!(
+                output
+                    .iter()
+                    .filter(|sample| **sample == index as f32)
+                    .count(),
+                4
+            );
+        }
     }
 }

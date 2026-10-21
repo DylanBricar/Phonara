@@ -3,8 +3,10 @@
 //! `catalog.json` is generated at build time by `scripts/gen_catalog.py` from the
 //! `handy-computer` Hugging Face org (card `transcribe_cpp` capabilities +
 //! benchmarks, a GGUF header probe for name/params, and local curation for the
-//! recommended set). It is compiled into the binary so Handy ships a complete
-//! model list with zero network access.
+//! recommended set). The 2026-10-21 review appends the four ASR packages added
+//! by Handy 93c9ee05, adapting their metadata to the existing descriptor schema
+//! without changing earlier ids, revisions, or cache aliases. It is compiled
+//! into the binary so Phonara ships a model list with zero network access.
 //!
 //! Each entry is normalised into a [`ModelDescriptor`] — the same source-agnostic
 //! shape every other producer (HF discovery, on-disk scans, the legacy table)
@@ -339,5 +341,77 @@ mod tests {
             "catalog architecture(s) missing from KNOWN_ARCHES: {:?}",
             missing
         );
+    }
+
+    #[test]
+    fn reviewed_asr_additions_keep_pinned_registry_ids_and_artifacts() {
+        for (slug, revision, sha256, size_bytes) in [
+            (
+                "parakeet-ultra",
+                "39eeb55181f0d354fd934f06e92fd8d5037fed8e",
+                "007a59761e9258779f189df396b50d12b83bb5b79e66df4b955c230d2f2a0a59",
+                740_363_168,
+            ),
+            (
+                "granite-speech-5.0-470m-turboctc",
+                "2b0b44d0d6c8b94a2e4f04a2cf3ec6a5c054463b",
+                "0408fe0b33be19af5be423d8ba6b43768608b6f065e1ac97b78c84b55c140738",
+                505_606_496,
+            ),
+            (
+                "granite-speech-5.0-470m-turboctc-nc",
+                "fb8091e2c1e50ef67d3e795ee9f84d703343d7c5",
+                "383ab69dc940f441fb7064e8aa41f71ac2d24d5bc4c64b6d17167a044c68c03d",
+                505_885_856,
+            ),
+            (
+                "orukeet",
+                "ab8536716c3aa03d49c4c36c0dae6a3da71210b8",
+                "68cd64b2a6c3c747f0a9f109884ed75b277c266c0fb8e5888c5a9f4d824fb9f7",
+                739_508_704,
+            ),
+        ] {
+            let repo_id = format!("handy-computer/{slug}-gguf");
+            let filename = format!("{slug}-Q8_0.gguf");
+            let registry_id = format!("{repo_id}/{filename}");
+            let (descriptor, artifact) =
+                file_in_catalog(&filename, Some(&repo_id)).expect("reviewed ASR package exists");
+            assert_eq!(descriptor.id, registry_id);
+            assert!(matches!(
+                &descriptor.source,
+                ModelSource::HuggingFace { revision: pin, .. } if pin == revision
+            ));
+            assert_eq!(artifact.sha256.as_deref(), Some(sha256));
+            assert_eq!(artifact.size_bytes, size_bytes);
+            assert!(file_in_catalog(&filename, Some("another/repository")).is_none());
+        }
+    }
+
+    #[test]
+    fn multitalker_legacy_bundle_paths_remain_discoverable() {
+        let repo_id = "handy-computer/multitalker-parakeet-streaming-0.6b-v1-gguf";
+        for quant in ["Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "F16", "F32"] {
+            let filename = format!("multitalker-parakeet-streaming-0.6b-v1-{quant}.gguf");
+            let (current, _) =
+                file_in_catalog(&filename, Some(repo_id)).expect("current path remains available");
+            let legacy_filename = format!("bundle/{filename}");
+            let (legacy, legacy_artifact) = file_in_catalog(&legacy_filename, Some(repo_id))
+                .expect("existing bundle caches remain discoverable");
+            assert_eq!(current.id, legacy.id);
+            assert!(matches!(
+                &legacy.source,
+                ModelSource::HuggingFace { revision, .. }
+                    if revision == "31042fb4b5018be38240018492bdbde1923789dc"
+            ));
+            // Bundle artifacts have their own bytes, not aliases for the
+            // root files. Discovery must keep their original trust anchors.
+            let mirrors = mirror_fallbacks(&format!("{repo_id}/{legacy_filename}"));
+            assert!(!mirrors.is_empty());
+            assert_eq!(mirrors[0].sha256, legacy_artifact.sha256.clone().unwrap());
+            assert_eq!(mirrors[0].size_bytes, legacy_artifact.size_bytes);
+            assert!(mirrors[0].url.ends_with(&format!(
+                "/31042fb4b5018be38240018492bdbde1923789dc/{legacy_filename}"
+            )));
+        }
     }
 }

@@ -1500,7 +1500,7 @@ impl ModelManager {
             .cloned()
             .collect();
         let mut models = self.available_models.lock().unwrap();
-        let mut vanished_alternates: Vec<String> = Vec::new();
+        let mut vanished_models: Vec<String> = Vec::new();
 
         for model in models.values_mut() {
             if downloading_ids.contains(&model.id) {
@@ -1516,13 +1516,8 @@ impl ModelManager {
                 // discovered on disk — the catalog offers just the default
                 // quant, so they are never presented for download. When the
                 // file is gone, the entry goes with it.
-                let is_alternate = matches!(
-                    &model.source,
-                    ModelSource::HuggingFace { repo_id, .. }
-                        if Self::is_catalog_alternate_quant(repo_id, &model.filename)
-                );
-                if !model.is_downloaded && is_alternate {
-                    vanished_alternates.push(model.id.clone());
+                if !model.is_downloaded && Self::disappears_when_missing(model) {
+                    vanished_models.push(model.id.clone());
                 }
                 continue;
             }
@@ -1565,9 +1560,12 @@ impl ModelManager {
                     model.partial_size = 0;
                 }
             }
+            if !model.is_downloaded && Self::disappears_when_missing(model) {
+                vanished_models.push(model.id.clone());
+            }
         }
 
-        for id in vanished_alternates {
+        for id in vanished_models {
             models.remove(&id);
         }
 
@@ -1581,6 +1579,22 @@ impl ModelManager {
             desc.default_file()
                 .is_some_and(|d| d.filename != file.filename)
         })
+    }
+
+    fn disappears_when_missing(model: &ModelInfo) -> bool {
+        model.is_custom
+            || match &model.source {
+                ModelSource::HuggingFace { repo_id, .. } => {
+                    Self::is_catalog_alternate_quant(repo_id, &model.filename)
+                }
+                _ => false,
+            }
+    }
+
+    fn selected_model_is_available(models: &HashMap<String, ModelInfo>, model_id: &str) -> bool {
+        models
+            .get(model_id)
+            .is_some_and(|model| model.is_downloaded)
     }
 
     /// Remove a single file from the shared HF cache: the snapshot pointer for
@@ -1614,12 +1628,12 @@ impl ModelManager {
         // in available_models (e.g. deleted custom model file)
         if !selected_model.is_empty() {
             let models = self.available_models.lock().unwrap();
-            let exists = models.contains_key(&selected_model);
+            let exists = Self::selected_model_is_available(&models, &selected_model);
             drop(models);
 
             if !exists {
                 info!(
-                    "Selected model '{}' not found in available models, clearing selection",
+                    "Selected model '{}' is not available on disk, clearing selection",
                     selected_model
                 );
                 let stale_selection = selected_model;
@@ -2559,9 +2573,7 @@ impl ModelManager {
             }
 
             let status_result = self.update_download_status();
-            if deleted {
-                let _ = self.app_handle.emit("model-deleted", model_id);
-            }
+            let _ = self.app_handle.emit("model-deleted", model_id);
             if !errors.is_empty() {
                 return Err(anyhow::anyhow!(
                     "Model deletion was only partially completed: {}",
@@ -2569,7 +2581,10 @@ impl ModelManager {
                 ));
             }
             if !deleted {
-                return Err(anyhow::anyhow!("No model files found to delete"));
+                debug!(
+                    "Model files already absent for {}; clearing stale entry",
+                    model_id
+                );
             }
             status_result?;
             return Ok(());
@@ -2611,7 +2626,10 @@ impl ModelManager {
         }
 
         if !deleted_something {
-            return Err(anyhow::anyhow!("No model files found to delete"));
+            debug!(
+                "Model files already absent for {}; clearing stale entry",
+                model_id
+            );
         }
 
         // Custom models should be removed from the list entirely since they
@@ -2630,6 +2648,33 @@ impl ModelManager {
         let _ = self.app_handle.emit("model-deleted", model_id);
 
         Ok(())
+    }
+
+    fn mark_model_unavailable(&self, model_id: &str) {
+        if self
+            .download_operations
+            .lock()
+            .unwrap()
+            .contains_key(model_id)
+        {
+            return;
+        }
+        {
+            let mut models = self.available_models.lock().unwrap();
+            let remove = models
+                .get(model_id)
+                .is_some_and(Self::disappears_when_missing);
+            if remove {
+                models.remove(model_id);
+            } else if let Some(model) = models.get_mut(model_id) {
+                model.is_downloaded = false;
+            } else {
+                return;
+            }
+        }
+        // Preserve the user's selection: an already loaded engine may still
+        // work, and downloading its files again should restore it.
+        let _ = self.app_handle.emit("models-updated", ());
     }
 
     pub fn get_model_path(&self, model_id: &str) -> Result<PathBuf> {
@@ -2651,6 +2696,7 @@ impl ModelManager {
 
         if matches!(model_info.source, ModelSource::HuggingFace { .. }) {
             let path = self.local_artifact(&model_info).ok_or_else(|| {
+                self.mark_model_unavailable(model_id);
                 anyhow::anyhow!(
                     "Complete model file not found in HF cache or models dir: {}",
                     model_id
@@ -2677,24 +2723,32 @@ impl ModelManager {
 
         if model_info.is_directory {
             // For directory-based models, ensure the directory exists and is complete
-            if model_path.exists() && model_path.is_dir() && !partial_path.exists() {
-                Ok(model_path)
-            } else {
-                Err(anyhow::anyhow!(
+            if !model_path.is_dir() {
+                self.mark_model_unavailable(model_id);
+                return Err(anyhow::anyhow!(
                     "Complete model directory not found: {}",
                     model_id
-                ))
+                ));
             }
+            if partial_path.exists() {
+                return Err(anyhow::anyhow!(
+                    "Model directory is incomplete: {}",
+                    model_id
+                ));
+            }
+            Ok(model_path)
         } else {
-            // For file-based models (existing logic)
-            if model_path.exists() && !partial_path.exists() {
-                Ok(model_path)
-            } else {
-                Err(anyhow::anyhow!(
+            if !model_path.is_file() {
+                self.mark_model_unavailable(model_id);
+                return Err(anyhow::anyhow!(
                     "Complete model file not found: {}",
                     model_id
-                ))
+                ));
             }
+            if partial_path.exists() {
+                return Err(anyhow::anyhow!("Model file is incomplete: {}", model_id));
+            }
+            Ok(model_path)
         }
     }
 
@@ -2892,6 +2946,7 @@ mod tests {
         assert!(matches!(custom.source, ModelSource::Local)); // Custom models have no remote source
         assert!(custom.is_downloaded);
         assert!(custom.is_custom);
+        assert!(ModelManager::disappears_when_missing(custom));
         assert_eq!(custom.accuracy_score, 0.0);
         assert_eq!(custom.speed_score, 0.0);
         assert!(custom.supported_languages.is_empty());
@@ -3103,6 +3158,22 @@ mod tests {
         assert_eq!(alt_info.filename, "model-Q4_K_M.gguf");
         assert!(!alt_info.is_recommended);
         assert!(!alt_info.is_custom);
+
+        assert!(!ModelManager::disappears_when_missing(&default_info));
+        let mut selection_models = HashMap::new();
+        selection_models.insert(default_info.id.clone(), default_info.clone());
+        assert!(!ModelManager::selected_model_is_available(
+            &selection_models,
+            &default_info.id
+        ));
+        selection_models
+            .get_mut(&default_info.id)
+            .unwrap()
+            .is_downloaded = true;
+        assert!(ModelManager::selected_model_is_available(
+            &selection_models,
+            &default_info.id
+        ));
 
         // The default rendered through the per-file path matches to_model_info,
         // so seeded entries and discovered defaults can never diverge.

@@ -81,10 +81,12 @@ pub fn set_log_level(app: AppHandle, level: LogLevel) -> Result<(), String> {
 #[specta::specta]
 #[tauri::command]
 pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
-    let app_data_dir = crate::portable::app_data_dir(&app)
-        .map_err(|e| format!("Failed to get app data directory: {}", e))?;
-
-    let recordings_dir = app_data_dir.join("recordings");
+    let recordings_dir = app
+        .state::<std::sync::Arc<crate::managers::history::HistoryManager>>()
+        .recordings_dir();
+    if !recordings_dir.is_dir() {
+        return Err("Recordings directory is unavailable".to_string());
+    }
 
     let path = recordings_dir.to_string_lossy().as_ref().to_string();
     app.opener()

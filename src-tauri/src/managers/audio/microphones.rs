@@ -1,14 +1,16 @@
 use super::{AudioRecordingManager, MicrophoneMode, MicrophoneStatus, RecordingState};
-use crate::audio_toolkit::{list_input_device_identities, CpalInputDevice};
+use crate::audio_toolkit::audio::{input_state::input_states, list_raw_input_device_identities};
+use crate::audio_toolkit::CpalInputDevice;
 use crate::helpers::clamshell;
 use crate::microphone::{
     bind_legacy_preferences, first_usable, ordered_candidates, should_reconcile_stream,
-    MicrophoneDevice, MicrophonePreference,
+    usable_microphones, MicrophoneDevice, MicrophonePreference, MicrophoneUnavailableReason,
+    UnavailableMicrophone,
 };
 use crate::settings::{get_settings, update_settings};
 use crate::transcription_coordinator::TranscriptionCoordinator;
 use std::collections::HashSet;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{atomic::Ordering, Arc, MutexGuard};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
@@ -17,6 +19,7 @@ struct MicrophoneFingerprint {
     devices: Vec<MicrophoneDevice>,
     preferences: Vec<MicrophonePreference>,
     clamshell_name: Option<String>,
+    unavailable: Vec<UnavailableMicrophone>,
 }
 
 #[derive(Default)]
@@ -64,7 +67,7 @@ impl AudioRecordingManager {
         self.update_microphone_status(|tracking| tracking.status.active = None);
     }
 
-    fn publish_microphone_error(&self, error: String) {
+    pub(super) fn publish_microphone_error(&self, error: String) {
         self.update_microphone_status(|tracking| tracking.status.error = Some(error));
     }
 
@@ -73,7 +76,7 @@ impl AudioRecordingManager {
         &self,
         retry_failed: bool,
     ) -> Result<(Vec<CpalInputDevice>, Vec<MicrophoneDevice>), String> {
-        let devices = list_input_device_identities().map_err(|error| {
+        let devices = list_raw_input_device_identities().map_err(|error| {
             let message = format!("Failed to list microphones: {error}");
             self.publish_microphone_error(message.clone());
             message
@@ -87,6 +90,25 @@ impl AudioRecordingManager {
             })
             .collect();
         available.sort_by(|left, right| left.id.cmp(&right.id));
+        let radio_unavailable = crate::audio_toolkit::audio::wireless::unavailable_endpoints();
+        let controls = input_states();
+        let unavailable: Vec<_> = available
+            .iter()
+            .filter_map(|device| {
+                let reason = if controls.get(&device.id).is_some_and(|state| state.muted) {
+                    MicrophoneUnavailableReason::Muted
+                } else if radio_unavailable.contains(&device.id) {
+                    MicrophoneUnavailableReason::WirelessUnreachable
+                } else {
+                    return None;
+                };
+                Some(UnavailableMicrophone {
+                    id: device.id.clone(),
+                    reason,
+                })
+            })
+            .collect();
+        let usable = usable_microphones(&available, &unavailable);
         let mut settings = get_settings(&self.app_handle);
         let original_preferences = settings.microphone_priority.clone();
         if bind_legacy_preferences(&mut settings.microphone_priority, &available) {
@@ -116,13 +138,14 @@ impl AudioRecordingManager {
             .cloned();
         let mut candidates = ordered_candidates(
             &settings.microphone_priority,
-            &available,
+            &usable,
             clamshell_name.as_deref(),
         );
         let fingerprint = MicrophoneFingerprint {
             devices: available.clone(),
             preferences: settings.microphone_priority,
             clamshell_name,
+            unavailable: unavailable.clone(),
         };
         self.update_microphone_status(|tracking| {
             if retry_failed || tracking.fingerprint.as_ref() != Some(&fingerprint) {
@@ -132,6 +155,7 @@ impl AudioRecordingManager {
             tracking.fingerprint = Some(fingerprint);
             candidates.retain(|device| !tracking.failed_ids.contains(&device.id));
             tracking.status.devices = available;
+            tracking.status.unavailable = unavailable;
             tracking.status.next = candidates.first().cloned();
             tracking.status.error = tracking.open_error.clone();
             if let Some(active) = &mut tracking.status.active {
@@ -148,13 +172,25 @@ impl AudioRecordingManager {
         Ok((devices, candidates))
     }
 
-    /// Must be called under `state` (or during construction before publication).
     /// A fresh scan on every start also handles missed monitor ticks and defaults.
     pub fn start_microphone_stream(&self) -> Result<(), anyhow::Error> {
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        self.start_microphone_stream_while_idle_under_state(&state)
+    }
+
+    pub(super) fn start_microphone_stream_while_idle_under_state(
+        &self,
+        state: &MutexGuard<'_, RecordingState>,
+    ) -> Result<(), anyhow::Error> {
+        if !matches!(**state, RecordingState::Idle) {
+            return Err(anyhow::anyhow!(
+                "Cannot reopen the microphone while recording or stopping"
+            ));
+        }
         let (devices, candidates) = self
             .scan_microphone_candidates(true)
             .map_err(anyhow::Error::msg)?;
-        self.open_microphone_candidates(&devices, &candidates)
+        self.open_microphone_candidates(state, &devices, &candidates)
     }
 
     fn stream_has_failed(&self) -> bool {
@@ -167,6 +203,7 @@ impl AudioRecordingManager {
 
     fn open_microphone_candidates(
         &self,
+        state: &MutexGuard<'_, RecordingState>,
         devices: &[CpalInputDevice],
         candidates: &[MicrophoneDevice],
     ) -> Result<(), anyhow::Error> {
@@ -190,7 +227,7 @@ impl AudioRecordingManager {
             });
             return Err(anyhow::Error::msg(message));
         }
-        self.preload_vad()
+        self.preload_vad_while_idle_under_state(state)
             .inspect_err(|error| self.publish_microphone_error(error.to_string()))?;
         let mut recorder_guard = self.recorder.lock().unwrap_or_else(|e| e.into_inner());
         let recorder = recorder_guard
@@ -262,6 +299,10 @@ impl AudioRecordingManager {
         let missing_active = scan.is_ok()
             && snapshot.active.as_ref().is_some_and(|active| {
                 !snapshot.devices.iter().any(|device| device.id == active.id)
+                    || snapshot
+                        .unavailable
+                        .iter()
+                        .any(|device| device.id == active.id)
             });
         let interrupted = match &*state {
             RecordingState::Recording {
@@ -300,7 +341,7 @@ impl AudioRecordingManager {
                     candidates.first().map(|device| device.id.as_str()),
                     stream_failed || missing_active,
                 ) {
-                    self.open_microphone_candidates(&devices, &candidates)
+                    self.open_microphone_candidates(&state, &devices, &candidates)
                         .map_err(|error| error.to_string())
                 } else {
                     Ok(())

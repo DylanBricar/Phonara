@@ -4,7 +4,7 @@ pub(super) const RECEIVER_PRODUCT: u16 = 0x0a64;
 pub(super) const HEADSET_PRODUCT: u16 = 0x0a62;
 pub(super) const POLL_INTERVAL: Duration = Duration::from_secs(2);
 pub(super) const CACHE_TTL: Duration = Duration::from_secs(8);
-const REQUIRED_TIMEOUTS: u8 = 3;
+const REQUIRED_ABSENCES: u8 = 3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Reply {
@@ -33,12 +33,13 @@ pub(super) enum Query {
     Product(u16),
     Timeout,
     Unknown,
+    Disconnected,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(super) enum Observation {
     Reachable,
-    RadioTimeout,
+    Disconnected,
     OtherModel,
     #[default]
     Unknown,
@@ -51,17 +52,56 @@ pub(super) fn classify(receiver: Query, radio: Query) -> Observation {
     if matches!(radio, Query::Product(_)) {
         return Observation::OtherModel;
     }
-    if receiver == Query::Product(RECEIVER_PRODUCT) && radio == Query::Timeout {
-        return Observation::RadioTimeout;
+    if receiver == Query::Product(RECEIVER_PRODUCT) && radio == Query::Disconnected {
+        return Observation::Disconnected;
     }
     Observation::Unknown
+}
+
+/// A timeout alone never proves a powered-off headset. The receiver's stable
+/// slot bitfield can prove absence, after identifying the headset's own slot.
+pub(super) fn radio_presence(
+    before: Query,
+    after: Query,
+    products: &[(u8, Query)],
+    known_headset_slot: Option<u8>,
+) -> Query {
+    let (Query::Product(mask), Query::Product(check)) = (before, after) else {
+        return Query::Unknown;
+    };
+    if mask != check || mask > 0xff {
+        return Query::Unknown;
+    }
+    let slots: Vec<_> = (1..8).filter(|slot| mask & (1 << slot) != 0).collect();
+    if slots.is_empty() {
+        return Query::Disconnected;
+    }
+    if products
+        .iter()
+        .any(|(slot, value)| slots.contains(slot) && *value == Query::Product(HEADSET_PRODUCT))
+    {
+        return Query::Product(HEADSET_PRODUCT);
+    }
+    if slots.iter().any(|slot| {
+        !products
+            .iter()
+            .any(|(candidate, value)| candidate == slot && matches!(value, Query::Product(_)))
+    }) {
+        return Query::Unknown;
+    }
+    // Never apply the XT policy to another, never-identified radio model.
+    if known_headset_slot.is_some_and(|slot| mask & (1 << slot) == 0) {
+        Query::Disconnected
+    } else {
+        Query::Product(0)
+    }
 }
 
 #[derive(Clone, Default)]
 pub(super) struct Tracker {
     checked_at: Option<Instant>,
     confirmed_unreachable_at: Option<Instant>,
-    consecutive_timeouts: u8,
+    consecutive_absences: u8,
     other_model: bool,
 }
 
@@ -77,32 +117,33 @@ impl Tracker {
                 self.other_model = false;
                 self.clear_confirmation();
             }
+            Observation::Disconnected => self.other_model = false,
             _ => {}
         }
         if self
             .checked_at
             .is_some_and(|last| now.duration_since(last) > CACHE_TTL)
         {
-            self.consecutive_timeouts = 0;
+            self.consecutive_absences = 0;
         }
-        if observation == Observation::RadioTimeout && !self.other_model {
+        if observation == Observation::Disconnected && !self.other_model {
             if self
                 .checked_at
                 .is_some_and(|last| now.duration_since(last) < POLL_INTERVAL)
             {
                 return;
             }
-            self.consecutive_timeouts = self
-                .consecutive_timeouts
+            self.consecutive_absences = self
+                .consecutive_absences
                 .saturating_add(1)
-                .min(REQUIRED_TIMEOUTS);
+                .min(REQUIRED_ABSENCES);
             // Once established, another proven absence renews a still-fresh
             // confirmation. Unknown never establishes or renews that evidence.
-            if self.consecutive_timeouts >= REQUIRED_TIMEOUTS || confirmation_is_fresh {
+            if self.consecutive_absences >= REQUIRED_ABSENCES || confirmation_is_fresh {
                 self.confirmed_unreachable_at = Some(now);
             }
         } else {
-            self.consecutive_timeouts = 0;
+            self.consecutive_absences = 0;
         }
         self.checked_at = Some(now);
     }
@@ -119,7 +160,7 @@ impl Tracker {
 
     pub(super) fn clear_confirmation(&mut self) {
         self.confirmed_unreachable_at = None;
-        self.consecutive_timeouts = 0;
+        self.consecutive_absences = 0;
     }
 }
 
@@ -168,10 +209,14 @@ mod tests {
     }
 
     #[test]
-    fn only_confirmed_receiver_with_silent_radio_can_count_as_timeout() {
+    fn silence_never_proves_absence_but_explicit_receiver_slots_can() {
         assert_eq!(
             classify(Query::Product(RECEIVER_PRODUCT), Query::Timeout),
-            Observation::RadioTimeout
+            Observation::Unknown
+        );
+        assert_eq!(
+            classify(Query::Product(RECEIVER_PRODUCT), Query::Disconnected),
+            Observation::Disconnected
         );
         assert_eq!(
             classify(Query::Timeout, Query::Timeout),
@@ -200,14 +245,14 @@ mod tests {
     }
 
     #[test]
-    fn offline_startup_requires_three_spaced_receiver_confirmed_timeouts() {
+    fn offline_startup_requires_three_spaced_receiver_confirmed_disconnections() {
         let now = Instant::now();
         let mut tracker = Tracker::default();
-        tracker.observe(Observation::RadioTimeout, now);
+        tracker.observe(Observation::Disconnected, now);
         assert!(!tracker.is_unreachable(now));
-        tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL);
+        tracker.observe(Observation::Disconnected, now + POLL_INTERVAL);
         assert!(!tracker.is_unreachable(now + POLL_INTERVAL));
-        tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * 2);
+        tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * 2);
         assert!(tracker.is_unreachable(now + POLL_INTERVAL * 2));
     }
 
@@ -216,10 +261,10 @@ mod tests {
         let now = Instant::now();
         let mut tracker = Tracker::default();
         for _ in 0..10 {
-            tracker.observe(Observation::RadioTimeout, now);
+            tracker.observe(Observation::Disconnected, now);
         }
         assert!(!tracker.is_unreachable(now));
-        tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL);
+        tracker.observe(Observation::Disconnected, now + POLL_INTERVAL);
         assert!(!tracker.is_unreachable(now + POLL_INTERVAL));
     }
 
@@ -229,7 +274,7 @@ mod tests {
             let now = Instant::now();
             let mut tracker = Tracker::default();
             for tick in 0..3 {
-                tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+                tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
             }
             assert!(tracker.is_unreachable(now + POLL_INTERVAL * 2));
             tracker.observe(observation, now + POLL_INTERVAL * 3);
@@ -242,7 +287,7 @@ mod tests {
         let now = Instant::now();
         let mut tracker = Tracker::default();
         for tick in 0..3 {
-            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+            tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
         }
         let confirmed = now + POLL_INTERVAL * 2;
         for tick in 1..4 {
@@ -260,11 +305,11 @@ mod tests {
         let now = Instant::now();
         let mut tracker = Tracker::default();
         for tick in 0..3 {
-            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+            tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
         }
         tracker.observe(Observation::Unknown, now + POLL_INTERVAL * 3);
         let renewed = now + POLL_INTERVAL * 4;
-        tracker.observe(Observation::RadioTimeout, renewed);
+        tracker.observe(Observation::Disconnected, renewed);
         assert!(tracker.is_unreachable(renewed));
         assert!(tracker.is_unreachable(renewed + CACHE_TTL - Duration::from_millis(1)));
         assert!(!tracker.is_unreachable(renewed + CACHE_TTL + Duration::from_millis(1)));
@@ -276,7 +321,7 @@ mod tests {
         let mut tracker = Tracker::default();
         tracker.observe(Observation::Unknown, now);
         for tick in 1..4 {
-            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+            tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
             assert_eq!(
                 tracker.is_unreachable(now + POLL_INTERVAL * tick),
                 tick == 3
@@ -285,7 +330,7 @@ mod tests {
         let expired = now + POLL_INTERVAL * 3 + CACHE_TTL + Duration::from_millis(1);
         tracker.observe(Observation::Unknown, expired);
         for tick in 1..4 {
-            tracker.observe(Observation::RadioTimeout, expired + POLL_INTERVAL * tick);
+            tracker.observe(Observation::Disconnected, expired + POLL_INTERVAL * tick);
             assert_eq!(
                 tracker.is_unreachable(expired + POLL_INTERVAL * tick),
                 tick == 3
@@ -298,29 +343,92 @@ mod tests {
         let now = Instant::now();
         let mut tracker = Tracker::default();
         for tick in 0..3 {
-            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+            tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
         }
         let stale = now + POLL_INTERVAL * 2 + CACHE_TTL + Duration::from_millis(1);
         assert!(!tracker.is_unreachable(stale));
-        tracker.observe(Observation::RadioTimeout, stale);
+        tracker.observe(Observation::Disconnected, stale);
         assert!(!tracker.is_unreachable(stale));
     }
 
     #[test]
-    fn a_different_radio_model_disables_offline_inference_until_target_returns() {
+    fn explicit_empty_slots_can_recover_from_a_previously_different_radio_model() {
         let now = Instant::now();
         let mut tracker = Tracker::default();
         tracker.observe(Observation::OtherModel, now);
         tracker.observe(Observation::Unknown, now + POLL_INTERVAL);
-        for tick in 2..6 {
-            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
-            assert!(!tracker.is_unreachable(now + POLL_INTERVAL * tick));
+        for tick in 2..5 {
+            tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
+            assert_eq!(
+                tracker.is_unreachable(now + POLL_INTERVAL * tick),
+                tick == 4
+            );
         }
         tracker.observe(Observation::Reachable, now + POLL_INTERVAL * 6);
         for tick in 7..10 {
-            tracker.observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+            tracker.observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
         }
         assert!(tracker.is_unreachable(now + POLL_INTERVAL * 9));
+    }
+
+    #[test]
+    fn multipoint_finds_the_headset_on_any_connected_slot() {
+        for slot in 1..8 {
+            let mask = Query::Product(1 << slot);
+            assert_eq!(
+                radio_presence(mask, mask, &[(slot, Query::Product(HEADSET_PRODUCT))], None),
+                Query::Product(HEADSET_PRODUCT)
+            );
+        }
+        let mask = Query::Product(0b110);
+        assert_eq!(
+            radio_presence(
+                mask,
+                mask,
+                &[
+                    (1, Query::Product(0x0b05)),
+                    (2, Query::Product(HEADSET_PRODUCT))
+                ],
+                None
+            ),
+            Query::Product(HEADSET_PRODUCT)
+        );
+    }
+
+    #[test]
+    fn uncertain_or_changed_slot_inventory_never_hides_a_headset() {
+        for (before, after, products) in [
+            (Query::Timeout, Query::Timeout, vec![]),
+            (Query::Product(2), Query::Product(0), vec![]),
+            (
+                Query::Product(2),
+                Query::Product(2),
+                vec![(1, Query::Timeout)],
+            ),
+            (Query::Product(0x0a64), Query::Product(0x0a64), vec![]),
+        ] {
+            assert_eq!(
+                radio_presence(before, after, &products, Some(2)),
+                Query::Unknown
+            );
+        }
+        assert_eq!(
+            radio_presence(Query::Product(1), Query::Product(1), &[], None),
+            Query::Disconnected
+        );
+        let mask = Query::Product(2);
+        assert_eq!(
+            radio_presence(mask, mask, &[(1, Query::Product(0x0b05))], Some(2)),
+            Query::Disconnected
+        );
+        assert_eq!(
+            radio_presence(mask, mask, &[(1, Query::Product(0x0b05))], None),
+            Query::Product(0)
+        );
+        assert_eq!(
+            radio_presence(mask, mask, &[(1, Query::Product(0x0b05))], Some(1)),
+            Query::Product(0)
+        );
     }
 
     #[test]
