@@ -2,15 +2,18 @@ use crate::cli::CliArgs;
 use crate::input::{self, EnigoState};
 #[cfg(target_os = "linux")]
 use crate::settings::TypingTool;
-use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
+use crate::settings::{get_settings, AppSettings, AutoSubmitKey, ClipboardHandling, PasteMethod};
 use enigo::{Direction, Enigo, Key, Keyboard};
 use log::info;
+#[cfg(target_os = "linux")]
 use std::process::Command;
 #[cfg(target_os = "linux")]
 use std::sync::OnceLock;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+
+const EXTERNAL_SCRIPT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[cfg(target_os = "linux")]
 use crate::utils::{is_gnome_wayland, is_kde_wayland, is_wayland};
@@ -666,10 +669,66 @@ fn send_key_combo_via_xdotool(paste_method: &PasteMethod) -> Result<(), String> 
     Ok(())
 }
 
-fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String> {
-    use std::io::Write;
+async fn run_external_script(
+    mut command: tokio::process::Command,
+    text: &str,
+    timeout: Duration,
+) -> Result<(), String> {
     use std::process::Stdio;
+    use tokio::io::AsyncWriteExt;
 
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.as_std_mut().creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+
+    // The same deadline covers both stdin backpressure and process exit. Dropping
+    // the timed-out future kills the owned child rather than leaving it running.
+    tokio::time::timeout(timeout, async move {
+        let mut child = command
+            .spawn()
+            .map_err(|error| format!("Failed to execute external script: {error}"))?;
+        let stdin_result = if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(text.as_bytes()).await
+        } else {
+            Ok(())
+        };
+        let status = child
+            .wait()
+            .await
+            .map_err(|error| format!("Failed to wait for external script: {error}"))?;
+
+        if !status.success() {
+            return Err(format!(
+                "External script failed with exit code {:?}",
+                status.code()
+            ));
+        }
+
+        // A successful script may exit without consuming stdin (BrokenPipe).
+        if let Err(error) = stdin_result {
+            if error.kind() != std::io::ErrorKind::BrokenPipe {
+                return Err(format!("Failed to write to script stdin: {error}"));
+            }
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| {
+        format!(
+            "External script timed out after {:.1} seconds",
+            timeout.as_secs_f64()
+        )
+    })?
+}
+
+async fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String> {
     let script = std::path::Path::new(script_path);
     let canonical = script
         .canonicalize()
@@ -681,41 +740,12 @@ fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), String
     // Pass untrusted transcription text over stdin, never as a command-line
     // argument. Do not capture stdout/stderr: a clipboard daemon forked by the
     // script may inherit those handles and otherwise keep wait blocked.
-    let mut child = Command::new(&canonical)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to execute external script '{}': {}", script_path, e))?;
-
-    let stdin_result = if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(text.as_bytes())
-    } else {
-        Ok(())
-    };
-    let status = child
-        .wait()
-        .map_err(|error| format!("Failed to wait for external script '{script_path}': {error}"))?;
-
-    if !status.success() {
-        return Err(format!(
-            "External script '{}' failed with exit code {:?}",
-            script_path,
-            status.code()
-        ));
-    }
-
-    // A successful script is allowed to exit without consuming stdin. In that
-    // race the parent observes BrokenPipe even though the script completed its
-    // work successfully. Other write failures still indicate a real delivery
-    // problem and must be reported.
-    if let Err(error) = stdin_result {
-        if error.kind() != std::io::ErrorKind::BrokenPipe {
-            return Err(format!("Failed to write to script stdin: {error}"));
-        }
-    }
-
-    Ok(())
+    run_external_script(
+        tokio::process::Command::new(canonical),
+        text,
+        EXTERNAL_SCRIPT_TIMEOUT,
+    )
+    .await
 }
 
 fn paste_direct(
@@ -781,23 +811,155 @@ fn should_send_auto_submit(
     allow_auto_submit: bool,
     paste_method: PasteMethod,
 ) -> bool {
-    auto_submit && allow_auto_submit && paste_method != PasteMethod::None
+    // External scripts can run long enough for focus to move to another app.
+    // They own their input delivery and must not receive a delayed Enter here.
+    auto_submit
+        && allow_auto_submit
+        && !matches!(
+            paste_method,
+            PasteMethod::None | PasteMethod::ExternalScript
+        )
 }
 
-pub fn paste_with_auto_submit(
+/// Resolve runtime overrides and the output safety policy before choosing a
+/// paste backend. A backend completing asynchronously must get the same policy.
+fn resolve_auto_submit(
+    configured: bool,
+    configured_key: AutoSubmitKey,
+    cli_override: Option<&str>,
+    allow_auto_submit: bool,
+    paste_method: PasteMethod,
+) -> (bool, AutoSubmitKey) {
+    let (enabled, key) = match cli_override {
+        Some(key) => (
+            true,
+            match key.to_lowercase().as_str() {
+                "ctrl+enter" | "ctrl_enter" => AutoSubmitKey::CtrlEnter,
+                "cmd+enter" | "cmd_enter" => AutoSubmitKey::CmdEnter,
+                _ => AutoSubmitKey::Enter,
+            },
+        ),
+        None => (configured, configured_key),
+    };
+    (
+        should_send_auto_submit(enabled, allow_auto_submit, paste_method),
+        key,
+    )
+}
+
+fn finish_paste(
+    app_handle: &AppHandle,
+    text: &str,
+    auto_submit: bool,
+    submit_key: AutoSubmitKey,
+    clipboard_handling: ClipboardHandling,
+    paste_error: Option<String>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<(), String> {
+    if is_cancelled() {
+        return Ok(());
+    }
+    // Don't submit when the paste itself failed — there is nothing to submit.
+    if paste_error.is_none() && auto_submit {
+        std::thread::sleep(Duration::from_millis(50));
+        if is_cancelled() {
+            return Ok(());
+        }
+        if let Err(error) = with_enigo(app_handle, |enigo| send_return_key(enigo, submit_key)) {
+            log::warn!("Paste succeeded, but auto-submit failed: {error}");
+        }
+    }
+
+    if !is_cancelled() && clipboard_handling == ClipboardHandling::CopyToClipboard {
+        write_text_to_clipboard(app_handle, text)?;
+    }
+
+    // Surface the deferred paste failure after the clipboard fallback has run.
+    match paste_error {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
+}
+
+/// Complete script execution off the UI thread, then await the main-thread paste
+/// or finalization. The caller retains its pipeline guard until this resolves.
+pub async fn paste_with_auto_submit(
     text: String,
     app_handle: AppHandle,
     allow_auto_submit: bool,
+    is_cancelled: impl Fn() -> bool + Send + Sync + 'static,
 ) -> Result<(), String> {
     let settings = get_settings(&app_handle);
-    let paste_method = settings.paste_method;
-    let paste_delay_ms = settings.paste_delay_ms;
-    let paste_delay_after_ms = settings.paste_delay_after_ms;
-
     let text = if settings.append_trailing_space {
         format!("{} ", text)
     } else {
         text
+    };
+    if is_cancelled() {
+        return Ok(());
+    }
+    let script_result = if settings.paste_method == PasteMethod::ExternalScript {
+        let script_path = settings
+            .external_script_path
+            .as_ref()
+            .filter(|path| !path.is_empty())
+            .ok_or("External script path is not configured")?;
+        Some(paste_via_external_script(&text, script_path).await)
+    } else {
+        None
+    };
+    if is_cancelled() {
+        return Ok(());
+    }
+
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let main_app = app_handle.clone();
+    app_handle
+        .run_on_main_thread(move || {
+            // The future can be cancelled while this callback is queued. A
+            // generation check prevents the abandoned callback producing input.
+            let result = if is_cancelled() {
+                Ok(())
+            } else {
+                paste_on_main_thread(
+                    text,
+                    main_app,
+                    allow_auto_submit,
+                    settings,
+                    script_result,
+                    &is_cancelled,
+                )
+            };
+            let _ = sender.send(result);
+        })
+        .map_err(|error| format!("Failed to schedule paste on main thread: {error}"))?;
+    receiver
+        .await
+        .map_err(|_| "Main-thread paste did not complete".to_string())?
+}
+
+fn paste_on_main_thread(
+    text: String,
+    app_handle: AppHandle,
+    allow_auto_submit: bool,
+    settings: AppSettings,
+    script_result: Option<Result<(), String>>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<(), String> {
+    let paste_method = settings.paste_method;
+    let paste_delay_ms = settings.paste_delay_ms;
+    let paste_delay_after_ms = settings.paste_delay_after_ms;
+    let (auto_submit, submit_key) = {
+        let cli_args = app_handle.try_state::<CliArgs>();
+        resolve_auto_submit(
+            settings.auto_submit,
+            settings.auto_submit_key,
+            cli_args
+                .as_ref()
+                .and_then(|args| args.auto_submit.as_deref()),
+            allow_auto_submit,
+            paste_method,
+        )
     };
 
     info!(
@@ -833,8 +995,8 @@ pub fn paste_with_auto_submit(
                         &app_handle,
                         &paste_method,
                         enigo,
-                        settings.auto_submit,
-                        settings.auto_submit_key,
+                        auto_submit,
+                        submit_key,
                         settings.clipboard_handling,
                     )
                 });
@@ -856,50 +1018,21 @@ pub fn paste_with_auto_submit(
             }
         }
         PasteMethod::ExternalScript => {
-            let script_path = settings
-                .external_script_path
-                .as_ref()
-                .filter(|p| !p.is_empty())
-                .ok_or("External script path is not configured")?;
-            paste_via_external_script(&text, script_path)?;
+            clipboard_paste_error = script_result
+                .ok_or("External script was not executed before finalization")?
+                .err();
         }
     }
 
-    let (auto_submit, submit_key) = if let Some(cli_args) = app_handle.try_state::<CliArgs>() {
-        if let Some(ref key_str) = cli_args.auto_submit {
-            let key = match key_str.to_lowercase().as_str() {
-                "ctrl+enter" | "ctrl_enter" => AutoSubmitKey::CtrlEnter,
-                "cmd+enter" | "cmd_enter" => AutoSubmitKey::CmdEnter,
-                _ => AutoSubmitKey::Enter,
-            };
-            (true, key)
-        } else {
-            (settings.auto_submit, settings.auto_submit_key)
-        }
-    } else {
-        (settings.auto_submit, settings.auto_submit_key)
-    };
-
-    // Don't submit when the paste itself failed — there is nothing to submit.
-    if clipboard_paste_error.is_none()
-        && should_send_auto_submit(auto_submit, allow_auto_submit, paste_method)
-    {
-        std::thread::sleep(Duration::from_millis(50));
-        if let Err(error) = with_enigo(&app_handle, |enigo| send_return_key(enigo, submit_key)) {
-            log::warn!("Paste succeeded, but auto-submit failed: {error}");
-        }
-    }
-
-    if settings.clipboard_handling == ClipboardHandling::CopyToClipboard {
-        write_text_to_clipboard(&app_handle, &text)?;
-    }
-
-    // Surface a deferred clipboard-paste failure now that the fallback has run.
-    if let Some(e) = clipboard_paste_error {
-        return Err(e);
-    }
-
-    Ok(())
+    finish_paste(
+        &app_handle,
+        &text,
+        auto_submit,
+        submit_key,
+        settings.clipboard_handling,
+        clipboard_paste_error,
+        is_cancelled,
+    )
 }
 
 #[cfg(test)]
@@ -996,8 +1129,86 @@ e.g. 28:1 28:0 means pressing on the Enter button on a standard US keyboard.
     }
 
     #[test]
+    fn untrusted_output_blocks_settings_and_cli_submit_for_every_paste_method() {
+        for paste_method in [
+            PasteMethod::CtrlV,
+            PasteMethod::CtrlShiftV,
+            PasteMethod::ShiftInsert,
+            PasteMethod::Direct,
+            PasteMethod::ExternalScript,
+            PasteMethod::None,
+        ] {
+            for configured in [false, true] {
+                for cli_override in [None, Some("enter"), Some("ctrl+enter"), Some("cmd_enter")] {
+                    let (enabled, _) = resolve_auto_submit(
+                        configured,
+                        AutoSubmitKey::Enter,
+                        cli_override,
+                        false,
+                        paste_method,
+                    );
+                    assert!(!enabled, "untrusted output must never send a submit key");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn trusted_submit_uses_the_cli_key_before_the_configured_key() {
+        assert_eq!(
+            resolve_auto_submit(
+                false,
+                AutoSubmitKey::Enter,
+                Some("CTRL+ENTER"),
+                true,
+                PasteMethod::CtrlV,
+            ),
+            (true, AutoSubmitKey::CtrlEnter)
+        );
+        assert_eq!(
+            resolve_auto_submit(
+                true,
+                AutoSubmitKey::CmdEnter,
+                None,
+                true,
+                PasteMethod::ShiftInsert,
+            ),
+            (true, AutoSubmitKey::CmdEnter)
+        );
+        assert!(
+            !resolve_auto_submit(
+                true,
+                AutoSubmitKey::Enter,
+                Some("enter"),
+                true,
+                PasteMethod::None,
+            )
+            .0
+        );
+    }
+
+    #[test]
     fn auto_submit_skips_none_paste_method() {
         assert!(!should_send_auto_submit(true, true, PasteMethod::None));
+    }
+
+    #[test]
+    fn external_scripts_never_inject_a_delayed_submit_key() {
+        for configured in [false, true] {
+            for cli_override in [None, Some("enter"), Some("ctrl+enter"), Some("cmd_enter")] {
+                let (enabled, _) = resolve_auto_submit(
+                    configured,
+                    AutoSubmitKey::Enter,
+                    cli_override,
+                    true,
+                    PasteMethod::ExternalScript,
+                );
+                assert!(
+                    !enabled,
+                    "script completion may occur after focus has changed"
+                );
+            }
+        }
     }
 
     #[test]
@@ -1023,13 +1234,112 @@ e.g. 28:1 28:0 means pressing on the Enter button on a standard US keyboard.
         assert!(restored.get());
     }
 
+    #[cfg(any(unix, target_os = "windows"))]
+    fn test_external_command(unix_script: &str, windows_script: &str) -> tokio::process::Command {
+        #[cfg(unix)]
+        {
+            let _ = windows_script;
+            let mut command = tokio::process::Command::new("sh");
+            command.args(["-c", unix_script]);
+            command
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = unix_script;
+            let mut command = tokio::process::Command::new("powershell.exe");
+            command.args(["-NoProfile", "-NonInteractive", "-Command", windows_script]);
+            command
+        }
+    }
+
+    #[cfg(any(unix, target_os = "windows"))]
+    #[tokio::test]
+    async fn external_script_delivers_text_via_stdin_without_shell_interpolation() {
+        let directory = tempfile::tempdir().expect("create script output directory");
+        let output = directory.path().join("script-input.txt");
+        let mut command = test_external_command(
+            "cat > \"$PHONARA_TEST_OUTPUT\"",
+            "[IO.File]::WriteAllText($env:PHONARA_TEST_OUTPUT, [Console]::In.ReadToEnd())",
+        );
+        command.env("PHONARA_TEST_OUTPUT", &output);
+        let text = "literal $(echo injected) `echo injected` ; & | < >\nsecond line";
+
+        run_external_script(command, text, Duration::from_secs(10))
+            .await
+            .expect("script completes after receiving input");
+
+        assert_eq!(
+            std::fs::read_to_string(output).expect("read script input"),
+            text
+        );
+    }
+
+    #[cfg(any(unix, target_os = "windows"))]
+    #[tokio::test]
+    async fn external_script_timeout_also_bounds_blocked_stdin() {
+        let command = test_external_command("exec sleep 10", "Start-Sleep -Seconds 10");
+        let text = "x".repeat(4 * 1024 * 1024);
+        let started = std::time::Instant::now();
+
+        let error = run_external_script(command, &text, Duration::from_millis(250))
+            .await
+            .expect_err("a script that never consumes stdin must time out");
+
+        assert!(error.contains("timed out"));
+        assert!(started.elapsed() < Duration::from_secs(4));
+    }
+
+    #[cfg(any(unix, target_os = "windows"))]
+    #[tokio::test]
+    async fn cancelled_external_script_cannot_complete_later_in_the_background() {
+        let directory = tempfile::tempdir().expect("create script marker directory");
+        let ready = directory.path().join("ready.txt");
+        let late_output = directory.path().join("late-output.txt");
+        let mut command = test_external_command(
+            "printf ready > \"$PHONARA_TEST_READY\"; sleep 0.5; printf late > \"$PHONARA_TEST_OUTPUT\"",
+            "[IO.File]::WriteAllText($env:PHONARA_TEST_READY, 'ready'); Start-Sleep -Milliseconds 500; [IO.File]::WriteAllText($env:PHONARA_TEST_OUTPUT, 'late')",
+        );
+        command.env("PHONARA_TEST_READY", &ready);
+        command.env("PHONARA_TEST_OUTPUT", &late_output);
+        let task = tokio::spawn(async move {
+            run_external_script(command, "test", Duration::from_secs(10)).await
+        });
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while !ready.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("script reaches its cancellable wait");
+
+        task.abort();
+        assert!(task
+            .await
+            .expect_err("script future was cancelled")
+            .is_cancelled());
+        tokio::time::sleep(Duration::from_millis(750)).await;
+
+        assert!(
+            !late_output.exists(),
+            "cancelled child must not perform delayed output"
+        );
+    }
+
+    #[cfg(any(unix, target_os = "windows"))]
+    #[tokio::test]
+    async fn external_script_nonzero_exit_is_reported() {
+        let command = test_external_command("exit 7", "exit 7");
+        let error = run_external_script(command, "test", Duration::from_secs(10))
+            .await
+            .expect_err("failing script must not report a successful paste");
+        assert!(error.contains("exit code Some(7)"));
+    }
+
     #[cfg(unix)]
-    #[test]
-    fn external_script_does_not_wait_for_inherited_stdio() {
+    #[tokio::test]
+    async fn external_script_does_not_wait_for_inherited_stdio() {
         use std::fs;
         use std::os::unix::fs::PermissionsExt;
-        use std::sync::mpsc;
-        use std::thread;
 
         let script_path = std::env::temp_dir().join(format!(
             "handy-external-script-{}-{}.sh",
@@ -1046,17 +1356,12 @@ e.g. 28:1 28:0 means pressing on the Enter button on a standard US keyboard.
         permissions.set_mode(0o700);
         fs::set_permissions(&script_path, permissions).expect("make external script executable");
 
-        let (sender, receiver) = mpsc::channel();
-        let script_path_for_thread = script_path.clone();
-        thread::spawn(move || {
-            let result =
-                paste_via_external_script("test", script_path_for_thread.to_str().unwrap());
-            sender.send(result).expect("send script result");
-        });
-
-        let result = receiver
-            .recv_timeout(Duration::from_secs(1))
-            .expect("external script should return without waiting for its child");
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            paste_via_external_script("test", script_path.to_str().unwrap()),
+        )
+        .await
+        .expect("external script should return without waiting for its child");
         fs::remove_file(script_path).expect("remove external script");
         assert!(result.is_ok());
     }

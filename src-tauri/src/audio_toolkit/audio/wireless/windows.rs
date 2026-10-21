@@ -1,6 +1,6 @@
 use super::policy::{
-    classify, endpoints_for_container, parse_product_reply, Observation, Query, Reply, Tracker,
-    POLL_INTERVAL, RECEIVER_PRODUCT,
+    classify, endpoints_for_container, parse_product_reply, radio_presence, Observation, Query,
+    Reply, Tracker, POLL_INTERVAL, RECEIVER_PRODUCT,
 };
 use hidapi::{HidApi, HidDevice};
 use std::collections::{HashMap, HashSet};
@@ -35,6 +35,8 @@ struct ReceiverKey {
 struct ReceiverState {
     presence: Tracker,
     endpoints: Vec<String>,
+    observation: Option<String>,
+    identified_headset_slot: Option<u8>,
 }
 
 #[derive(Default)]
@@ -45,6 +47,21 @@ struct PollState {
 
 static POLL: OnceLock<Mutex<PollState>> = OnceLock::new();
 static SNAPSHOT: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+
+pub(super) fn diagnostics() -> serde_json::Value {
+    let Ok(poll) = POLL.get_or_init(Mutex::default).try_lock() else {
+        return serde_json::json!({"error": "probe_in_progress"});
+    };
+    serde_json::json!(poll
+        .trackers
+        .values()
+        .map(|state| serde_json::json!({
+            "endpoints": state.endpoints,
+            "observation": state.observation,
+            "unavailable": state.presence.is_unreachable(Instant::now()),
+        }))
+        .collect::<Vec<_>>())
+}
 
 pub(super) fn unavailable_endpoints() -> HashSet<String> {
     let snapshot = SNAPSHOT
@@ -193,14 +210,53 @@ fn probe_receivers(trackers: &mut HashMap<ReceiverKey, ReceiverState>) -> Result
             continue;
         }
         let receiver = query_product(handle, 0);
-        let radio = query_product(handle, 1);
+        let before = query_property(handle, 0, 0x36);
+        let mut products = Vec::new();
+        if let Query::Product(mask) = before.value {
+            if mask <= 0xff {
+                for channel in 1..8 {
+                    if mask & (1 << channel) != 0 {
+                        let first = query_product(handle, channel).value;
+                        let confirmed = query_product(handle, channel).value;
+                        products.push((
+                            channel,
+                            if first == confirmed {
+                                first
+                            } else {
+                                Query::Unknown
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        let after = query_property(handle, 0, 0x36);
         let state = trackers.entry(key.clone()).or_default();
         state.endpoints = mapped;
         let now = Instant::now();
-        let observation = classify(receiver.value, radio.value);
+        let radio = radio_presence(
+            before.value,
+            after.value,
+            &products,
+            state.identified_headset_slot,
+        );
+        let observation = classify(receiver.value, radio);
+        if observation == Observation::Reachable {
+            state.identified_headset_slot = products
+                .iter()
+                .find(|(_, product)| *product == Query::Product(super::policy::HEADSET_PRODUCT))
+                .map(|(slot, _)| *slot);
+        } else if observation == Observation::OtherModel {
+            state.identified_headset_slot = None;
+        }
+        state.observation = Some(format!("receiver={:?} ({}), slots_before={:?} ({}), slots_after={:?} ({}), products={products:?}, result={observation:?}", receiver.value, receiver.reason, before.value, before.reason, after.value, after.reason));
         state.presence.observe(observation, now);
         if matches!(observation, Observation::Unknown | Observation::OtherModel) {
-            log::debug!("Wireless microphone receiver {index}: receiver_query={:?}, receiver_reason={}, radio_query={:?}, radio_reason={}, observation={observation:?}, retained_unavailable={}", receiver.value, receiver.reason, radio.value, radio.reason, state.presence.is_unreachable(now));
+            log::debug!(
+                "Wireless microphone receiver {index}: {}, retained_unavailable={}",
+                state.observation.as_deref().unwrap_or("unknown"),
+                state.presence.is_unreachable(now)
+            );
         } else {
             log::trace!(
                 "Wireless microphone receiver {index}: observation={observation:?}, unavailable={}",
@@ -213,6 +269,7 @@ fn probe_receivers(trackers: &mut HashMap<ReceiverKey, ReceiverState>) -> Result
 
 fn clear_mapping(state: &mut ReceiverState) {
     state.endpoints.clear();
+    state.identified_headset_slot = None;
     state.presence.clear_confirmation();
     state.presence.observe(Observation::Unknown, Instant::now());
 }
@@ -263,6 +320,10 @@ impl QueryResult {
 }
 
 fn query_product(handle: &HidDevice, channel: u8) -> QueryResult {
+    query_property(handle, channel, 0x12)
+}
+
+fn query_property(handle: &HidDevice, channel: u8, property: u8) -> QueryResult {
     let mut buffer = [0; 64];
     // Drain the prior response queue before sending this single property read.
     // A continuously busy queue cannot establish response correlation.
@@ -283,7 +344,7 @@ fn query_product(handle: &HidDevice, channel: u8) -> QueryResult {
     // Independently verified on Virtuoso XT: report 2, receiver/radio channel,
     // read opcode 2, ProductID property 0x12. No mode or setting writes occur.
     let mut request = [0; 64];
-    request[..4].copy_from_slice(&[2, 8 + channel, 2, 0x12]);
+    request[..4].copy_from_slice(&[2, 8 + channel, 2, property]);
     let deadline = Instant::now() + QUERY_TIMEOUT;
     // windows-native may return Ok(0) after synchronous WriteFile success.
     match handle.write(&request) {
@@ -363,7 +424,7 @@ fn input_endpoint_containers() -> windows::core::Result<Vec<(String, u128)>> {
             let _ = PropVariantClear(&mut property);
             if let Ok(container) = container {
                 endpoints.push((
-                    cpal::DeviceId(cpal::HostId::Wasapi, endpoint_id).to_string(),
+                    cpal::DeviceId::new(cpal::HostId::Wasapi, endpoint_id.as_str()).to_string(),
                     container.to_u128(),
                 ));
             }
@@ -389,7 +450,7 @@ mod tests {
         for tick in 0..3 {
             state
                 .presence
-                .observe(Observation::RadioTimeout, now + POLL_INTERVAL * tick);
+                .observe(Observation::Disconnected, now + POLL_INTERVAL * tick);
         }
         (key, state)
     }

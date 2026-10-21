@@ -301,12 +301,13 @@ pub fn get_recordings_directory(app: AppHandle) -> Result<Option<String>, String
 #[tauri::command]
 #[specta::specta]
 pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), String> {
-    let dir = std::path::Path::new(&path);
-    if !dir.is_dir() {
-        return Err(format!("Directory does not exist: {}", path));
-    }
+    use tauri::Manager;
+    let directory = app
+        .state::<std::sync::Arc<crate::managers::history::HistoryManager>>()
+        .prepare_recordings_directory(Some(std::path::Path::new(&path)))
+        .map_err(|error| error.to_string())?;
     settings::update_settings(&app, |settings| {
-        settings.custom_recordings_directory = Some(path);
+        settings.custom_recordings_directory = Some(directory.to_string_lossy().into_owned());
     });
     Ok(())
 }
@@ -314,6 +315,10 @@ pub fn set_recordings_directory(app: AppHandle, path: String) -> Result<(), Stri
 #[tauri::command]
 #[specta::specta]
 pub fn clear_recordings_directory(app: AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    app.state::<std::sync::Arc<crate::managers::history::HistoryManager>>()
+        .prepare_recordings_directory(None)
+        .map_err(|error| error.to_string())?;
     settings::update_settings(&app, |settings| {
         settings.custom_recordings_directory = None;
     });

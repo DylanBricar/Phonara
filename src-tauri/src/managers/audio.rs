@@ -11,7 +11,7 @@ use crate::settings::{get_settings, VadBackend};
 use crate::utils;
 use log::{debug, error, info};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
@@ -513,7 +513,37 @@ impl AudioRecordingManager {
     }
 
     pub fn preload_vad(&self) -> Result<(), anyhow::Error> {
+        // A background preload must not observe an obsolete recorder and later
+        // close its replacement after another thread has started a dictation.
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        self.preload_vad_while_idle_under_state(&state)
+    }
+
+    fn preload_vad_while_idle_under_state(
+        &self,
+        state: &MutexGuard<'_, RecordingState>,
+    ) -> Result<(), anyhow::Error> {
+        if !matches!(**state, RecordingState::Idle) {
+            return Ok(());
+        }
+        let rebuild = self
+            .recorder
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .is_some_and(AudioRecorder::requires_rebuild);
+        if rebuild {
+            // A stalled sink may still own its native VAD call. Close the old
+            // capture before constructing a fresh detector, outside its mutex.
+            self.stop_microphone_stream();
+        }
         let mut recorder_opt = self.recorder.lock().unwrap();
+        if recorder_opt
+            .as_ref()
+            .is_some_and(AudioRecorder::requires_rebuild)
+        {
+            *recorder_opt = None;
+        }
         if recorder_opt.is_none() {
             let settings = get_settings(&self.app_handle);
             *recorder_opt = Some(create_audio_recorder(
@@ -572,7 +602,7 @@ impl AudioRecordingManager {
             (MicrophoneMode::OnDemand, MicrophoneMode::AlwaysOn) => {
                 self.close_generation.fetch_add(1, Ordering::SeqCst);
                 if matches!(*state, RecordingState::Idle) {
-                    self.start_microphone_stream()?;
+                    self.start_microphone_stream_while_idle_under_state(&state)?;
                 }
             }
             _ => {}
@@ -601,8 +631,23 @@ impl AudioRecordingManager {
     }
 
     pub fn toggle_pause(&self) -> bool {
-        let was_paused = self.is_paused.fetch_xor(true, Ordering::Relaxed);
-        let paused = !was_paused;
+        let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
+        if !matches!(*state, RecordingState::Recording { .. }) {
+            return false;
+        }
+        let paused = !self.is_paused.load(Ordering::Acquire);
+        let recorder = self
+            .recorder
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if let Some(recorder) = recorder.as_ref() {
+            if let Err(error) = recorder.set_paused(paused) {
+                self.publish_microphone_error(format!(
+                    "Cannot change recording pause state: {error}"
+                ));
+            }
+        }
+        let paused = self.is_paused.load(Ordering::Acquire);
         if paused {
             debug!("Recording paused");
         } else {
@@ -616,10 +661,10 @@ impl AudioRecordingManager {
         binding_id: &str,
         vad_policy: VadPolicy,
     ) -> Result<RecordingReadiness, String> {
-        self.is_paused.store(false, Ordering::Relaxed);
         let mut state = self.state.lock().unwrap();
 
         if let RecordingState::Idle = *state {
+            self.is_paused.store(false, Ordering::Release);
             // Cancel any pending lazy close (no-op in always-on mode, where
             // closes are never scheduled).
             self.close_generation.fetch_add(1, Ordering::SeqCst);
@@ -628,7 +673,7 @@ impl AudioRecordingManager {
             // but if the capture worker died (device disconnect), it rebuilds
             // the stream instead of leaving every subsequent start wedged on
             // "Recorder not available".
-            if let Err(e) = self.start_microphone_stream() {
+            if let Err(e) = self.start_microphone_stream_while_idle_under_state(&state) {
                 let msg = format!("{e}");
                 error!("Failed to open microphone stream: {msg}");
                 return Err(msg);
@@ -691,7 +736,7 @@ impl AudioRecordingManager {
 
         let previous_recorder = self.recorder.lock().unwrap().replace(replacement);
         if was_open {
-            if let Err(change_error) = self.start_microphone_stream() {
+            if let Err(change_error) = self.start_microphone_stream_while_idle_under_state(&state) {
                 // Ensure a partially opened replacement cannot retain capture
                 // resources before restoring the known-good detector.
                 if let Some(recorder) = self.recorder.lock().unwrap().as_mut() {
@@ -699,7 +744,9 @@ impl AudioRecordingManager {
                 }
                 *self.recorder.lock().unwrap() = previous_recorder;
 
-                if let Err(rollback_error) = self.start_microphone_stream() {
+                if let Err(rollback_error) =
+                    self.start_microphone_stream_while_idle_under_state(&state)
+                {
                     error!(
                         "Failed to restore microphone stream after VAD backend change failed: {rollback_error}"
                     );
@@ -740,7 +787,7 @@ impl AudioRecordingManager {
             recorder.set_selected_channel(selected_channel);
         }
         if was_open {
-            if let Err(error) = self.start_microphone_stream() {
+            if let Err(error) = self.start_microphone_stream_while_idle_under_state(&state) {
                 if let Some(recorder) = self.recorder.lock().unwrap().as_mut() {
                     recorder.set_selected_channel(previous_channel);
                 }

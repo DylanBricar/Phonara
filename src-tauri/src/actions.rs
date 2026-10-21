@@ -22,6 +22,8 @@ use log::{debug, error, warn};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::future::Future;
+use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
@@ -29,6 +31,47 @@ use tauri::{AppHandle, Emitter};
 
 const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const EMPTY_CUSTOM_WORDS: &str = "(none provided)";
+static MISSING_RECORDING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+static RECORDING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+fn history_recording_name(saved_file_name: Option<String>) -> String {
+    saved_file_name.unwrap_or_else(|| {
+        format!(
+            "phonara-missing-{}-{}-{}.wav",
+            chrono::Utc::now().timestamp_micros(),
+            std::process::id(),
+            MISSING_RECORDING_SEQUENCE.fetch_add(1, Ordering::Relaxed),
+        )
+    })
+}
+
+/// Save a recording under an unused name. `save_wav_file` atomically claims each
+/// candidate so concurrent tasks and older files cannot overwrite one another.
+fn save_recording(
+    recordings_dir: &Path,
+    samples: &[f32],
+    timestamp_millis: i64,
+) -> anyhow::Result<String> {
+    loop {
+        let sequence = RECORDING_SEQUENCE
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |sequence| {
+                sequence.checked_add(1)
+            })
+            .map_err(|_| anyhow::anyhow!("No unused recording filename available"))?;
+        let file_name = format!(
+            "phonara-{timestamp_millis}-{}-{sequence}.wav",
+            std::process::id(),
+        );
+        match crate::audio_toolkit::save_wav_file(recordings_dir.join(&file_name), samples) {
+            Ok(()) => return Ok(file_name),
+            Err(error)
+                if error
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|error| error.kind() == std::io::ErrorKind::AlreadyExists) => {}
+            Err(error) => return Err(error),
+        }
+    }
+}
 
 #[derive(Clone, serde::Serialize)]
 struct RecordingErrorEvent {
@@ -642,6 +685,26 @@ pub(crate) struct ProcessedTranscription {
     pub allow_auto_submit: bool,
 }
 
+impl ProcessedTranscription {
+    fn with_post_process(
+        mut self,
+        result: Option<String>,
+        prompt: Option<String>,
+        uses_cli: bool,
+    ) -> Self {
+        if let Some(text) = result
+            .map(|text| strip_invisible_chars(&text))
+            .filter(|text| !text.trim().is_empty())
+        {
+            self.final_text = text.clone();
+            self.post_processed_text = Some(text);
+            self.post_process_prompt = prompt;
+            self.allow_auto_submit = !uses_cli;
+        }
+        self
+    }
+}
+
 /// Resolve the persisted language *intent* into the language the currently-loaded
 /// model will actually use — the same capability-aware coercion the transcription
 /// paths apply (see [`crate::managers::model::effective_language`]). Post-processing
@@ -669,10 +732,12 @@ pub(crate) async fn process_transcription_output(
     post_process: bool,
 ) -> ProcessedTranscription {
     let settings = get_settings(app);
-    let mut final_text = transcription.to_string();
-    let mut post_processed_text: Option<String> = None;
-    let mut post_process_prompt: Option<String> = None;
-    let mut allow_auto_submit = true;
+    let mut output = ProcessedTranscription {
+        final_text: transcription.to_string(),
+        post_processed_text: None,
+        post_process_prompt: None,
+        allow_auto_submit: true,
+    };
 
     // Resolve the language the transcription actually ran in (the persisted
     // intent coerced against the loaded model's capabilities) so OpenCC keys off
@@ -681,44 +746,57 @@ pub(crate) async fn process_transcription_output(
     if let Some(converted_text) =
         maybe_convert_chinese_variant(&effective_language, transcription).await
     {
-        final_text = converted_text;
+        output.final_text = converted_text;
     }
 
     if post_process {
         let post_process_uses_cli = settings
             .active_post_process_provider()
             .is_some_and(|provider| is_cli_post_process_provider(&provider.id));
-        if let Some(processed_text) = post_process_transcription(&settings, &final_text).await {
-            post_processed_text = Some(processed_text.clone());
-            final_text = processed_text;
-            allow_auto_submit = !post_process_uses_cli;
-
-            if let Some(prompt_id) = &settings.post_process_selected_prompt_id {
-                if let Some(prompt) = settings
+        let result = post_process_transcription(&settings, &output.final_text).await;
+        let prompt = settings
+            .post_process_selected_prompt_id
+            .as_ref()
+            .and_then(|prompt_id| {
+                settings
                     .post_process_prompts
                     .iter()
                     .find(|prompt| &prompt.id == prompt_id)
-                {
-                    post_process_prompt = Some(prompt.prompt.clone());
-                }
-            }
-        }
-    } else if final_text != transcription {
-        post_processed_text = Some(final_text.clone());
+            })
+            .map(|prompt| prompt.prompt.clone());
+        output = output.with_post_process(result, prompt, post_process_uses_cli);
+    } else if output.final_text != transcription {
+        output.post_processed_text = Some(output.final_text.clone());
     }
 
-    ProcessedTranscription {
-        final_text,
-        post_processed_text,
-        post_process_prompt,
-        allow_auto_submit,
-    }
+    output
 }
 
 impl ShortcutAction for TranscribeAction {
     fn start(&self, app: &AppHandle, binding_id: &str, _shortcut_str: &str) {
         let start_time = Instant::now();
         debug!("TranscribeAction::start called for binding: {}", binding_id);
+
+        // Check before loading VAD, changing the tray, or capturing audio. The
+        // coordinator observes that capture did not begin and returns to idle.
+        let settings = get_settings(app);
+        let selected_model_info = app
+            .state::<Arc<ModelManager>>()
+            .get_model_info(&settings.selected_model);
+        if !selected_model_info
+            .as_ref()
+            .is_some_and(|model| model.is_downloaded)
+        {
+            warn!("Recording skipped: select a downloaded transcription model first");
+            let _ = app.emit(
+                "recording-error",
+                RecordingErrorEvent {
+                    error_type: "no_model".to_string(),
+                    detail: None,
+                },
+            );
+            return;
+        }
 
         // Load model in the background
         let tm = app.state::<Arc<TranscriptionManager>>();
@@ -742,12 +820,7 @@ impl ShortcutAction for TranscribeAction {
 
         // Get the microphone mode to determine audio feedback timing
         let plan_started = Instant::now();
-        let settings = get_settings(app);
         let is_always_on = settings.always_on_microphone;
-
-        let selected_model_info = app
-            .state::<Arc<ModelManager>>()
-            .get_model_info(&settings.selected_model);
 
         // Use the app-facing model capability as the single pre-recording source
         // for live streaming decisions. Unknown support is represented as false
@@ -943,23 +1016,30 @@ impl ShortcutAction for TranscribeAction {
                 } else {
                     // Save WAV concurrently with transcription
                     let sample_count = samples.len();
-                    let file_name = format!("phonara-{}.wav", chrono::Utc::now().timestamp());
-                    let wav_path = hm.recordings_dir().join(&file_name);
-                    let wav_path_for_verify = wav_path.clone();
+                    let recordings_dir = hm.recordings_dir();
+                    let recordings_dir_for_verify = recordings_dir.clone();
                     let samples_for_wav = samples.clone();
                     let wav_handle = tauri::async_runtime::spawn_blocking(move || {
-                        crate::audio_toolkit::save_wav_file(&wav_path, &samples_for_wav)
+                        save_recording(
+                            &recordings_dir,
+                            &samples_for_wav,
+                            chrono::Utc::now().timestamp_millis(),
+                        )
                     });
 
                     // Prefer a finalized live stream when available; otherwise
                     // fall back to batch transcription of the captured audio.
                     let transcription_time = Instant::now();
+                    let batch_cancel_mark = crate::engine_supervisor::supervisor().cancel_mark();
                     let transcription_result = match tm.finalize_stream() {
                         Ok(Some(text)) if !text.trim().is_empty() => Ok(text),
+                        Ok(_) if rm.was_cancelled_since(cancel_generation) => Err(anyhow::anyhow!(
+                            "Transcription cancelled before batch fallback"
+                        )),
                         Ok(_) => {
                             let tm_clone = Arc::clone(&tm);
                             tauri::async_runtime::spawn_blocking(move || {
-                                tm_clone.transcribe(samples)
+                                tm_clone.transcribe_since(batch_cancel_mark, samples)
                             })
                             .await
                             .map_err(|e| anyhow::anyhow!("Transcription task panicked: {}", e))
@@ -969,28 +1049,29 @@ impl ShortcutAction for TranscribeAction {
                     };
 
                     // Await WAV save and verify
-                    let wav_saved = match wav_handle.await {
-                        Ok(Ok(())) => {
+                    let saved_file_name = match wav_handle.await {
+                        Ok(Ok(file_name)) => {
                             match crate::audio_toolkit::verify_wav_file(
-                                &wav_path_for_verify,
+                                recordings_dir_for_verify.join(&file_name),
                                 sample_count,
                             ) {
-                                Ok(()) => true,
+                                Ok(()) => Some(file_name),
                                 Err(e) => {
                                     error!("WAV verification failed: {}", e);
-                                    false
+                                    None
                                 }
                             }
                         }
                         Ok(Err(e)) => {
                             error!("Failed to save WAV file: {}", e);
-                            false
+                            None
                         }
                         Err(e) => {
                             error!("WAV save task panicked: {}", e);
-                            false
+                            None
                         }
                     };
+                    let file_name = history_recording_name(saved_file_name);
 
                     if rm.was_cancelled_since(cancel_generation) {
                         debug!("Transcription operation cancelled before output handling");
@@ -1047,21 +1128,17 @@ impl ShortcutAction for TranscribeAction {
                                             false,
                                         )
                                         .await;
-                                        match run_post_process_action(
+                                        let result = run_post_process_action(
                                             &settings,
                                             &base.final_text,
                                             &action,
                                         )
-                                        .await
-                                        {
-                                            Some(result) => ProcessedTranscription {
-                                                final_text: result.clone(),
-                                                post_processed_text: Some(result),
-                                                post_process_prompt: Some(action.prompt),
-                                                allow_auto_submit: !action_uses_cli,
-                                            },
-                                            None => base,
-                                        }
+                                        .await;
+                                        base.with_post_process(
+                                            result,
+                                            Some(action.prompt),
+                                            action_uses_cli,
+                                        )
                                     } else {
                                         process_transcription_output(
                                             &ah,
@@ -1088,58 +1165,50 @@ impl ShortcutAction for TranscribeAction {
                                 return;
                             }
 
-                            // Save to history if WAV was saved
-                            if wav_saved {
-                                if let Err(err) = hm.save_entry(
-                                    file_name,
-                                    transcription,
-                                    post_process_requested,
-                                    processed.post_processed_text.clone(),
-                                    processed.post_process_prompt.clone(),
-                                ) {
-                                    error!("Failed to save history entry: {}", err);
-                                }
+                            // Text remains recoverable even when audio cannot be
+                            // saved. Missing audio is already handled by history.
+                            if let Err(err) = hm.save_entry(
+                                file_name,
+                                transcription,
+                                post_process_requested,
+                                processed.post_processed_text.clone(),
+                                processed.post_process_prompt.clone(),
+                            ) {
+                                error!("Failed to save history entry: {}", err);
                             }
 
                             if processed.final_text.is_empty() {
                                 utils::hide_recording_overlay(&ah);
                                 set_tray_state(&ah, TrayIconState::Idle);
                             } else {
-                                let ah_clone = ah.clone();
                                 let paste_time = Instant::now();
                                 let allow_auto_submit = processed.allow_auto_submit;
                                 let final_text = processed.final_text;
                                 let rm_for_paste = Arc::clone(&rm);
-                                ah.run_on_main_thread(move || {
-                                    if rm_for_paste.was_cancelled_since(cancel_generation) {
-                                        debug!("Transcription operation cancelled before paste");
-                                        utils::hide_recording_overlay(&ah_clone);
-                                        set_tray_state(&ah_clone, TrayIconState::Idle);
-                                        return;
-                                    }
-
-                                    match utils::paste_with_auto_submit(
+                                let paste_result = complete_unless_cancelled(
+                                    utils::paste_with_auto_submit(
                                         final_text,
-                                        ah_clone.clone(),
+                                        ah.clone(),
                                         allow_auto_submit,
-                                    ) {
-                                        Ok(()) => debug!(
-                                            "Text pasted successfully in {:?}",
-                                            paste_time.elapsed()
-                                        ),
-                                        Err(e) => {
-                                            error!("Failed to paste transcription: {}", e);
-                                            let _ = ah_clone.emit("paste-error", ());
-                                        }
+                                        move || rm_for_paste.was_cancelled_since(cancel_generation),
+                                    ),
+                                    || rm.was_cancelled_since(cancel_generation),
+                                )
+                                .await;
+                                match paste_result {
+                                    Some(Ok(())) => {
+                                        debug!("Text paste completed in {:?}", paste_time.elapsed())
                                     }
-                                    utils::hide_recording_overlay(&ah_clone);
-                                    set_tray_state(&ah_clone, TrayIconState::Idle);
-                                })
-                                .unwrap_or_else(|e| {
-                                    error!("Failed to run paste on main thread: {:?}", e);
-                                    utils::hide_recording_overlay(&ah);
-                                    set_tray_state(&ah, TrayIconState::Idle);
-                                });
+                                    Some(Err(error)) => {
+                                        error!("Failed to paste transcription: {error}");
+                                        let _ = ah.emit("paste-error", ());
+                                    }
+                                    None => {
+                                        debug!("Transcription operation cancelled during paste")
+                                    }
+                                }
+                                utils::hide_recording_overlay(&ah);
+                                set_tray_state(&ah, TrayIconState::Idle);
                             }
                         }
                         Err(err) => {
@@ -1156,17 +1225,11 @@ impl ShortcutAction for TranscribeAction {
                             // Surface the failure to the UI (toast). The full
                             // message is also in phonara.log via the line above.
                             let _ = ah.emit("transcription-error", err.to_string());
-                            // Save entry with empty text so user can retry
-                            if wav_saved {
-                                if let Err(save_err) = hm.save_entry(
-                                    file_name,
-                                    String::new(),
-                                    post_process,
-                                    None,
-                                    None,
-                                ) {
-                                    error!("Failed to save failed history entry: {}", save_err);
-                                }
+                            // Save the failure even if audio is unavailable.
+                            if let Err(save_err) =
+                                hm.save_entry(file_name, String::new(), post_process, None, None)
+                            {
+                                error!("Failed to save failed history entry: {}", save_err);
                             }
                             utils::hide_recording_overlay(&ah);
                             set_tray_state(&ah, TrayIconState::Idle);
@@ -1252,8 +1315,9 @@ pub static ACTION_MAP: Lazy<HashMap<String, Arc<dyn ShortcutAction>>> = Lazy::ne
 #[cfg(test)]
 mod tests {
     use super::{
-        complete_unless_cancelled, is_blank_transcription, render_prompt_template,
-        should_use_streaming_overlay,
+        complete_unless_cancelled, history_recording_name, is_blank_transcription,
+        render_prompt_template, save_recording, should_use_streaming_overlay,
+        ProcessedTranscription,
     };
     use crate::settings::OverlayStyle;
     use std::future;
@@ -1264,6 +1328,139 @@ mod tests {
 
     fn words(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| word.to_string()).collect()
+    }
+
+    #[test]
+    fn saving_recording_preserves_legacy_audio_and_history_filename() {
+        let directory = tempfile::tempdir().expect("create recording directory");
+        let existing = directory.path().join("phonara-123.wav");
+        std::fs::write(&existing, b"existing audio").expect("write existing recording");
+
+        let name = save_recording(directory.path(), &[0.25, -0.25], 123)
+            .expect("save a different recording");
+
+        assert_ne!(name, "phonara-123.wav");
+        assert_eq!(
+            std::fs::read(existing).expect("read original"),
+            b"existing audio"
+        );
+        crate::audio_toolkit::verify_wav_file(directory.path().join(name), 2)
+            .expect("new recording remains readable using its history filename");
+    }
+
+    #[test]
+    fn concurrent_recordings_with_the_same_timestamp_keep_distinct_audio() {
+        let directory = tempfile::tempdir().expect("create recording directory");
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let handles = (1..=8)
+            .map(|sample_count| {
+                let recordings_dir = directory.path().to_path_buf();
+                let barrier = Arc::clone(&barrier);
+                thread::spawn(move || {
+                    let samples = vec![sample_count as f32 / 16.0; sample_count];
+                    barrier.wait();
+                    let name = save_recording(&recordings_dir, &samples, 123)
+                        .expect("save simultaneous recording");
+                    (name, sample_count)
+                })
+            })
+            .collect::<Vec<_>>();
+        let recordings = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("recording thread"))
+            .collect::<Vec<_>>();
+        let names = recordings
+            .iter()
+            .map(|(name, _)| name)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(names.len(), 8);
+        for (name, sample_count) in recordings {
+            let path = directory.path().join(name);
+            crate::audio_toolkit::verify_wav_file(&path, sample_count)
+                .expect("recording keeps its own samples");
+            let samples = crate::audio_toolkit::read_wav_samples(path).expect("read saved audio");
+            assert!(samples.iter().all(|sample| {
+                (sample - sample_count as f32 / 16.0).abs() < 1.0 / i16::MAX as f32
+            }));
+        }
+    }
+
+    #[test]
+    fn recording_io_error_returns_without_retrying() {
+        let directory = tempfile::tempdir().expect("create recording directory");
+        assert!(save_recording(&directory.path().join("missing"), &[0.25], 123).is_err());
+    }
+
+    #[test]
+    fn recording_names_remain_distinct_after_changing_directories() {
+        let first = tempfile::tempdir().expect("create first recording directory");
+        let second = tempfile::tempdir().expect("create second recording directory");
+        let first_name = save_recording(first.path(), &[0.25], 123).expect("save first audio");
+        let second_name = save_recording(second.path(), &[0.5], 123).expect("save second audio");
+
+        assert_ne!(first_name, second_name);
+        assert!(first.path().join(first_name).is_file());
+        assert!(second.path().join(second_name).is_file());
+    }
+
+    #[test]
+    fn missing_audio_still_has_a_distinct_history_reference() {
+        let existing = "phonara-123.wav".to_string();
+        assert_eq!(history_recording_name(Some(existing.clone())), existing);
+        let first = history_recording_name(None);
+        let second = history_recording_name(None);
+        assert_ne!(first, second);
+        assert!(first.starts_with("phonara-missing-"));
+        assert!(first.ends_with(".wav"));
+        assert_eq!(std::path::Path::new(&first).components().count(), 1);
+    }
+
+    #[test]
+    fn empty_post_processing_preserves_dictation_and_prior_conversion() {
+        for result in [None, Some(""), Some(" \t\n"), Some("\u{200B}\u{FEFF}")] {
+            let base = ProcessedTranscription {
+                final_text: "Dictation to keep".to_string(),
+                post_processed_text: Some("Prior conversion".to_string()),
+                post_process_prompt: None,
+                allow_auto_submit: true,
+            };
+            let output = base.with_post_process(
+                result.map(str::to_string),
+                Some("Rewrite this".to_string()),
+                true,
+            );
+
+            assert_eq!(output.final_text, "Dictation to keep");
+            assert_eq!(
+                output.post_processed_text.as_deref(),
+                Some("Prior conversion")
+            );
+            assert_eq!(output.post_process_prompt, None);
+            assert!(output.allow_auto_submit);
+        }
+    }
+
+    #[test]
+    fn nonempty_cli_post_processing_is_saved_without_enabling_submit() {
+        let base = ProcessedTranscription {
+            final_text: "Raw dictation".to_string(),
+            post_processed_text: None,
+            post_process_prompt: None,
+            allow_auto_submit: true,
+        };
+        let output = base.with_post_process(
+            Some("\u{200B}Processed dictation".to_string()),
+            Some("Rewrite this".to_string()),
+            true,
+        );
+
+        assert_eq!(output.final_text, "Processed dictation");
+        assert_eq!(
+            output.post_processed_text.as_deref(),
+            Some("Processed dictation")
+        );
+        assert_eq!(output.post_process_prompt.as_deref(), Some("Rewrite this"));
+        assert!(!output.allow_auto_submit);
     }
 
     #[test]
@@ -1319,6 +1516,64 @@ mod tests {
         ));
 
         assert_eq!(result, Some("done"));
+    }
+
+    #[tokio::test]
+    async fn paste_wait_keeps_the_pipeline_guard_until_completion() {
+        struct Guard(Arc<AtomicBool>);
+        impl Drop for Guard {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+        let released = Arc::new(AtomicBool::new(false));
+        let guard = Guard(Arc::clone(&released));
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let operation = async move {
+            let _guard = guard;
+            receiver.await.expect("paste completion signal")
+        };
+        let wait = complete_unless_cancelled(operation, || false);
+        tokio::pin!(wait);
+
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), wait.as_mut())
+                .await
+                .is_err()
+        );
+        assert!(!released.load(Ordering::Acquire));
+        sender.send("pasted").expect("complete paste");
+        assert_eq!(wait.await, Some("pasted"));
+        assert!(released.load(Ordering::Acquire));
+    }
+
+    #[tokio::test]
+    async fn cancelling_paste_drops_inflight_work_before_releasing_the_pipeline() {
+        struct Inflight(Arc<AtomicBool>);
+        impl Drop for Inflight {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Release);
+            }
+        }
+        let stopped = Arc::new(AtomicBool::new(false));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let resource = Inflight(Arc::clone(&stopped));
+        let cancel_signal = Arc::clone(&cancelled);
+        let cancel_task = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            cancel_signal.store(true, Ordering::Release);
+        });
+        let operation = async move {
+            let _resource = resource;
+            future::pending::<()>().await;
+        };
+
+        let result =
+            complete_unless_cancelled(operation, || cancelled.load(Ordering::Acquire)).await;
+
+        cancel_task.await.expect("cancellation task finishes");
+        assert_eq!(result, None);
+        assert!(stopped.load(Ordering::Acquire));
     }
 
     #[test]

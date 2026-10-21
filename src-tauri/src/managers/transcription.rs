@@ -3,6 +3,9 @@ use crate::audio_toolkit::{
     apply_custom_words, detect_output_language, normalize_transcription_output,
     remove_filler_words, OutputLanguageEvidence,
 };
+use crate::engine_supervisor::{
+    self, CancelMark, DeviceInfo, DeviceSelector, EngineError, LoadSpec, SupervisedSession,
+};
 use crate::managers::audio::AudioRecordingManager;
 use crate::managers::model::{EngineType, ModelManager};
 use crate::settings::{
@@ -21,8 +24,7 @@ use std::time::{Duration, Instant, SystemTime};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_specta::Event;
 use transcribe_cpp::{
-    Backend, Feature, Model, ModelOptions, RunExtension, RunOptions, Session, StreamOptions, Task,
-    WhisperRunOptions,
+    Backend, Feature, RunExtension, RunOptions, StreamOptions, Task, WhisperRunOptions,
 };
 use transcribe_rs::{
     onnx::{
@@ -38,7 +40,6 @@ use transcribe_rs::{
 };
 
 const STREAM_PERF_LOG_INTERVAL: Duration = Duration::from_secs(5);
-const STREAM_FINALIZE_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 const ENGINE_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
@@ -104,7 +105,7 @@ enum StreamCmd {
     Feed(Vec<f32>),
     /// Flush the stream and reply with the final text, or `None` if no stream
     /// was ever active (caller should fall back to batch transcription).
-    Finalize(mpsc::Sender<Option<FinalizedStreamText>>),
+    Finalize(mpsc::Sender<StreamFinalization>),
     Cancel,
 }
 
@@ -113,6 +114,8 @@ struct FinalizedStreamText {
     output_language: OutputLanguageEvidence,
     supported_languages: Vec<String>,
 }
+
+type StreamFinalization = Result<Option<FinalizedStreamText>, engine_supervisor::EngineError>;
 
 /// Routes real-time audio frames to the active streaming worker. Shared between
 /// the [`TranscriptionManager`] (opens/closes the route) and the audio recorder's
@@ -179,9 +182,9 @@ impl StreamRouter {
 
 enum LoadedEngine {
     /// Whisper-family models (whisper, breeze-asr, custom .bin/.gguf) via
-    /// transcribe-cpp. Holds the live `Session`, which keeps its `Model` alive
-    /// internally, so repeated dictation reuses the session without reloading.
-    TranscribeCpp(Session),
+    /// transcribe-cpp. Holds a supervised child-process session and metadata.
+    /// Repeated dictation reuses the worker until unload, cancel or recovery.
+    TranscribeCpp(SupervisedSession),
     Parakeet(ParakeetModel),
     Moonshine(MoonshineModel),
     MoonshineStreaming(StreamingModel),
@@ -542,6 +545,7 @@ impl TranscriptionManager {
 
     /// Begin a live streaming transcription on the held engine's session.
     pub fn start_stream(&self) {
+        let cancel_mark = engine_supervisor::supervisor().cancel_mark();
         if self.shutdown_signal.load(Ordering::Acquire) {
             warn!("Ignoring start_stream during transcription manager shutdown");
             return;
@@ -578,10 +582,15 @@ impl TranscriptionManager {
         }
 
         let manager = self.clone();
-        thread::spawn(move || manager.run_stream_worker(rx, worker_id));
+        thread::spawn(move || manager.run_stream_worker(rx, worker_id, cancel_mark));
     }
 
-    fn run_stream_worker(&self, rx: mpsc::Receiver<StreamCmd>, worker_id: u64) {
+    fn run_stream_worker(
+        &self,
+        rx: mpsc::Receiver<StreamCmd>,
+        worker_id: u64,
+        cancel_mark: CancelMark,
+    ) {
         let _worker = StreamWorkerGuard {
             worker_id,
             active_stream_worker: Arc::clone(&self.active_stream_worker),
@@ -601,7 +610,7 @@ impl TranscriptionManager {
                 error
             );
             self.router.clear();
-            drain_until_finalize(rx);
+            drain_until_finalize(rx, cancel_mark);
             return;
         }
 
@@ -614,7 +623,7 @@ impl TranscriptionManager {
         {
             warn!("Live preview: another worker already holds the transcription engine");
             self.router.clear();
-            drain_until_finalize(rx);
+            drain_until_finalize(rx, cancel_mark);
             return;
         }
 
@@ -632,7 +641,7 @@ impl TranscriptionManager {
                     Ordering::Acquire,
                 );
                 self.router.clear();
-                drain_until_finalize(rx);
+                drain_until_finalize(rx, cancel_mark);
                 return;
             }
         };
@@ -669,7 +678,7 @@ impl TranscriptionManager {
             self.return_engine(engine, &model_id, engine_lease.generation);
             drop(engine_lease);
             self.router.clear();
-            drain_until_finalize(rx);
+            drain_until_finalize(rx, cancel_mark);
             return;
         }
 
@@ -695,113 +704,130 @@ impl TranscriptionManager {
             ..Default::default()
         };
 
-        let mut finalize_reply: Option<mpsc::Sender<Option<FinalizedStreamText>>> = None;
-        let mut finalize_result: Option<Option<FinalizedStreamText>> = None;
+        let mut finalize_reply: Option<mpsc::Sender<StreamFinalization>> = None;
+        let mut finalize_result: Option<StreamFinalization> = None;
         let stream_started = 'stream: {
             let session = match &mut engine {
                 LoadedEngine::TranscribeCpp(s) => s,
                 _ => break 'stream false,
             };
-            let backend = session.model().backend();
-            let mut stream = match session.stream(&run_options, &StreamOptions::default()) {
-                Ok(s) => s,
-                Err(e) => {
-                    error!("Failed to begin stream: {}", e);
+            let backend = session.model().backend.clone();
+            let perf = Arc::new(Mutex::new(StreamPerf::new()));
+            let progress_perf = Arc::clone(&perf);
+            let progress_app = self.app_handle.clone();
+            let handle = match session.supervisor.start_stream_since(
+                cancel_mark,
+                run_options,
+                StreamOptions::default(),
+                move |progress| {
+                    let mut perf = progress_perf.lock().unwrap_or_else(|e| e.into_inner());
+                    perf.record_compute(progress.elapsed);
+                    perf.record_update(
+                        progress.update.revision,
+                        progress.update.input_received_ms,
+                        progress.update.audio_committed_ms,
+                        progress.update.buffered_ms,
+                    );
+                    if let Some(text) = progress.text {
+                        perf.record_emit();
+                        let _ = StreamTextEvent {
+                            committed: text.committed,
+                            tentative: text.tentative,
+                        }
+                        .emit(&progress_app);
+                    }
+                    perf.maybe_log();
+                },
+            ) {
+                Ok(handle) => handle,
+                Err(error) => {
+                    error!("Failed to begin supervised stream: {}", error);
                     break 'stream false;
                 }
             };
-
+            let mut stream = Some(handle);
             self.stream_active.store(true, Ordering::Release);
             self.touch_activity();
             info!(
-                "Live streaming transcription started (model '{}', backend '{}')",
+                "Live supervised transcription started (model '{}', backend '{}')",
                 model_id, backend
             );
-
-            let mut perf = StreamPerf::new();
             while let Ok(cmd) = rx.recv() {
                 match cmd {
                     StreamCmd::Feed(pcm) => {
                         self.touch_activity();
-                        perf.record_feed(pcm.len());
-                        let feed_start = Instant::now();
-                        match stream.feed(&pcm) {
-                            Ok(update) => {
-                                perf.record_compute(feed_start.elapsed());
-                                perf.record_update(
-                                    update.revision,
-                                    update.input_received_ms,
-                                    update.audio_committed_ms,
-                                    update.buffered_ms,
-                                );
-                                if update.committed_changed || update.tentative_changed {
-                                    let text = stream.text();
-                                    perf.record_emit();
-                                    self.emit_stream_text(&text.committed, &text.tentative);
-                                }
-                                perf.maybe_log();
-                            }
-                            Err(e) => {
-                                perf.record_compute(feed_start.elapsed());
-                                warn!("stream feed failed: {}", e);
-                            }
+                        perf.lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .record_feed(pcm.len());
+                        if let Some(stream) = stream.as_ref() {
+                            stream.feed(pcm);
                         }
                     }
                     StreamCmd::Finalize(reply) => {
-                        let finalize_start = Instant::now();
-                        let result = match stream.finalize() {
-                            Ok(update) => {
-                                perf.record_compute(finalize_start.elapsed());
+                        let want_language =
+                            matches!(output_language, OutputLanguageEvidence::Unknown);
+                        let result = match stream
+                            .take()
+                            .map(|stream| stream.finalize(want_language))
+                        {
+                            Some(Ok(Some(finalized))) => {
+                                let mut perf = perf.lock().unwrap_or_else(|e| e.into_inner());
+                                perf.record_compute(finalized.elapsed);
                                 perf.record_update(
-                                    update.revision,
-                                    update.input_received_ms,
-                                    update.audio_committed_ms,
-                                    update.buffered_ms,
+                                    finalized.update.revision,
+                                    finalized.update.input_received_ms,
+                                    finalized.update.audio_committed_ms,
+                                    finalized.update.buffered_ms,
                                 );
-                                let output_language = match &output_language {
-                                    OutputLanguageEvidence::Unknown => {
-                                        with_model_detected_language(
-                                            OutputLanguageEvidence::Unknown,
-                                            stream.snapshot().language,
-                                        )
-                                    }
-                                    resolved => resolved.clone(),
+                                let language = if want_language {
+                                    with_model_detected_language(
+                                        OutputLanguageEvidence::Unknown,
+                                        finalized.language,
+                                    )
+                                } else {
+                                    output_language.clone()
                                 };
-                                Some(FinalizedStreamText {
-                                    text: stream.text().full,
-                                    output_language,
+                                Ok(Some(FinalizedStreamText {
+                                    text: finalized.text.full,
+                                    output_language: language,
                                     supported_languages: languages.clone(),
-                                })
+                                }))
                             }
-                            Err(e) => {
-                                perf.record_compute(finalize_start.elapsed());
-                                error!(
-                                    "stream finalize failed: {}; falling back to batch transcription",
-                                    e
-                                );
-                                None
+                            Some(Err(error @ engine_supervisor::EngineError::Cancelled)) => {
+                                Err(error)
                             }
+                            Some(Err(error)) => {
+                                warn!("Supervised stream failed: {}; falling back to batch transcription", error);
+                                Ok(None)
+                            }
+                            _ => Ok(None),
                         };
-                        let chars = result.as_ref().map(|text| text.text.len()).unwrap_or(0);
-                        perf.log_finalized(chars);
+                        let chars = result
+                            .as_ref()
+                            .ok()
+                            .and_then(|text| text.as_ref())
+                            .map(|text| text.text.len())
+                            .unwrap_or(0);
+                        perf.lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .log_finalized(chars);
                         finalize_reply = Some(reply);
                         finalize_result = Some(result);
                         break;
                     }
                     StreamCmd::Cancel => {
-                        stream.reset();
+                        drop(stream.take());
                         break;
                     }
                 }
             }
-
             true
         };
 
         if !stream_started {
             self.return_engine(engine, &model_id, engine_lease.generation);
             drop(engine_lease);
-            drain_until_finalize(rx);
+            drain_until_finalize(rx, cancel_mark);
             return;
         }
 
@@ -814,6 +840,7 @@ impl TranscriptionManager {
 
     /// Abandon any pending stream route without producing text.
     pub fn cancel_stream(&self) {
+        engine_supervisor::supervisor().cancel();
         if let Some(tx) = self.router.take() {
             let _ = tx.send(StreamCmd::Cancel);
         }
@@ -852,17 +879,14 @@ impl TranscriptionManager {
         if tx.send(StreamCmd::Finalize(reply_tx)).is_err() {
             return Ok(None);
         }
-        let finalized = match reply_rx.recv_timeout(STREAM_FINALIZE_REPLY_TIMEOUT) {
-            Ok(Some(text)) => text,
-            Ok(None) => return Ok(None),
-            Err(mpsc::RecvTimeoutError::Disconnected) => return Ok(None),
-            Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.stream_active.store(false, Ordering::Release);
-                return Err(anyhow::anyhow!(
-                    "Timed out waiting {:?} for live transcription to finalize",
-                    STREAM_FINALIZE_REPLY_TIMEOUT
-                ));
-            }
+        // Native calls have device/audio-dependent deadlines in the supervisor.
+        // A second 30s deadline here would reject valid CPU decoding and leave
+        // its worker processing text the user was already told had failed.
+        let finalized = match reply_rx.recv() {
+            Ok(Ok(Some(text))) => text,
+            Ok(Ok(None)) => return Ok(None),
+            Ok(Err(error)) => return Err(error.into()),
+            Err(_) => return Ok(None),
         };
 
         let settings = get_settings(&self.app_handle);
@@ -883,14 +907,6 @@ impl TranscriptionManager {
         let _ = StreamPhaseEvent {
             phase: StreamPhase::Working,
             kind: Some(kind),
-        }
-        .emit(&self.app_handle);
-    }
-
-    fn emit_stream_text(&self, committed: &str, tentative: &str) {
-        let _ = StreamTextEvent {
-            committed: committed.to_string(),
-            tentative: tentative.to_string(),
         }
         .emit(&self.app_handle);
     }
@@ -926,6 +942,7 @@ impl TranscriptionManager {
     /// the cached engine stale; the next model-use path reloads it with the
     /// latest settings.
     pub fn reload_model_on_next_use(&self) {
+        engine_supervisor::supervisor().retry_gpu("accelerator preference changed");
         self.reload_model_on_next_use.store(true, Ordering::Release);
     }
 
@@ -987,6 +1004,7 @@ impl TranscriptionManager {
     fn unload_model_while_loading(&self) -> Result<()> {
         let unload_start = std::time::Instant::now();
         debug!("Starting to unload model");
+        engine_supervisor::supervisor().unload().wait();
 
         self.engine_generation.fetch_add(1, Ordering::AcqRel);
 
@@ -1101,10 +1119,22 @@ impl TranscriptionManager {
             },
         );
 
-        let model_info = self
-            .model_manager
-            .get_model_info(model_id)
-            .ok_or_else(|| anyhow::anyhow!("Model not found: {}", model_id))?;
+        let model_info = match self.model_manager.get_model_info(model_id) {
+            Some(model) => model,
+            None => {
+                let error = format!("Model not found: {}", model_id);
+                let _ = self.app_handle.emit(
+                    "model-state-changed",
+                    ModelStateEvent {
+                        event_type: "loading_failed".to_string(),
+                        model_id: Some(model_id.to_string()),
+                        model_name: None,
+                        error: Some(error.clone()),
+                    },
+                );
+                return Err(anyhow::anyhow!(error));
+            }
+        };
 
         if !model_info.is_downloaded {
             let error_msg = "Model not downloaded";
@@ -1120,13 +1150,28 @@ impl TranscriptionManager {
             return Err(anyhow::anyhow!(error_msg));
         }
 
-        let model_path = self.model_manager.get_model_path(model_id)?;
+        let model_path = self
+            .model_manager
+            .get_model_path(model_id)
+            .inspect_err(|error| {
+                let _ = self.app_handle.emit(
+                    "model-state-changed",
+                    ModelStateEvent {
+                        event_type: "loading_failed".to_string(),
+                        model_id: Some(model_id.to_string()),
+                        model_name: Some(model_info.name.clone()),
+                        error: Some(error.to_string()),
+                    },
+                );
+            })?;
 
         // Drop the current engine BEFORE building the new one so transcribe-cpp
         // frees the previous native context first — avoids holding two models at
         // once (peak memory on large GGUFs). Clear the id too: if the new load
         // fails, status should read "no loaded model", not the dropped engine.
         self.engine_generation.fetch_add(1, Ordering::AcqRel);
+        // Stop the old process before any replacement, including an ONNX load.
+        engine_supervisor::supervisor().unload().wait();
         {
             let mut engine = self.lock_engine();
             *engine = None;
@@ -1156,51 +1201,38 @@ impl TranscriptionManager {
                 // --device-index flag) hard-select that registered device;
                 // otherwise re-read the persisted accelerator preference (so an
                 // accelerator change marked for reload takes effect here).
-                let (backend, device) = match device_index {
-                    Some(index) => resolve_device_index(index).inspect_err(|e| {
-                        emit_loading_failed(&e.to_string());
-                    })?,
-                    None => {
-                        let settings = get_settings(&self.app_handle);
-                        let accelerator = settings.transcribe_accelerator;
-                        let device = resolve_gpu_device(
-                            accelerator,
-                            settings.transcribe_gpu_device.as_deref(),
-                        );
-                        let backend = if device.is_some() {
-                            Backend::Auto
-                        } else {
-                            select_transcribe_backend(accelerator)
-                        };
-                        (backend, device)
-                    }
+                let settings = get_settings(&self.app_handle);
+                let accelerator = settings.transcribe_accelerator;
+                let backend = if device_index.is_some() {
+                    Backend::Auto
+                } else {
+                    select_transcribe_backend(accelerator)
                 };
-                let requested_device = device
-                    .as_ref()
-                    .map(transcribe_device_label)
-                    .unwrap_or_else(|| "automatic".to_string());
-                let model_options = ModelOptions { backend, device };
-                let model = Model::load_with(&model_path, &model_options).map_err(|e| {
-                    let error_msg = format!("Failed to load whisper model {}: {}", model_id, e);
-                    emit_loading_failed(&error_msg);
-                    anyhow::anyhow!(error_msg)
+                let device = match device_index {
+                    Some(index) => DeviceSelector::Index(index),
+                    None if accelerator == TranscribeAcceleratorSetting::Gpu
+                        && !transcribe_gpu_disabled_for_host() =>
+                    {
+                        settings
+                            .transcribe_gpu_device
+                            .clone()
+                            .map(DeviceSelector::Key)
+                            .unwrap_or(DeviceSelector::Auto)
+                    }
+                    None => DeviceSelector::Auto,
+                };
+                let session = SupervisedSession::load(LoadSpec {
+                    path: model_path.clone(),
+                    backend,
+                    device,
+                })
+                .map_err(|error| {
+                    let message = format!("Failed to load supervised model {model_id}: {error}");
+                    emit_loading_failed(&message);
+                    anyhow::anyhow!(message)
                 })?;
-                // The bound backend may differ from the request (e.g. CPU
-                // fallback under Auto); log what actually loaded.
-                let bound_backend = model.backend();
-                let session = model.session().map_err(|e| {
-                    let error_msg = format!(
-                        "Failed to create session for whisper model {}: {}",
-                        model_id, e
-                    );
-                    emit_loading_failed(&error_msg);
-                    anyhow::anyhow!(error_msg)
-                })?;
-                // Reconcile the registry's advertised capabilities with the
-                // loaded model's real ones (GGUF metadata) so badges/gating
-                // reflect runtime truth, not the pre-download probe. The
-                // load-completed event below triggers the frontend refresh.
-                let caps = session.model().capabilities();
+                let info = session.model();
+                let caps = info.capabilities();
                 self.model_manager.set_runtime_capabilities(
                     model_id,
                     caps.supports_streaming,
@@ -1208,22 +1240,9 @@ impl TranscriptionManager {
                     caps.supports_language_detect,
                     caps.languages.clone(),
                 );
-                let bound_device = model
-                    .device()
-                    .map(|device| transcribe_device_label(&device))
-                    .unwrap_or_else(|_| "unknown".to_string());
                 info!(
-                    "Loaded whisper model '{}' (requested {:?}, requested device '{}', \
-                     bound backend '{}', bound device '{}', supports_streaming={}, \
-                     supports_translate={}, supports_language_detect={})",
-                    model_id,
-                    backend,
-                    requested_device,
-                    bound_backend,
-                    bound_device,
-                    caps.supports_streaming,
-                    caps.supports_translate,
-                    caps.supports_language_detect
+                    "Loaded supervised model '{}' on '{}'/'{}' (arch '{}', streaming={})",
+                    model_id, info.backend, info.device, info.arch, caps.supports_streaming
                 );
                 LoadedEngine::TranscribeCpp(session)
             }
@@ -1367,6 +1386,17 @@ impl TranscriptionManager {
     }
 
     pub fn transcribe(&self, audio: Vec<f32>) -> Result<String> {
+        let cpp_cancel_mark = engine_supervisor::supervisor().cancel_mark();
+        self.transcribe_since(cpp_cancel_mark, audio)
+    }
+
+    /// Keep the caller's cancellation epoch across a queued blocking task and
+    /// model loading. Capturing it only when the task starts would revive audio
+    /// cancelled while that task was waiting for a thread.
+    pub fn transcribe_since(&self, cpp_cancel_mark: CancelMark, audio: Vec<f32>) -> Result<String> {
+        if engine_supervisor::supervisor().is_cancelled(cpp_cancel_mark) {
+            return Err(EngineError::Cancelled.into());
+        }
         #[cfg(debug_assertions)]
         if std::env::var("PHONARA_FORCE_TRANSCRIPTION_FAILURE").is_ok() {
             return Err(anyhow::anyhow!(
@@ -1569,6 +1599,11 @@ impl TranscriptionManager {
             }
 
             let transcribe_result = catch_unwind(AssertUnwindSafe(|| -> Result<String> {
+                // Model loading may have waited for another operation. Preserve
+                // cancellation across that wait for ONNX as well as C++ engines.
+                if engine_supervisor::supervisor().is_cancelled(cpp_cancel_mark) {
+                    return Err(EngineError::Cancelled.into());
+                }
                 match &mut engine {
                     LoadedEngine::TranscribeCpp(session) => {
                         let initial_prompt = if model_is_whisper {
@@ -1625,7 +1660,7 @@ impl TranscriptionManager {
                         );
 
                         session
-                            .run(&audio, &run_options)
+                            .run_since(cpp_cancel_mark, &audio, &run_options)
                             .map(|transcription| {
                                 model_detected_language = transcription.language;
                                 transcription.text
@@ -2130,12 +2165,17 @@ fn cpp_translation_task(
 /// finalizes or cancels. Used when streaming can't actually run (model not
 /// loaded / not streaming-capable) so the finalize handshake still completes
 /// and the caller falls back to batch transcription.
-fn drain_until_finalize(rx: mpsc::Receiver<StreamCmd>) {
+fn drain_until_finalize(rx: mpsc::Receiver<StreamCmd>, cancel_mark: CancelMark) {
     while let Ok(cmd) = rx.recv() {
         match cmd {
             StreamCmd::Feed(_) => {}
             StreamCmd::Finalize(reply) => {
-                let _ = reply.send(None);
+                let result = if engine_supervisor::supervisor().is_cancelled(cancel_mark) {
+                    Err(engine_supervisor::EngineError::Cancelled)
+                } else {
+                    Ok(None)
+                };
+                let _ = reply.send(result);
                 break;
             }
             StreamCmd::Cancel => break,
@@ -2143,35 +2183,11 @@ fn drain_until_finalize(rx: mpsc::Receiver<StreamCmd>) {
     }
 }
 
-/// Initialize the transcribe-cpp native backend once at startup: route native +
-/// ggml diagnostics into the `log` facade and register compute backend modules.
-/// In a static build (macOS Metal) `init_backends_default` is a harmless no-op;
-/// in a `dynamic-backends` build it loads the per-ISA CPU / GPU modules. Must run
-/// before the first model load.
+/// Prepare the supervisor without running native C++ or GPU code in the UI process.
 pub fn init_transcribe_backend() {
-    transcribe_cpp::init_logging();
-    match transcribe_cpp::init_backends_default() {
-        Ok(()) => {
-            if transcribe_gpu_disabled_for_host() {
-                warn!(
-                    "Windows x64 build is running under emulation on an ARM64 host; disabling transcribe.cpp GPU acceleration"
-                );
-            }
-            let devices = transcribe_compute_devices();
-            info!(
-                "transcribe-cpp initialized with {} compute device(s): [{}]",
-                devices.len(),
-                devices
-                    .iter()
-                    .map(|d| format!("{} ({})", d.name, d.kind))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-        }
-        Err(e) => warn!("Failed to initialize transcribe-cpp backends: {}", e),
-    }
+    let _ = engine_supervisor::supervisor();
+    info!("transcribe.cpp backend initialization is isolated in the worker process");
 }
-
 /// Human-readable list of the transcribe-cpp compute devices registered at
 /// startup, for the `--list-devices` flag. The reported `index` is the
 /// value to pass to `--device-index`. Backends must be initialized first
@@ -2198,28 +2214,6 @@ pub fn describe_compute_devices() -> Vec<String> {
         .collect()
 }
 
-/// Resolve a registry index to an exact opaque transcribe-cpp 0.2 device.
-/// Index zero is an exact selection; only an omitted index requests automatic
-/// selection.
-fn resolve_device_index(index: usize) -> Result<(Backend, Option<transcribe_cpp::Device>)> {
-    let device = transcribe_compute_devices()
-        .into_iter()
-        .find(|d| d.index == Some(index))
-        .ok_or_else(|| {
-            anyhow::anyhow!("No compute device with index {index} (see --list-devices)")
-        })?;
-    if matches!(
-        device.device_type,
-        transcribe_cpp::DeviceType::Accel | transcribe_cpp::DeviceType::Unknown
-    ) {
-        return Err(anyhow::anyhow!(
-            "Device index {index} ({}) cannot host a model",
-            device.kind
-        ));
-    }
-    Ok((Backend::Auto, Some(device)))
-}
-
 /// Map Phonara's accelerator setting to a transcribe-cpp backend.
 fn select_transcribe_backend(setting: TranscribeAcceleratorSetting) -> Backend {
     select_transcribe_backend_for_host(setting, transcribe_gpu_disabled_for_host())
@@ -2232,44 +2226,6 @@ fn select_transcribe_backend_for_host(
     match effective_transcribe_accelerator(setting, gpu_disabled) {
         TranscribeAcceleratorSetting::Cpu => Backend::Cpu,
         TranscribeAcceleratorSetting::Auto | TranscribeAcceleratorSetting::Gpu => Backend::Auto,
-    }
-}
-
-/// Resolve a stable persisted device identity to this process's opaque handle.
-fn resolve_gpu_device(
-    setting: TranscribeAcceleratorSetting,
-    gpu_device: Option<&str>,
-) -> Option<transcribe_cpp::Device> {
-    if transcribe_gpu_disabled_for_host() || setting != TranscribeAcceleratorSetting::Gpu {
-        return None;
-    }
-    let gpu_device = gpu_device?;
-    let resolved = transcribe_compute_devices().into_iter().find(|device| {
-        is_transcribe_gpu_device(device) && transcribe_device_key(device) == gpu_device
-    });
-    if resolved.is_none() {
-        warn!(
-            "Stored transcribe GPU device '{}' is no longer available; using automatic selection",
-            gpu_device
-        );
-    }
-    resolved
-}
-
-fn transcribe_device_key(device: &transcribe_cpp::Device) -> String {
-    let (identity_kind, identity) = match device.device_id.as_deref() {
-        Some(device_id) => ("id", device_id),
-        None => ("name", device.name.as_str()),
-    };
-    serde_json::to_string(&(device.kind.as_str(), identity_kind, identity))
-        .expect("transcribe device identity is always JSON serializable")
-}
-
-fn transcribe_device_label(device: &transcribe_cpp::Device) -> String {
-    if device.description.is_empty() {
-        device.name.clone()
-    } else {
-        device.description.clone()
     }
 }
 
@@ -2324,29 +2280,11 @@ fn effective_transcribe_accelerator(
     }
 }
 
-fn is_transcribe_gpu_device(device: &transcribe_cpp::Device) -> bool {
-    matches!(
-        device.device_type,
-        transcribe_cpp::DeviceType::Gpu | transcribe_cpp::DeviceType::Igpu
-    )
+fn transcribe_compute_devices() -> Vec<DeviceInfo> {
+    engine_supervisor::supervisor()
+        .devices()
+        .unwrap_or_default()
 }
-
-fn transcribe_device_allowed(kind: &str, gpu_disabled: bool) -> bool {
-    !gpu_disabled || matches!(kind, "cpu" | "accel")
-}
-
-fn transcribe_compute_devices() -> Vec<transcribe_cpp::Device> {
-    let devices = transcribe_cpp::devices();
-    let gpu_disabled = transcribe_gpu_disabled_for_host();
-    if !gpu_disabled {
-        return devices;
-    }
-    devices
-        .into_iter()
-        .filter(|device| transcribe_device_allowed(&device.kind, gpu_disabled))
-        .collect()
-}
-
 fn available_transcribe_accelerators(gpu_disabled: bool) -> Vec<String> {
     if gpu_disabled {
         vec!["cpu".to_string()]
@@ -2364,10 +2302,10 @@ fn cached_gpu_devices() -> &'static [GpuDeviceOption] {
     GPU_DEVICES.get_or_init(|| {
         transcribe_compute_devices()
             .into_iter()
-            .filter(is_transcribe_gpu_device)
+            .filter(DeviceInfo::is_gpu)
             .map(|d| GpuDeviceOption {
-                id: transcribe_device_key(&d),
-                name: transcribe_device_label(&d),
+                id: d.key.clone(),
+                name: d.label().to_string(),
                 total_vram_mb: (d.memory_total / (1024 * 1024)) as usize,
             })
             .collect()

@@ -8,6 +8,7 @@ mod catalog;
 pub mod cli;
 mod clipboard;
 mod commands;
+pub mod engine_supervisor;
 mod helpers;
 mod input;
 #[cfg(target_os = "linux")]
@@ -519,6 +520,77 @@ where
 fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
     use std::time::Instant;
 
+    if args.audio_diagnostics || args.probe_microphone.is_some() {
+        let mut observations = Vec::new();
+        for sample in 0..3 {
+            if sample > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+            }
+            crate::audio_toolkit::audio::wireless::refresh();
+            observations.push(crate::audio_toolkit::audio::wireless::diagnostics());
+        }
+        let devices = match crate::audio_toolkit::audio::list_raw_input_device_identities() {
+            Ok(devices) => devices,
+            Err(error) => {
+                eprintln!("Failed to enumerate microphones: {error}");
+                return 1;
+            }
+        };
+        let unavailable = crate::audio_toolkit::audio::wireless::unavailable_endpoints();
+        let controls = crate::audio_toolkit::audio::input_state::input_states();
+        let probe = args.probe_microphone.as_ref().map(|id| {
+            devices
+                .iter()
+                .find(|device| &device.id == id)
+                .ok_or_else(|| "The requested microphone identity was not found".to_string())
+                .and_then(crate::audio_toolkit::audio::probe::probe_input_device)
+        });
+        let recorder_probe = args.probe_microphone.as_ref().map(|id| {
+            devices
+                .iter()
+                .find(|device| &device.id == id)
+                .ok_or_else(|| "The requested microphone identity was not found".to_string())
+                .and_then(crate::audio_toolkit::audio::probe::probe_recorder)
+        });
+        let data_dir = crate::portable::app_data_dir(app).ok();
+        let saved = data_dir
+            .as_ref()
+            .and_then(|dir| std::fs::read(dir.join("settings_store.json")).ok())
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+        let report = serde_json::json!({
+            "data_directory": data_dir,
+            "log_directory": crate::portable::app_log_dir(app).ok(),
+            "microphone_priority": saved.as_ref().and_then(|value| value.pointer("/settings/microphone_priority")),
+            "devices": devices.iter().map(|device| {
+                use cpal::traits::DeviceTrait;
+                let description = device.device.description().ok();
+                serde_json::json!({"id": device.id, "name": device.name, "description": description.map(|description| format!("{description:?}")), "is_default": device.is_default, "wireless_unavailable": unavailable.contains(&device.id)})
+            }).collect::<Vec<_>>(),
+            "wireless_observations": observations,
+            "input_controls": controls,
+            "capture_probe": probe,
+            "recorder_probe": recorder_probe,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_default()
+        );
+        return if [probe.as_ref(), recorder_probe.as_ref()]
+            .into_iter()
+            .flatten()
+            .any(|result| {
+                result.as_ref().map_or(true, |report| {
+                    report["callbacks"].as_u64().unwrap_or(0) == 0
+                        || report["samples"].as_u64().unwrap_or(0) == 0
+                        || !report["error"].is_null()
+                })
+            }) {
+            1
+        } else {
+            0
+        };
+    }
+
     // --list-devices: print registered compute devices (with indices) and exit.
     // Useful on multi-GPU machines to discover the index for --device-index.
     if args.list_devices {
@@ -926,8 +998,11 @@ pub fn run(cli_args: CliArgs) {
 
     // The headless path must run as its own instance (see the single-instance
     // note below), not forward to an already-running app.
-    let headless_mode =
-        cli_args.transcribe_file.is_some() || cli_args.list_devices || cli_args.list_models;
+    let headless_mode = cli_args.transcribe_file.is_some()
+        || cli_args.list_devices
+        || cli_args.list_models
+        || cli_args.audio_diagnostics;
+    let headless_mode = headless_mode || cli_args.probe_microphone.is_some();
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default()
@@ -1041,6 +1116,7 @@ pub fn run(cli_args: CliArgs) {
             // signal handlers, and autostart that initialize_core_logic sets up.
             if headless_mode {
                 let app_handle = app.handle().clone();
+                if !cli_args.audio_diagnostics && cli_args.probe_microphone.is_none() {
                 let model_manager = Arc::new(
                     ModelManager::new(&app_handle).expect("Failed to initialize model manager"),
                 );
@@ -1052,6 +1128,7 @@ pub fn run(cli_args: CliArgs) {
                 app_handle.manage(transcription_manager);
                 managers::transcription::init_transcribe_backend();
                 managers::transcription::apply_accelerator_settings(&app_handle);
+                }
 
                 let handle = app_handle.clone();
                 let args = cli_args.clone();

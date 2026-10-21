@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  findReplacementMicrophone,
   findPreferredDevice,
   isMicrophonePriority,
   moveMicrophonePreference,
@@ -13,6 +14,24 @@ const devices = [
 ];
 
 describe("microphone preferences", () => {
+  test("replacement is offered only for an absent identity and one exact name", () => {
+    expect(
+      findReplacementMicrophone({ id: "old-headset", name: "Headset" }, devices)
+        ?.id,
+    ).toBe("headset");
+    expect(
+      findReplacementMicrophone({ id: "headset", name: "Headset" }, devices),
+    ).toBeUndefined();
+    expect(
+      findReplacementMicrophone(
+        { id: "old-usb", name: "USB microphone" },
+        devices,
+      ),
+    ).toBeUndefined();
+    expect(
+      findReplacementMicrophone({ id: null, name: "Headset" }, devices),
+    ).toBeUndefined();
+  });
   test("validates settings event payloads before updating the editor", () => {
     expect(isMicrophonePriority([])).toBe(true);
     expect(
@@ -31,6 +50,34 @@ describe("microphone preferences", () => {
     ]) {
       expect(isMicrophonePriority(invalid)).toBe(false);
     }
+  });
+  test("a qualified Windows name offers explicit repair without automatic rebinding", () => {
+    const saved = { id: "old", name: "Microphone sur casque" };
+    const corsair = {
+      id: "new",
+      name: "Microphone sur casque (CORSAIR VIRTUOSO XT)",
+      is_default: true,
+    };
+    expect(findReplacementMicrophone(saved, [corsair])?.id).toBe("new");
+    expect(findPreferredDevice(saved, [corsair])).toBeUndefined();
+    expect(
+      findReplacementMicrophone(saved, [
+        corsair,
+        {
+          ...corsair,
+          id: "another",
+          name: "Microphone sur casque (Other headset)",
+        },
+      ]),
+    ).toBeUndefined();
+    expect(
+      findReplacementMicrophone({ id: "old", name: "" }, [corsair]),
+    ).toBeUndefined();
+    expect(
+      findReplacementMicrophone(saved, [
+        { ...corsair, name: "Microphone sur casque secondaire" },
+      ]),
+    ).toBeUndefined();
   });
   test("stable identity wins even when devices share a name or are renamed", () => {
     expect(

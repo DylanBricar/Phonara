@@ -21,6 +21,32 @@ pub struct MicrophoneStatus {
     pub next: Option<MicrophoneDevice>,
     pub is_recording: bool,
     pub error: Option<String>,
+    /// OS-present endpoints skipped by the selection policy, with a visible reason.
+    pub unavailable: Vec<UnavailableMicrophone>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum MicrophoneUnavailableReason {
+    Muted,
+    WirelessUnreachable,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq, specta::Type)]
+pub struct UnavailableMicrophone {
+    pub id: String,
+    pub reason: MicrophoneUnavailableReason,
+}
+
+pub(crate) fn usable_microphones(
+    devices: &[MicrophoneDevice],
+    unavailable: &[UnavailableMicrophone],
+) -> Vec<MicrophoneDevice> {
+    devices
+        .iter()
+        .filter(|device| !unavailable.iter().any(|item| item.id == device.id))
+        .cloned()
+        .collect()
 }
 
 /// An ID is authoritative. A legacy name is safe only while it has one match.
@@ -151,6 +177,40 @@ mod tests {
             id: id.map(str::to_string),
             name: name.into(),
         }
+    }
+
+    #[test]
+    fn muted_or_offline_favorites_fall_back_then_return_without_losing_priority() {
+        let devices = vec![
+            device("headset", "Corsair", true),
+            device("camera", "Camera", false),
+        ];
+        let priorities = vec![
+            preference(Some("headset"), "Corsair"),
+            preference(Some("camera"), "Camera"),
+        ];
+        for reason in [
+            MicrophoneUnavailableReason::Muted,
+            MicrophoneUnavailableReason::WirelessUnreachable,
+        ] {
+            let unavailable = vec![UnavailableMicrophone {
+                id: "headset".into(),
+                reason,
+            }];
+            assert_eq!(
+                ordered_candidates(
+                    &priorities,
+                    &usable_microphones(&devices, &unavailable),
+                    None
+                ),
+                vec![devices[1].clone()]
+            );
+        }
+        assert_eq!(
+            ordered_candidates(&priorities, &usable_microphones(&devices, &[]), None),
+            devices
+        );
+        assert_eq!(priorities[0].id.as_deref(), Some("headset"));
     }
 
     #[test]

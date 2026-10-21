@@ -2234,6 +2234,310 @@
       "default_quant": "Q5_K_M",
       "recommended": false,
       "recommended_rank": null
+    },
+    {
+      "id": "handy-computer/parakeet-ultra-gguf",
+      "revision": "39eeb55181f0d354fd934f06e92fd8d5037fed8e",
+      "slug": "parakeet-ultra",
+      "name": "Parakeet Ultra",
+      "architecture": "parakeet",
+      "family": "parakeet",
+      "parameters": "627M",
+      "description": "Best accuracy across 25 European languages",
+      "license": "cc-by-4.0",
+      "language_count": 25,
+      "languages": [
+        "en",
+        "de",
+        "fr",
+        "es",
+        "it",
+        "pt",
+        "ru",
+        "uk",
+        "hr",
+        "sl",
+        "lv",
+        "lt",
+        "et",
+        "fi",
+        "sv",
+        "da",
+        "nl",
+        "pl",
+        "cs",
+        "sk",
+        "hu",
+        "ro",
+        "bg",
+        "el",
+        "mt"
+      ],
+      "capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": true,
+        "timestamps": "token"
+      },
+      "speed_score": 94.0,
+      "accuracy_score": 75.0,
+      "files": [
+        {
+          "filename": "parakeet-ultra-F32.gguf",
+          "quant": "F32",
+          "size_bytes": 2509290240,
+          "sha256": "ae1df0bc1abd85407718b9be718634aad81cbba44ae18da078cc0dfa2d6eb5de"
+        },
+        {
+          "filename": "parakeet-ultra-F16.gguf",
+          "quant": "F16",
+          "size_bytes": 1256724448,
+          "sha256": "cd97f94fa50a034a9019a47e2ed7a2de3963eed8316d1df4de9efdccca6fe78d"
+        },
+        {
+          "filename": "parakeet-ultra-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 740363168,
+          "sha256": "007a59761e9258779f189df396b50d12b83bb5b79e66df4b955c230d2f2a0a59"
+        },
+        {
+          "filename": "parakeet-ultra-Q6_K.gguf",
+          "quant": "Q6_K",
+          "size_bytes": 611196832,
+          "sha256": "ba146253d9b5eb7c729dfa897174cb5bad0a7d05129863805e0caf7d571c7493"
+        },
+        {
+          "filename": "parakeet-ultra-Q5_K_M.gguf",
+          "quant": "Q5_K_M",
+          "size_bytes": 549800864,
+          "sha256": "f6e3d8172547a3bb468e92ff395696e6d2e0371a9e52690a27741b4e8561c997"
+        },
+        {
+          "filename": "parakeet-ultra-Q4_K_M.gguf",
+          "quant": "Q4_K_M",
+          "size_bytes": 486280096,
+          "sha256": "c69b7a5f9071a7afd8a1818ef7ae542c386c4b01ed0cac380c19a99947646bf9"
+        }
+      ],
+      "default_quant": "Q8_0",
+      "recommended": false,
+      "recommended_rank": null
+    },
+    {
+      "id": "handy-computer/granite-speech-5.0-470m-turboctc-gguf",
+      "revision": "2b0b44d0d6c8b94a2e4f04a2cf3ec6a5c054463b",
+      "slug": "granite-speech-5.0-470m-turboctc",
+      "name": "Granite Speech 5.0 470M TurboCTC",
+      "architecture": "granite5_ctc",
+      "family": "granite5_ctc",
+      "parameters": "473M",
+      "description": "Extremely fast English transcription, best on GPU",
+      "license": "apache-2.0",
+      "language_count": 1,
+      "languages": [
+        "en"
+      ],
+      "capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": false,
+        "timestamps": "none"
+      },
+      "speed_score": 94.0,
+      "accuracy_score": 74.0,
+      "files": [
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-BF16.gguf",
+          "quant": "BF16",
+          "size_bytes": 947824480,
+          "sha256": "8b17c76fd4a519f2906eef0974e3c4a34efdae159278c4ed364f853cfe404a66"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-F16.gguf",
+          "quant": "F16",
+          "size_bytes": 947824480,
+          "sha256": "ce9fa4971549def08b6bcb78fd61f7dec326158d5a13576a1f995e0a04b732a7"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 505606496,
+          "sha256": "0408fe0b33be19af5be423d8ba6b43768608b6f065e1ac97b78c84b55c140738"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-Q6_K.gguf",
+          "quant": "Q6_K",
+          "size_bytes": 391836000,
+          "sha256": "b01301a564e2d86872572c304884332b2a7140ffd3d646cb718018aa9693eb46"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-Q5_K_M.gguf",
+          "quant": "Q5_K_M",
+          "size_bytes": 335737184,
+          "sha256": "a18c6882ff9dbcefbe674ccb8f8653578ed7dbc3fa9a955f036f3617b9627cce"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-Q4_K_M.gguf",
+          "quant": "Q4_K_M",
+          "size_bytes": 279114080,
+          "sha256": "3f30525381d72246b7f99e49b6cb66b249cf1b990c6c3d0e031a7765735f513e"
+        }
+      ],
+      "default_quant": "Q8_0",
+      "recommended": false,
+      "recommended_rank": null
+    },
+    {
+      "id": "handy-computer/granite-speech-5.0-470m-turboctc-nc-gguf",
+      "revision": "fb8091e2c1e50ef67d3e795ee9f84d703343d7c5",
+      "slug": "granite-speech-5.0-470m-turboctc-nc",
+      "name": "Granite Speech 5.0 470M TurboCTC (Non-Commercial)",
+      "architecture": "granite5_ctc",
+      "family": "granite5_ctc",
+      "parameters": "473M",
+      "description": "English speech-to-text.",
+      "license": "cc-by-nc-sa-4.0",
+      "language_count": 1,
+      "languages": [
+        "en"
+      ],
+      "capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": false,
+        "timestamps": "none"
+      },
+      "speed_score": 94.0,
+      "accuracy_score": 75.0,
+      "files": [
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-nc-BF16.gguf",
+          "quant": "BF16",
+          "size_bytes": 948103840,
+          "sha256": "5a6b4c796207e5b20ee164ccc380df3f5ad2ea368bf414ba6814e820237879bc"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-nc-F16.gguf",
+          "quant": "F16",
+          "size_bytes": 948562592,
+          "sha256": "baceebaaf85210f50463dfec059eb46ae6dbea8ea9a090500fbdee4f92b0c302"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-nc-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 505885856,
+          "sha256": "383ab69dc940f441fb7064e8aa41f71ac2d24d5bc4c64b6d17167a044c68c03d"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-nc-Q6_K.gguf",
+          "quant": "Q6_K",
+          "size_bytes": 392115360,
+          "sha256": "51ffd6f76904ee343e748736afd4cc9cf32caaf79b21cda85af395b2b0cbe56b"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-nc-Q5_K_M.gguf",
+          "quant": "Q5_K_M",
+          "size_bytes": 336016544,
+          "sha256": "0ad269ed1cacab002b4cc26fa4c12d134e7a90b395e6ddcb4ca0cba3bb710973"
+        },
+        {
+          "filename": "granite-speech-5.0-470m-turboctc-nc-Q4_K_M.gguf",
+          "quant": "Q4_K_M",
+          "size_bytes": 279393440,
+          "sha256": "b79b5b39c36f3d0596774ff352d132483b659a43927015864ad5e149ac85470a"
+        }
+      ],
+      "default_quant": "Q8_0",
+      "recommended": false,
+      "recommended_rank": null
+    },
+    {
+      "id": "handy-computer/orukeet-gguf",
+      "revision": "ab8536716c3aa03d49c4c36c0dae6a3da71210b8",
+      "slug": "orukeet",
+      "name": "Orukeet",
+      "architecture": "parakeet",
+      "family": "parakeet",
+      "parameters": "627M",
+      "description": "25-language speech-to-text with auto language detection and timestamps.",
+      "license": "cc-by-sa-4.0",
+      "language_count": 25,
+      "languages": [
+        "bg",
+        "hr",
+        "cs",
+        "da",
+        "nl",
+        "en",
+        "et",
+        "fi",
+        "fr",
+        "de",
+        "el",
+        "hu",
+        "it",
+        "lv",
+        "lt",
+        "mt",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "es",
+        "sv",
+        "uk"
+      ],
+      "capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": true,
+        "timestamps": "token"
+      },
+      "speed_score": 96.0,
+      "accuracy_score": 74.0,
+      "files": [
+        {
+          "filename": "orukeet-F32.gguf",
+          "quant": "F32",
+          "size_bytes": 2508435744,
+          "sha256": "ad77e42fb2819cb03e86f00f1c02e50ef0340021e4022cd93d8f2cfbf7bb121a"
+        },
+        {
+          "filename": "orukeet-F16.gguf",
+          "quant": "F16",
+          "size_bytes": 1255869984,
+          "sha256": "cd10c7a65197a7d3c07fe182652ed2af0699c1b7a375809a6426dd7a126c1621"
+        },
+        {
+          "filename": "orukeet-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 739508704,
+          "sha256": "68cd64b2a6c3c747f0a9f109884ed75b277c266c0fb8e5888c5a9f4d824fb9f7"
+        },
+        {
+          "filename": "orukeet-Q6_K.gguf",
+          "quant": "Q6_K",
+          "size_bytes": 610342368,
+          "sha256": "187d2dfcd14fdfc01fbca14d3a05ede4de7fe70cd5111a46bca979366ff26da1"
+        },
+        {
+          "filename": "orukeet-Q5_K_M.gguf",
+          "quant": "Q5_K_M",
+          "size_bytes": 548946400,
+          "sha256": "9c05613300c17ed293c6a7ec7058883dc3ffa22c7e13250fba0e94d76522b486"
+        },
+        {
+          "filename": "orukeet-Q4_K_M.gguf",
+          "quant": "Q4_K_M",
+          "size_bytes": 485425632,
+          "sha256": "ead20f27cef24a39c2c8ad262bff88c3b5e0d4b514ff761cf7a08c5e172ccd9e"
+        }
+      ],
+      "default_quant": "Q8_0",
+      "recommended": false,
+      "recommended_rank": null
     }
   ]
 }

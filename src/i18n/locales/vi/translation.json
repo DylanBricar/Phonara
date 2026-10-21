@@ -351,7 +351,10 @@
           "deviceIdentity": "{{name}} ({{id}})",
           "defaultSuffix": " (system default)",
           "deviceError": "A microphone could not be used or checked. Review the microphone shown above and check your connections. Your priorities have been kept.",
-          "observationError": "Automatic microphone display updates are unavailable. Refresh manually or reopen this tab."
+          "observationError": "Automatic microphone display updates are unavailable. Refresh manually or reopen this tab.",
+          "muted": "Microphone muted - using the next microphone",
+          "wirelessUnreachable": "Wireless headset unreachable - using the next microphone",
+          "reconnect": "Reconnect the detected microphone"
         }
       },
       "channel": {

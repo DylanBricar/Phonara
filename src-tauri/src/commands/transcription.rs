@@ -119,6 +119,14 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
     let spec = reader.spec();
     let sample_rate = spec.sample_rate as usize;
     let channels = spec.channels as usize;
+    if channels == 0 || sample_rate == 0 || sample_rate > 384_000 {
+        return Err("Invalid WAV channel count or sample rate".into());
+    }
+    if (spec.sample_format == hound::SampleFormat::Int && !(1..=32).contains(&spec.bits_per_sample))
+        || (spec.sample_format == hound::SampleFormat::Float && spec.bits_per_sample != 32)
+    {
+        return Err("Unsupported WAV sample format".into());
+    }
 
     debug!(
         "WAV file: {} Hz, {} channels, {} bits",
@@ -167,29 +175,81 @@ fn load_and_resample_wav(path: &Path) -> Result<Vec<f32>, String> {
         .map_err(|e| format!("Failed to create resampler: {}", e))?;
 
     let mut output = Vec::new();
-    let mut pos = 0;
-
-    while pos + chunk_size <= mono_samples.len() {
-        let chunk = &mono_samples[pos..pos + chunk_size];
-        let result = resampler
-            .process(&[chunk], None)
-            .map_err(|e| format!("Resampling failed: {}", e))?;
+    let delay = resampler.output_delay();
+    let expected = (mono_samples.len() * target_rate).div_ceil(sample_rate);
+    for chunk in mono_samples.chunks(chunk_size) {
+        let result = if chunk.len() == chunk_size {
+            resampler.process(&[chunk], None)
+        } else {
+            resampler.process_partial(Some(&[chunk]), None)
+        }
+        .map_err(|error| format!("Resampling failed: {error}"))?;
         output.extend_from_slice(&result[0]);
-        pos += chunk_size;
     }
-
-    if pos < mono_samples.len() {
-        let mut last_chunk = vec![0.0f32; chunk_size];
-        let remaining = &mono_samples[pos..];
-        last_chunk[..remaining.len()].copy_from_slice(remaining);
+    // The FFT delay can contain the entire signal of a short file. Drain it
+    // before trimming synthetic padding, then remove the leading filter delay.
+    for _ in 0..16 {
+        if output.len() >= expected + delay {
+            break;
+        }
         let result = resampler
-            .process(&[&last_chunk], None)
-            .map_err(|e| format!("Resampling failed: {}", e))?;
-        let expected =
-            (remaining.len() as f64 * target_rate as f64 / sample_rate as f64).ceil() as usize;
-        let take = expected.min(result[0].len());
-        output.extend_from_slice(&result[0][..take]);
+            .process_partial::<&[f32]>(None, None)
+            .map_err(|error| format!("Resampler flush failed: {error}"))?;
+        output.extend_from_slice(&result[0]);
+    }
+    if output.len() < expected + delay {
+        return Err("Resampler did not produce the complete recording".into());
+    }
+    Ok(output[delay..delay + expected].to_vec())
+}
+
+#[cfg(test)]
+mod wav_import_tests {
+    use super::load_and_resample_wav;
+
+    fn write_wav(rate: u32, channels: u16, frames: &[f32]) -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let spec = hound::WavSpec {
+            channels,
+            sample_rate: rate,
+            bits_per_sample: 32,
+            sample_format: hound::SampleFormat::Float,
+        };
+        let mut writer = hound::WavWriter::create(file.path(), spec).unwrap();
+        for sample in frames {
+            for _ in 0..channels {
+                writer.write_sample(*sample).unwrap();
+            }
+        }
+        writer.finalize().unwrap();
+        file
     }
 
-    Ok(output)
+    #[test]
+    fn short_import_retains_signal_and_exact_duration_after_fft_delay() {
+        for rate in [8_000, 22_050, 44_100, 48_000, 96_000] {
+            let count = rate as usize / 200;
+            let file = write_wav(rate, 2, &vec![0.5; count]);
+            let output = load_and_resample_wav(file.path()).unwrap();
+            assert_eq!(output.len(), (count * 16_000).div_ceil(rate as usize));
+            let average = output.iter().sum::<f32>() / output.len() as f32;
+            assert!(
+                average > 0.35,
+                "{rate}: short recording was lost ({average})"
+            );
+        }
+    }
+
+    #[test]
+    fn import_preserves_the_last_audio_and_sixteen_kilohertz_samples() {
+        let mut samples = vec![0.0; 4_800];
+        samples[4_560..].fill(0.5);
+        let file = write_wav(48_000, 1, &samples);
+        let output = load_and_resample_wav(file.path()).unwrap();
+        assert_eq!(output.len(), 1_600);
+        assert!(output[1_540..].iter().sum::<f32>() / 60.0 > 0.35);
+        let original = vec![0.1, -0.3, 0.7, 0.0];
+        let file = write_wav(16_000, 1, &original);
+        assert_eq!(load_and_resample_wav(file.path()).unwrap(), original);
+    }
 }

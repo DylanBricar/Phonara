@@ -7,6 +7,7 @@ import { useSettings } from "../../hooks/useSettings";
 import { useMicrophones } from "../../hooks/useMicrophones";
 import {
   findPreferredDevice,
+  findReplacementMicrophone,
   moveMicrophonePreference,
   resolveMicrophonePriority,
 } from "../../lib/microphonePreferences";
@@ -121,6 +122,13 @@ export const MicrophoneSelector: React.FC<MicrophoneSelectorProps> = React.memo(
               {priority.map((preference, index) => {
                 const device = findPreferredDevice(preference, devices);
                 const name = device?.name ?? preference.name;
+                const unavailability = status?.unavailable?.find(
+                  (item) => item.id === device?.id,
+                );
+                const replacement = findReplacementMicrophone(
+                  preference,
+                  available,
+                );
                 const duplicateName =
                   devices.filter((item) => item.name === name).length > 1 ||
                   priority.filter((item) => item.name === name).length > 1;
@@ -140,7 +148,14 @@ export const MicrophoneSelector: React.FC<MicrophoneSelectorProps> = React.memo(
                       <p className="text-sm font-medium break-words">{name}</p>
                       <p className="text-xs text-mid-gray">
                         {device
-                          ? t("settings.sound.microphone.priority.connected")
+                          ? t(
+                              unavailability?.reason === "muted"
+                                ? "settings.sound.microphone.priority.muted"
+                                : unavailability?.reason ===
+                                    "wireless_unreachable"
+                                  ? "settings.sound.microphone.priority.wirelessUnreachable"
+                                  : "settings.sound.microphone.priority.connected",
+                            )
                           : t(
                               "settings.sound.microphone.priority.disconnected",
                             )}
@@ -152,6 +167,27 @@ export const MicrophoneSelector: React.FC<MicrophoneSelectorProps> = React.memo(
                           </span>
                         )}
                       </p>
+                      {replacement && (
+                        <button
+                          type="button"
+                          className={`${actionClass} text-xs`}
+                          disabled={busy}
+                          onClick={() =>
+                            void save(
+                              priority.map((item, position) =>
+                                position === index
+                                  ? {
+                                      id: replacement.id,
+                                      name: replacement.name,
+                                    }
+                                  : item,
+                              ),
+                            )
+                          }
+                        >
+                          {t("settings.sound.microphone.priority.reconnect")}
+                        </button>
+                      )}
                       {duplicateName && preference.id && (
                         <p className="text-xs text-mid-gray break-all">
                           {preference.id}

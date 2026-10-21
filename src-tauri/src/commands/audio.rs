@@ -158,11 +158,6 @@ pub fn open_microphone_privacy_settings() -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub async fn update_microphone_mode(app: AppHandle, always_on: bool) -> Result<(), String> {
-    // Update settings (fast, stays inline)
-    let mut settings = get_settings(&app);
-    settings.always_on_microphone = always_on;
-    write_settings(&app, settings);
-
     // Update the audio manager mode. update_mode can stop/start the cpal stream
     // (blocking CoreAudio) and takes the manager std mutexes — run it on a
     // blocking thread, NOT inline on the webview/main run loop (a slow device
@@ -177,7 +172,9 @@ pub async fn update_microphone_mode(app: AppHandle, always_on: bool) -> Result<(
     tokio::task::spawn_blocking(move || rm.update_mode(new_mode))
         .await
         .map_err(|e| format!("audio task join failed: {}", e))?
-        .map_err(|e| format!("Failed to update microphone mode: {}", e))
+        .map_err(|e| format!("Failed to update microphone mode: {}", e))?;
+    update_settings(&app, |settings| settings.always_on_microphone = always_on);
+    Ok(())
 }
 
 #[tauri::command]
@@ -462,9 +459,11 @@ pub fn get_selected_channel(app: AppHandle) -> Result<Option<u16>, String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn toggle_pause(app: AppHandle) -> Result<bool, String> {
-    let audio_manager = app.state::<Arc<AudioRecordingManager>>();
-    let paused = audio_manager.toggle_pause();
+pub async fn toggle_pause(app: AppHandle) -> Result<bool, String> {
+    let audio_manager = Arc::clone(&app.state::<Arc<AudioRecordingManager>>());
+    let paused = tauri::async_runtime::spawn_blocking(move || audio_manager.toggle_pause())
+        .await
+        .map_err(|error| format!("Failed to change recording pause state: {error}"))?;
     app.emit("recording-paused", paused)
         .map_err(|e| format!("Failed to emit pause state: {e}"))?;
     Ok(paused)
