@@ -42,7 +42,7 @@ jobs:
           # libvulkan-dev + glslc + spirv-headers let transcribe-cpp-sys build
           # ggml's Vulkan backend (the Linux `vulkan` feature). Mirrors the apt
           # set transcribe.cpp's native-ci uses to build -DTRANSCRIBE_VULKAN=ON.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev libssl-dev libgtk-layer-shell-dev \
+          sudo apt-get install -y dbus-daemon libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev libssl-dev libgtk-layer-shell-dev \
             libvulkan-dev glslc spirv-headers
 
       - uses: swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
@@ -52,6 +52,12 @@ jobs:
       - name: Check Rust formatting
         working-directory: src-tauri
         run: cargo fmt -- --check
+
+      - name: Test Linux D-Bus plugin compatibility
+        working-directory: src-tauri
+        run: |
+          dbus-run-session -- cargo test --locked -p tauri-plugin-opener --lib dbus_reveal_ -- --ignored --test-threads=1
+          dbus-run-session -- cargo test --locked -p tauri-plugin-single-instance --lib dbus_instance_ -- --ignored --test-threads=1
 
       - name: Run Clippy
         working-directory: src-tauri

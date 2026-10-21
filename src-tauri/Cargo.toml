@@ -38,7 +38,7 @@ tauri = { version = "2.11.5", features = [
   'image-png',
 ] }
 tauri-plugin-log = "2.7.1"
-tauri-plugin-opener = "2.5.2"
+tauri-plugin-opener = "=2.5.5"
 tauri-plugin-store = "2.4.1"
 tauri-plugin-os = "2.3.2"
 tauri-plugin-clipboard-manager = "2.3.2"
@@ -101,7 +101,7 @@ signal-hook = "0.3"
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-global-shortcut = "2.3.1"
-tauri-plugin-single-instance = "2.3.2"
+tauri-plugin-single-instance = "=2.4.4"
 # Published Windows updates are signed NSIS executables. Disable legacy ZIP
 # extraction; it is unused and pulls in vulnerable zip 4.x. Linux publishes raw
 # AppImages, while macOS tar extraction is available without this feature.
@@ -190,6 +190,11 @@ transcribe-cpp = { version = "=0.4.0", default-features = false, features = [
 # that, but Nix's importCargoLock vendors both to the same `tao-macros-0.1.3`
 # dir and fails with a symlink collision. Unifying the source removes the dup.
 [patch.crates-io]
+# Stable Tauri 2 plugins still use the retired zbus 5 split crates. Keep their
+# published platform code and apply the minimal zbus 6 port locally; provenance
+# and removal criteria are recorded in vendor/README.md.
+tauri-plugin-opener = { path = "vendor/tauri-plugin-opener" }
+tauri-plugin-single-instance = { path = "vendor/tauri-plugin-single-instance" }
 tao = { git = "https://github.com/cjpais/tao", rev = "c3bee28c1d446d95f08c95c3b6f8d4bde052b876" }
 tao-macros = { git = "https://github.com/cjpais/tao", rev = "c3bee28c1d446d95f08c95c3b6f8d4bde052b876" }
 

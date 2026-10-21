@@ -17,6 +17,11 @@ src-tauri/gen
 src/bindings.ts
 src-tauri/src/catalog/catalog.json
 
+# Published third-party sources are kept byte-for-byte outside the documented
+# Rust/manifests patch. Format our vendor/README.md, not their generated assets.
+src-tauri/vendor/tauri-plugin-opener
+src-tauri/vendor/tauri-plugin-single-instance
+
 # Misc
 .DS_Store
 *.log

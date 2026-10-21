@@ -28,7 +28,7 @@ taille et SHA256. Les anciens chemins multitalker restent inchangés.
 | Transcription native C++  | Exécutable final Release, Whisper Medium Q8, Vulkan : phrase française synthétique de 9,955 s correctement transcrite ; deux passages, 1 922 ms puis 183 ms, chargement 1 969 ms. Mesure ponctuelle, pas un benchmark généralisable. |
 | Stabilité du superviseur  | 17 scénarios réels exécutés : 13 avec Whisper Medium, 4 de streaming avec Moonshine streaming tiny Q8. Crash GPU, repli CPU, annulation, blocage, fin du parent et durée de vie unique du worker vérifiés.                           |
 | Audit Bun                 | Aucune vulnérabilité, 369 paquets.                                                                                                                                                                                                   |
-| Audit RustSec             | Aucune vulnérabilité connue ; trois avertissements de maintenance Linux restent visibles et font échouer le mode strict. Voir le [rapport sécurité](security-review-2026-10-21.md).                                                  |
+| Audit RustSec             | Mode strict réussi : aucune vulnérabilité connue ni nouvel avertissement de maintenance, sans ajout d'exception. Voir le [rapport sécurité](security-review-2026-10-21.md).                                                          |
 
 Les quatre essais streaming lancés initialement avec Whisper échouaient sur
 `stream begin: not implemented` : ce modèle batch ne satisfait pas leur
