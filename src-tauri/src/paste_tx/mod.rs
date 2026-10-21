@@ -35,7 +35,113 @@
 // tests), but only the macOS/Windows platform modules consume all of it.
 #![cfg_attr(not(any(target_os = "macos", target_os = "windows")), allow(dead_code))]
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc, Arc, Mutex, PoisonError,
+};
 use std::time::{Duration, Instant};
+
+/// Owns serialization until the platform has actually restored the clipboard.
+/// The caller may abandon its future while an OS callback is still queued.
+pub(crate) struct PasteTransaction {
+    permit: Mutex<Option<tokio::sync::OwnedMutexGuard<()>>>,
+    completion: Mutex<Option<mpsc::Sender<Result<(), String>>>>,
+    is_cancelled: crate::clipboard::CancellationCheck,
+    cancelled: AtomicBool,
+    completed: AtomicBool,
+}
+
+pub(crate) struct PasteOptions {
+    pub auto_submit: bool,
+    pub auto_submit_key: crate::settings::AutoSubmitKey,
+    pub clipboard_handling: crate::settings::ClipboardHandling,
+}
+
+impl PasteTransaction {
+    pub(crate) fn new(
+        permit: Option<tokio::sync::OwnedMutexGuard<()>>,
+        is_cancelled: crate::clipboard::CancellationCheck,
+    ) -> (Arc<Self>, mpsc::Receiver<Result<(), String>>) {
+        let (sender, receiver) = mpsc::channel();
+        (
+            Arc::new(Self {
+                permit: Mutex::new(permit),
+                completion: Mutex::new(Some(sender)),
+                is_cancelled,
+                cancelled: AtomicBool::new(false),
+                completed: AtomicBool::new(false),
+            }),
+            receiver,
+        )
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire) || self.is_completed() || (self.is_cancelled)()
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn is_completed(&self) -> bool {
+        self.completed.load(Ordering::Acquire)
+    }
+
+    /// Reserve an injection attempt while the caller holds the state lock.
+    /// Once marked, a target may still consume the queued chord after Escape.
+    pub(crate) fn begin_injection(&self, state: &mut TxState, now: Instant) -> bool {
+        if self.is_cancelled() || matches!(evaluate(state, now), WaitDecision::Finish) {
+            return false;
+        }
+        state.injected_at = Some(now);
+        true
+    }
+
+    pub(crate) fn wait_decision(&self, state: &TxState, now: Instant) -> WaitDecision {
+        // Cancellation suppresses future input, but cannot recall a chord
+        // already queued in another application's event loop. Keep the lazy
+        // transcript published until that read drains or its normal deadline.
+        if self.is_cancelled() && state.injected_at.is_none() {
+            WaitDecision::Finish
+        } else {
+            evaluate(state, now)
+        }
+    }
+
+    pub(crate) fn should_auto_submit(&self, enabled: bool, receipt_seen: bool) -> bool {
+        enabled && receipt_seen && !self.is_cancelled()
+    }
+
+    pub(crate) fn take_permit(&self) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        self.permit
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+    }
+
+    pub(crate) fn complete(&self, result: Result<(), String>) {
+        // Release before waking the caller, but only after restoration. Taking
+        // the sender makes completion idempotent (flush and timer may compete).
+        let sender = self
+            .completion
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take();
+        if let Some(sender) = sender {
+            self.completed.store(true, Ordering::Release);
+            drop(self.take_permit());
+            let _ = sender.send(result);
+        }
+    }
+}
+
+impl Drop for PasteTransaction {
+    fn drop(&mut self) {
+        self.complete(Err(
+            "Reliable paste transaction ended before restoration".to_string()
+        ));
+    }
+}
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -77,8 +183,9 @@ pub(crate) struct TxState {
     pub receipts: Vec<Instant>,
     /// Someone else took clipboard ownership (user copied elsewhere, ...).
     pub ownership_lost: bool,
-    /// A newer paste transaction settled this one early (see flush logic in
-    /// the platform modules).
+    /// The transaction has already been settled (see flush logic in the
+    /// platform modules). This is separate from operation cancellation, which
+    /// must still drain a chord that was injected before the user cancelled.
     pub cancelled: bool,
     /// The post-paste Enter (auto-submit) has been sent for this transaction.
     /// (Read on Windows; the macOS path settles via `MacPending::settled`.)
@@ -196,24 +303,225 @@ pub(crate) fn try_reliable_paste(
     app_handle: &tauri::AppHandle,
     paste_method: &crate::settings::PasteMethod,
     enigo: &mut enigo::Enigo,
-    auto_submit: bool,
-    auto_submit_key: crate::settings::AutoSubmitKey,
-    clipboard_handling: crate::settings::ClipboardHandling,
+    options: PasteOptions,
+    transaction: Arc<PasteTransaction>,
 ) -> Result<(), String> {
-    platform::run(
-        text,
-        app_handle,
-        paste_method,
-        enigo,
-        auto_submit,
-        auto_submit_key,
-        clipboard_handling,
-    )
+    platform::run(text, app_handle, paste_method, enigo, options, transaction)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn transaction_keeps_serialization_until_restore_even_if_caller_abandons_it() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.clone().lock_owned().await;
+        let (transaction, completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        drop(completion);
+        transaction.cancel();
+        assert!(transaction.is_cancelled());
+        assert!(
+            lock.try_lock().is_err(),
+            "cancellation must not expose intermediate clipboard"
+        );
+
+        transaction.complete(Ok(()));
+        assert!(
+            lock.try_lock().is_ok(),
+            "restoration releases serialization"
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_error_is_terminal_and_completion_is_idempotent() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.clone().lock_owned().await;
+        let (transaction, completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+
+        transaction.complete(Err("restore failed".to_string()));
+        transaction.complete(Ok(()));
+        assert_eq!(
+            completion.try_recv().unwrap(),
+            Err("restore failed".to_string())
+        );
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn transaction_abandonment_signals_failure_and_releases_serialization() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.clone().lock_owned().await;
+        let (transaction, completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        drop(transaction);
+        assert!(completion.try_recv().unwrap().is_err());
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn completed_transaction_cannot_inject_a_late_chord_or_submit() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.lock_owned().await;
+        let (transaction, _completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        assert!(!transaction.is_cancelled());
+        transaction.complete(Ok(()));
+        assert!(
+            transaction.is_cancelled(),
+            "input queued after restoration must be suppressed"
+        );
+        let mut state = TxState::new();
+        assert!(!transaction.begin_injection(&mut state, Instant::now()));
+        assert!(state.injected_at.is_none());
+        assert!(!transaction.should_auto_submit(true, true));
+    }
+
+    #[tokio::test]
+    async fn cancel_after_chord_preserves_transcript_until_target_reads_and_goes_quiet() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.clone().lock_owned().await;
+        let user_cancelled = Arc::new(AtomicBool::new(false));
+        let cancel_signal = Arc::clone(&user_cancelled);
+        let (transaction, completion) = PasteTransaction::new(
+            Some(permit),
+            Arc::new(move || cancel_signal.load(Ordering::Acquire)),
+        );
+        let mut state = TxState::new();
+        let published = state.published_at;
+        assert!(transaction.begin_injection(&mut state, published + Duration::from_millis(1)));
+
+        // Escape arrives after Ctrl+V was queued, before the target's event
+        // loop reads the clipboard. The old code restored immediately here.
+        user_cancelled.store(true, Ordering::Release);
+        assert!(matches!(
+            transaction.wait_decision(&state, published + Duration::from_millis(2)),
+            WaitDecision::KeepWaiting
+        ));
+        assert!(lock.try_lock().is_err());
+        assert!(matches!(
+            completion.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+
+        let first_read = published + Duration::from_millis(50);
+        state.record_receipt(first_read);
+        assert!(matches!(
+            transaction.wait_decision(&state, first_read),
+            WaitDecision::KeepWaiting
+        ));
+        assert!(
+            !transaction.should_auto_submit(true, true),
+            "Escape must suppress delayed Enter"
+        );
+
+        // Chromium can probe, then read again: use the final receipt's quiet
+        // period even though the operation has already been cancelled.
+        let last_read = published + Duration::from_millis(100);
+        state.record_receipt(last_read);
+        assert!(matches!(
+            transaction.wait_decision(&state, first_read + QUIET_PERIOD),
+            WaitDecision::KeepWaiting
+        ));
+        assert!(matches!(
+            transaction.wait_decision(&state, last_read + QUIET_PERIOD),
+            WaitDecision::Finish
+        ));
+        transaction.complete(Ok(()));
+        assert_eq!(completion.try_recv().unwrap(), Ok(()));
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn cancelled_injected_chord_without_receipt_still_has_a_bounded_drain() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.lock_owned().await;
+        let (transaction, _completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        let mut state = TxState::new();
+        let published = state.published_at;
+        assert!(transaction.begin_injection(&mut state, published));
+        transaction.cancel();
+
+        assert!(matches!(
+            transaction.wait_decision(
+                &state,
+                published + RESTORE_TIMEOUT - Duration::from_millis(1)
+            ),
+            WaitDecision::KeepWaiting
+        ));
+        assert!(matches!(
+            transaction.wait_decision(&state, published + RESTORE_TIMEOUT),
+            WaitDecision::Finish
+        ));
+        assert!(!transaction.should_auto_submit(true, true));
+    }
+
+    #[tokio::test]
+    async fn cancellation_before_injection_never_queues_input_and_can_restore_immediately() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.lock_owned().await;
+        let (transaction, _completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        let mut state = TxState::new();
+        let published = state.published_at;
+        assert!(!transaction.should_auto_submit(true, false));
+        assert!(!transaction.should_auto_submit(false, true));
+        assert!(transaction.should_auto_submit(true, true));
+        transaction.cancel();
+
+        assert!(!transaction.begin_injection(&mut state, published));
+        assert!(state.injected_at.is_none());
+        assert!(matches!(
+            transaction.wait_decision(&state, published),
+            WaitDecision::Finish
+        ));
+        assert!(!transaction.should_auto_submit(true, true));
+    }
+
+    #[tokio::test]
+    async fn timer_claiming_restoration_prevents_a_chord_before_completion_is_signalled() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.lock_owned().await;
+        let (transaction, _completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        let mut state = TxState::new();
+        let published = state.published_at;
+
+        // The native timer reserves settlement under the state lock, then
+        // releases it before the clipboard APIs and completion notification.
+        state.cancelled = true;
+        assert!(!transaction.is_completed());
+        assert!(!transaction.begin_injection(&mut state, published));
+        assert!(state.injected_at.is_none());
+
+        state.cancelled = false;
+        state.ownership_lost = true;
+        assert!(!transaction.begin_injection(&mut state, published));
+        state.ownership_lost = false;
+        assert!(!transaction.begin_injection(&mut state, published + RESTORE_TIMEOUT));
+        assert!(state.injected_at.is_none());
+    }
+
+    #[tokio::test]
+    async fn cancelled_partial_injection_keeps_its_failed_injection_drain() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.lock_owned().await;
+        let (transaction, _completion) = PasteTransaction::new(Some(permit), Arc::new(|| false));
+        let mut state = TxState::new();
+        let published = state.published_at;
+        assert!(transaction.begin_injection(&mut state, published));
+        state.injection_failed = true;
+        transaction.cancel();
+
+        assert!(matches!(
+            transaction.wait_decision(
+                &state,
+                published + FAILED_INJECTION_TIMEOUT - Duration::from_millis(1)
+            ),
+            WaitDecision::KeepWaiting
+        ));
+        assert!(matches!(
+            transaction.wait_decision(&state, published + FAILED_INJECTION_TIMEOUT),
+            WaitDecision::Finish
+        ));
+        assert!(!transaction.should_auto_submit(true, true));
+    }
 
     fn state_after_publish(published_ago: Duration) -> TxState {
         let mut s = TxState::new();

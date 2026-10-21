@@ -34,6 +34,57 @@ const EMPTY_CUSTOM_WORDS: &str = "(none provided)";
 static MISSING_RECORDING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static RECORDING_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+/// A finishing or cancelled pipeline may outlive the session whose UI it owns.
+/// The lock orders the generation check and UI update against the next start.
+static RECORDING_UI_SESSION: RecordingUiSession = RecordingUiSession(Mutex::new(0));
+
+struct RecordingUiSession(Mutex<u64>);
+
+impl RecordingUiSession {
+    fn start(&self) -> u64 {
+        let mut session = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *session = session.wrapping_add(1);
+        *session
+    }
+
+    fn current(&self) -> u64 {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn update_if_current(&self, session: u64, update: impl FnOnce()) -> bool {
+        let current = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if *current != session {
+            return false;
+        }
+        update();
+        true
+    }
+}
+
+fn start_recording_ui_session() -> u64 {
+    RECORDING_UI_SESSION.start()
+}
+
+fn with_current_recording_ui(session: u64, update: impl FnOnce()) -> bool {
+    RECORDING_UI_SESSION.update_if_current(session, update)
+}
+
+fn finish_recording_ui(app: &AppHandle, session: u64) {
+    with_current_recording_ui(session, || {
+        utils::hide_recording_overlay(app);
+        set_tray_state(app, TrayIconState::Idle);
+    });
+}
+
 fn history_recording_name(saved_file_name: Option<String>) -> String {
     saved_file_name.unwrap_or_else(|| {
         format!(
@@ -814,6 +865,7 @@ impl ShortcutAction for TranscribeAction {
         let kickoff_elapsed = kickoff_started.elapsed();
 
         let binding_id = binding_id.to_string();
+        let recording_session = start_recording_ui_session();
         let tray_started = Instant::now();
         set_tray_state(app, TrayIconState::Recording);
         let tray_elapsed = tray_started.elapsed();
@@ -906,8 +958,7 @@ impl ShortcutAction for TranscribeAction {
             // Starting failed (for example due to blocked microphone permissions).
             // Revert UI state so we don't stay stuck in the recording overlay.
             tm.cancel_stream();
-            utils::hide_recording_overlay(app);
-            set_tray_state(app, TrayIconState::Idle);
+            finish_recording_ui(app, recording_session);
             if let Some(err) = recording_error {
                 let error_type = if is_microphone_access_denied(&err) {
                     "microphone_permission_denied"
@@ -972,6 +1023,9 @@ impl ShortcutAction for TranscribeAction {
         let binding_id = binding_id.to_string();
         let post_process = self.post_process;
         let cancel_generation = rm.cancel_generation();
+        // Capture before spawning the finishing work, rather than after an
+        // await when a new recording may already own the tray and overlay.
+        let recording_session = RECORDING_UI_SESSION.current();
 
         let selected_action_key =
             app.try_state::<ActiveActionState>()
@@ -1001,8 +1055,7 @@ impl ShortcutAction for TranscribeAction {
                 if rm.was_cancelled_since(cancel_generation) {
                     debug!("Transcription operation cancelled after recording stop");
                     tm.cancel_stream();
-                    utils::hide_recording_overlay(&ah);
-                    set_tray_state(&ah, TrayIconState::Idle);
+                    finish_recording_ui(&ah, recording_session);
                     return;
                 }
 
@@ -1011,8 +1064,7 @@ impl ShortcutAction for TranscribeAction {
                     // Tear down any streaming worker so its channel doesn't leak
                     // and block the next start_stream.
                     tm.cancel_stream();
-                    utils::hide_recording_overlay(&ah);
-                    set_tray_state(&ah, TrayIconState::Idle);
+                    finish_recording_ui(&ah, recording_session);
                 } else {
                     // Save WAV concurrently with transcription
                     let sample_count = samples.len();
@@ -1075,8 +1127,7 @@ impl ShortcutAction for TranscribeAction {
 
                     if rm.was_cancelled_since(cancel_generation) {
                         debug!("Transcription operation cancelled before output handling");
-                        utils::hide_recording_overlay(&ah);
-                        set_tray_state(&ah, TrayIconState::Idle);
+                        finish_recording_ui(&ah, recording_session);
                         return;
                     }
 
@@ -1153,15 +1204,13 @@ impl ShortcutAction for TranscribeAction {
                             .await
                             else {
                                 debug!("Transcription operation cancelled during output handling");
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
+                                finish_recording_ui(&ah, recording_session);
                                 return;
                             };
 
                             if rm.was_cancelled_since(cancel_generation) {
                                 debug!("Transcription operation cancelled before paste");
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
+                                finish_recording_ui(&ah, recording_session);
                                 return;
                             }
 
@@ -1178,37 +1227,37 @@ impl ShortcutAction for TranscribeAction {
                             }
 
                             if processed.final_text.is_empty() {
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
+                                finish_recording_ui(&ah, recording_session);
                             } else {
                                 let paste_time = Instant::now();
                                 let allow_auto_submit = processed.allow_auto_submit;
                                 let final_text = processed.final_text;
                                 let rm_for_paste = Arc::clone(&rm);
-                                let paste_result = complete_unless_cancelled(
-                                    utils::paste_with_auto_submit(
-                                        final_text,
-                                        ah.clone(),
-                                        allow_auto_submit,
-                                        move || rm_for_paste.was_cancelled_since(cancel_generation),
-                                    ),
-                                    || rm.was_cancelled_since(cancel_generation),
+                                // Paste handles cancellation itself, and waits
+                                // for restoration before releasing FinishGuard.
+                                // Dropping it early would let a newer pipeline
+                                // overtake an in-flight clipboard transaction.
+                                let paste_result = utils::paste_with_auto_submit(
+                                    final_text,
+                                    ah.clone(),
+                                    allow_auto_submit,
+                                    move || rm_for_paste.was_cancelled_since(cancel_generation),
                                 )
                                 .await;
                                 match paste_result {
-                                    Some(Ok(())) => {
+                                    Ok(()) => {
                                         debug!("Text paste completed in {:?}", paste_time.elapsed())
                                     }
-                                    Some(Err(error)) => {
+                                    Err(error) => {
                                         error!("Failed to paste transcription: {error}");
-                                        let _ = ah.emit("paste-error", ());
-                                    }
-                                    None => {
-                                        debug!("Transcription operation cancelled during paste")
+                                        if !rm.was_cancelled_since(cancel_generation) {
+                                            with_current_recording_ui(recording_session, || {
+                                                let _ = ah.emit("paste-error", ());
+                                            });
+                                        }
                                     }
                                 }
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
+                                finish_recording_ui(&ah, recording_session);
                             }
                         }
                         Err(err) => {
@@ -1216,8 +1265,7 @@ impl ShortcutAction for TranscribeAction {
                                 debug!(
                                     "Transcription operation cancelled after transcription error"
                                 );
-                                utils::hide_recording_overlay(&ah);
-                                set_tray_state(&ah, TrayIconState::Idle);
+                                finish_recording_ui(&ah, recording_session);
                                 return;
                             }
 
@@ -1231,8 +1279,7 @@ impl ShortcutAction for TranscribeAction {
                             {
                                 error!("Failed to save failed history entry: {}", save_err);
                             }
-                            utils::hide_recording_overlay(&ah);
-                            set_tray_state(&ah, TrayIconState::Idle);
+                            finish_recording_ui(&ah, recording_session);
                         }
                     }
                 }
@@ -1240,8 +1287,7 @@ impl ShortcutAction for TranscribeAction {
                 debug!("No samples retrieved from recording stop");
                 // Tear down any streaming worker so its channel doesn't leak.
                 tm.cancel_stream();
-                utils::hide_recording_overlay(&ah);
-                set_tray_state(&ah, TrayIconState::Idle);
+                finish_recording_ui(&ah, recording_session);
             }
         });
 
@@ -1317,7 +1363,7 @@ mod tests {
     use super::{
         complete_unless_cancelled, history_recording_name, is_blank_transcription,
         render_prompt_template, save_recording, should_use_streaming_overlay,
-        ProcessedTranscription,
+        ProcessedTranscription, RecordingUiSession,
     };
     use crate::settings::OverlayStyle;
     use std::future;
@@ -1328,6 +1374,43 @@ mod tests {
 
     fn words(words: &[&str]) -> Vec<String> {
         words.iter().map(|word| word.to_string()).collect()
+    }
+
+    #[test]
+    fn old_paste_completion_cannot_hide_or_report_errors_for_new_session() {
+        let sessions = RecordingUiSession(std::sync::Mutex::new(0));
+        let old_session = sessions.start();
+        let new_session = sessions.start();
+        let updated = std::cell::Cell::new(false);
+
+        assert!(!sessions.update_if_current(old_session, || updated.set(true)));
+        assert!(!updated.get());
+        assert!(sessions.update_if_current(new_session, || updated.set(true)));
+        assert!(updated.get());
+        assert_eq!(sessions.current(), new_session);
+    }
+
+    #[test]
+    fn new_session_waits_until_the_previous_ui_update_has_finished() {
+        let sessions = Arc::new(RecordingUiSession(std::sync::Mutex::new(0)));
+        let old_session = sessions.start();
+        let (updating_tx, updating_rx) = std::sync::mpsc::channel();
+        let (finish_tx, finish_rx) = std::sync::mpsc::channel();
+        let old_sessions = Arc::clone(&sessions);
+        let update = thread::spawn(move || {
+            old_sessions.update_if_current(old_session, || {
+                updating_tx.send(()).unwrap();
+                finish_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+            })
+        });
+        updating_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(
+            sessions.0.try_lock().is_err(),
+            "generation and UI update must be atomic"
+        );
+        finish_tx.send(()).unwrap();
+        assert!(update.join().unwrap());
+        assert_ne!(sessions.start(), old_session);
     }
 
     #[test]
@@ -1519,7 +1602,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn paste_wait_keeps_the_pipeline_guard_until_completion() {
+    async fn guarded_async_operation_keeps_its_guard_until_completion() {
         struct Guard(Arc<AtomicBool>);
         impl Drop for Guard {
             fn drop(&mut self) {
@@ -1548,7 +1631,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancelling_paste_drops_inflight_work_before_releasing_the_pipeline() {
+    async fn cancelling_post_processing_drops_inflight_work_before_releasing_the_pipeline() {
         struct Inflight(Arc<AtomicBool>);
         impl Drop for Inflight {
             fn drop(&mut self) {

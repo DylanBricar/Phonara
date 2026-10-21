@@ -59,3 +59,24 @@ cargo tree --manifest-path src-tauri/Cargo.toml --target all -i zbus@6.0.0
 ```
 
 Building and using the Windows package does not exercise the Linux D-Bus stack.
+
+## Remaining dependency constraints
+
+Passing the repository audit policy does not mean that every existing advisory
+exception has disappeared. The existing exceptions in `.cargo/audit.toml` are
+unchanged. In particular, the post-merge Dependabot jobs for `glib` and `rand`
+failed with `security_update_not_possible`; they are not successful updates.
+
+- `glib` 0.18.5 is constrained by the GTK3/WebKitGTK Linux dependency graph.
+  Dependabot requires at least 0.20.0. The Windows package does not load this
+  Linux dependency. The existing migration is tracked in
+  [issue #1](https://github.com/DylanBricar/Phonara/issues/1).
+- `rand` 0.7.3 is constrained by `phf_generator` 0.8, `phf_codegen` 0.8 and
+  `selectors` through `kuchikiki`/`tauri-utils`. This instance generates parser
+  tables during the build; it is not Phonara's microphone or inference engine.
+  Dependabot requires at least 0.8.6. The existing parent-dependency work is
+  tracked in [issue #2](https://github.com/DylanBricar/Phonara/issues/2).
+
+Replacing those crates with incompatible versions does not resolve their parent
+API requirements. No check was disabled and no additional exception was added
+to conceal these two failures.

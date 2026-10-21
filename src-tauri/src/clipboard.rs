@@ -5,20 +5,93 @@ use crate::settings::TypingTool;
 use crate::settings::{get_settings, AppSettings, AutoSubmitKey, ClipboardHandling, PasteMethod};
 use enigo::{Direction, Enigo, Key, Keyboard};
 use log::info;
+use once_cell::sync::Lazy;
 #[cfg(target_os = "linux")]
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
 const EXTERNAL_SCRIPT_TIMEOUT: Duration = Duration::from_secs(30);
+const CANCELLATION_POLL_INTERVAL: Duration = Duration::from_millis(25);
+
+// A paste owns the clipboard from its snapshot through restoration, including
+// the asynchronous receipt-based backend. Waiting for this lock never blocks
+// the event loop or consumes a blocking-pool thread.
+static PASTE_LOCK: Lazy<Arc<tokio::sync::Mutex<()>>> =
+    Lazy::new(|| Arc::new(tokio::sync::Mutex::new(())));
+
+pub(crate) type CancellationCheck = Arc<dyn Fn() -> bool + Send + Sync>;
+
+struct CancelPasteOnDrop(Arc<AtomicBool>);
+
+impl Drop for CancelPasteOnDrop {
+    fn drop(&mut self) {
+        // spawn_blocking cannot be aborted. Its queued input callbacks must
+        // also observe the caller abandoning this future.
+        self.0.store(true, Ordering::Release);
+    }
+}
+
+async fn acquire_paste_lock(
+    lock: Arc<tokio::sync::Mutex<()>>,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
+) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+    let pending = lock.lock_owned();
+    tokio::pin!(pending);
+    loop {
+        if is_cancelled() {
+            return None;
+        }
+        if let Ok(guard) = tokio::time::timeout(CANCELLATION_POLL_INTERVAL, pending.as_mut()).await
+        {
+            return (!is_cancelled()).then_some(guard);
+        }
+    }
+}
+
+fn wait_unless_cancelled(delay: Duration, is_cancelled: &dyn Fn() -> bool) -> bool {
+    let started = Instant::now();
+    while let Some(remaining) = delay.checked_sub(started.elapsed()) {
+        if is_cancelled() {
+            return false;
+        }
+        std::thread::sleep(remaining.min(CANCELLATION_POLL_INTERVAL));
+    }
+    !is_cancelled()
+}
 
 #[cfg(target_os = "linux")]
 use crate::utils::{is_gnome_wayland, is_kde_wayland, is_wayland};
 
-fn with_enigo<T>(
+/// Only macOS input injection needs the main thread (Carbon keyboard layout
+/// APIs). Clipboard access and all paste delays stay on the worker.
+fn with_enigo<T: Send + 'static>(
+    app_handle: &AppHandle,
+    f: impl FnOnce(&mut Enigo) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let app = app_handle.clone();
+        app_handle
+            .run_on_main_thread(move || {
+                let _ = sender.send(with_enigo_here(&app, f));
+            })
+            .map_err(|error| format!("Failed to run input on the main thread: {error}"))?;
+        receiver
+            .recv()
+            .map_err(|_| "Main thread dropped the input request".to_string())?
+    }
+    #[cfg(not(target_os = "macos"))]
+    with_enigo_here(app_handle, f)
+}
+
+fn with_enigo_here<T>(
     app_handle: &AppHandle,
     f: impl FnOnce(&mut Enigo) -> Result<T, String>,
 ) -> Result<T, String> {
@@ -78,6 +151,7 @@ fn paste_via_clipboard(
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
     paste_delay_after_ms: u64,
+    is_cancelled: CancellationCheck,
 ) -> Result<(), String> {
     let clipboard = app_handle.clipboard();
     let saved_text = clipboard.read_text().ok().filter(|t| !t.is_empty());
@@ -90,15 +164,16 @@ fn paste_via_clipboard(
         None
     };
 
-    // Write text to clipboard first
-    write_text_to_clipboard(app_handle, text)?;
-
-    std::thread::sleep(Duration::from_millis(paste_delay_ms));
-
     // Capture key injection errors so the original clipboard is restored before
     // propagating them to the caller.
+    let mut injection_attempted = false;
     let paste_result = (|| -> Result<(), String> {
+        write_text_to_clipboard(app_handle, text)?;
+        if !wait_unless_cancelled(Duration::from_millis(paste_delay_ms), &*is_cancelled) {
+            return Ok(());
+        }
         // Send paste key combo
+        injection_attempted = true;
         #[cfg(target_os = "linux")]
         let key_combo_sent = try_send_key_combo_linux(paste_method)?;
 
@@ -107,20 +182,34 @@ fn paste_via_clipboard(
 
         // Fall back to enigo if no native tool handled it
         if !key_combo_sent {
-            with_enigo(app_handle, |enigo| match paste_method {
-                // The legacy path cannot detect a mistimed chord, so it keeps the
-                // conservative 100ms modifier hold.
-                PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo, 100),
-                PasteMethod::CtrlShiftV => input::send_paste_ctrl_shift_v(enigo, 100),
-                PasteMethod::ShiftInsert => input::send_paste_shift_insert(enigo, 100),
-                _ => Err("Invalid paste method for clipboard paste".into()),
+            let paste_method = *paste_method;
+            let is_cancelled = Arc::clone(&is_cancelled);
+            with_enigo(app_handle, move |enigo| {
+                if is_cancelled() {
+                    return Ok(());
+                }
+                match paste_method {
+                    // The legacy path cannot detect a mistimed chord, so it keeps the
+                    // conservative 100ms modifier hold.
+                    PasteMethod::CtrlV => input::send_paste_ctrl_v(enigo, 100),
+                    PasteMethod::CtrlShiftV => input::send_paste_ctrl_shift_v(enigo, 100),
+                    PasteMethod::ShiftInsert => input::send_paste_shift_insert(enigo, 100),
+                    _ => Err("Invalid paste method for clipboard paste".into()),
+                }
             })?;
         }
 
         Ok(())
     })();
 
-    finish_clipboard_paste(paste_result, paste_delay_after_ms, || {
+    // Once input was queued, the target still needs its normal read window
+    // even if cancellation arrives. Restoring early can paste stale content.
+    let restore_delay = if injection_attempted {
+        paste_delay_after_ms
+    } else {
+        0
+    };
+    finish_clipboard_paste(paste_result, restore_delay, || {
         // Restore original clipboard content even when key injection failed.
         // Text takes priority so this path stays identical to the previous behavior;
         // an image is only restored when the clipboard held no text at all, which is
@@ -751,6 +840,7 @@ async fn paste_via_external_script(text: &str, script_path: &str) -> Result<(), 
 fn paste_direct(
     text: &str,
     app_handle: &AppHandle,
+    is_cancelled: CancellationCheck,
     #[cfg(target_os = "linux")] typing_tool: TypingTool,
 ) -> Result<(), String> {
     #[cfg(target_os = "linux")]
@@ -760,7 +850,13 @@ fn paste_direct(
         }
     }
 
-    with_enigo(app_handle, |enigo| input::paste_text_direct(enigo, text))
+    let text = text.to_string();
+    with_enigo(app_handle, move |enigo| {
+        if is_cancelled() {
+            return Ok(());
+        }
+        input::paste_text_direct(enigo, &text)
+    })
 }
 
 pub(crate) fn send_return_key(enigo: &mut Enigo, key_type: AutoSubmitKey) -> Result<(), String> {
@@ -854,18 +950,23 @@ fn finish_paste(
     submit_key: AutoSubmitKey,
     clipboard_handling: ClipboardHandling,
     paste_error: Option<String>,
-    is_cancelled: &dyn Fn() -> bool,
+    is_cancelled: CancellationCheck,
 ) -> Result<(), String> {
     if is_cancelled() {
         return Ok(());
     }
     // Don't submit when the paste itself failed — there is nothing to submit.
     if paste_error.is_none() && auto_submit {
-        std::thread::sleep(Duration::from_millis(50));
-        if is_cancelled() {
+        if !wait_unless_cancelled(Duration::from_millis(50), &*is_cancelled) {
             return Ok(());
         }
-        if let Err(error) = with_enigo(app_handle, |enigo| send_return_key(enigo, submit_key)) {
+        let cancelled_before_submit = Arc::clone(&is_cancelled);
+        if let Err(error) = with_enigo(app_handle, move |enigo| {
+            if cancelled_before_submit() {
+                return Ok(());
+            }
+            send_return_key(enigo, submit_key)
+        }) {
             log::warn!("Paste succeeded, but auto-submit failed: {error}");
         }
     }
@@ -881,14 +982,21 @@ fn finish_paste(
     }
 }
 
-/// Complete script execution off the UI thread, then await the main-thread paste
-/// or finalization. The caller retains its pipeline guard until this resolves.
+/// Run script execution asynchronously and blocking paste steps on a worker.
+/// The caller retains its pipeline guard through clipboard restoration.
 pub async fn paste_with_auto_submit(
     text: String,
     app_handle: AppHandle,
     allow_auto_submit: bool,
     is_cancelled: impl Fn() -> bool + Send + Sync + 'static,
 ) -> Result<(), String> {
+    let abandoned = Arc::new(AtomicBool::new(false));
+    let _cancel_on_drop = CancelPasteOnDrop(Arc::clone(&abandoned));
+    let is_cancelled: CancellationCheck =
+        Arc::new(move || abandoned.load(Ordering::Acquire) || is_cancelled());
+    let Some(permit) = acquire_paste_lock(Arc::clone(&PASTE_LOCK), &*is_cancelled).await else {
+        return Ok(());
+    };
     let settings = get_settings(&app_handle);
     let text = if settings.append_trailing_space {
         format!("{} ", text)
@@ -904,7 +1012,20 @@ pub async fn paste_with_auto_submit(
             .as_ref()
             .filter(|path| !path.is_empty())
             .ok_or("External script path is not configured")?;
-        Some(paste_via_external_script(&text, script_path).await)
+        let operation = paste_via_external_script(&text, script_path);
+        tokio::pin!(operation);
+        loop {
+            if is_cancelled() {
+                // Dropping the child future kills the script, including a
+                // process blocked writing to stdin (kill_on_drop is set).
+                return Ok(());
+            }
+            if let Ok(result) =
+                tokio::time::timeout(CANCELLATION_POLL_INTERVAL, operation.as_mut()).await
+            {
+                break Some(result);
+            }
+        }
     } else {
         None
     };
@@ -912,40 +1033,49 @@ pub async fn paste_with_auto_submit(
         return Ok(());
     }
 
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    let main_app = app_handle.clone();
-    app_handle
-        .run_on_main_thread(move || {
-            // The future can be cancelled while this callback is queued. A
-            // generation check prevents the abandoned callback producing input.
-            let result = if is_cancelled() {
-                Ok(())
-            } else {
-                paste_on_main_thread(
-                    text,
-                    main_app,
-                    allow_auto_submit,
-                    settings,
-                    script_result,
-                    &is_cancelled,
-                )
-            };
-            let _ = sender.send(result);
-        })
-        .map_err(|error| format!("Failed to schedule paste on main thread: {error}"))?;
-    receiver
-        .await
-        .map_err(|_| "Main-thread paste did not complete".to_string())?
+    run_paste_worker(permit, Arc::clone(&is_cancelled), move |permit| {
+        paste_on_worker(
+            text,
+            app_handle,
+            allow_auto_submit,
+            settings,
+            script_result,
+            is_cancelled,
+            permit,
+        )
+    })
+    .await
 }
 
-fn paste_on_main_thread(
+async fn run_paste_worker(
+    permit: tokio::sync::OwnedMutexGuard<()>,
+    is_cancelled: CancellationCheck,
+    operation: impl FnOnce(tokio::sync::OwnedMutexGuard<()>) -> Result<(), String> + Send + 'static,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if is_cancelled() {
+            return Ok(());
+        }
+        operation(permit)
+    })
+    .await
+    .map_err(|error| format!("Paste worker did not complete: {error}"))?
+}
+
+fn paste_on_worker(
     text: String,
     app_handle: AppHandle,
     allow_auto_submit: bool,
     settings: AppSettings,
     script_result: Option<Result<(), String>>,
-    is_cancelled: &dyn Fn() -> bool,
+    is_cancelled: CancellationCheck,
+    permit: tokio::sync::OwnedMutexGuard<()>,
 ) -> Result<(), String> {
+    // The reliable backend takes this permit until its asynchronous restore
+    // completes. Every other backend retains it through finish_paste below.
+    let permit = Some(permit);
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    let mut permit = permit;
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;
     let paste_delay_after_ms = settings.paste_delay_after_ms;
@@ -977,6 +1107,7 @@ fn paste_on_main_thread(
             paste_direct(
                 &text,
                 &app_handle,
+                Arc::clone(&is_cancelled),
                 #[cfg(target_os = "linux")]
                 settings.typing_tool,
             )?;
@@ -989,23 +1120,49 @@ fn paste_on_main_thread(
             // the legacy path untouched.
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             if settings.reliable_paste {
-                let reliable_result = with_enigo(&app_handle, |enigo| {
+                let (transaction, completion) = crate::paste_tx::PasteTransaction::new(
+                    permit.take(),
+                    Arc::clone(&is_cancelled),
+                );
+                let reliable_transaction = Arc::clone(&transaction);
+                let (text, app) = (text.clone(), app_handle.clone());
+                let clipboard_handling = settings.clipboard_handling;
+                let reliable_result = with_enigo(&app_handle, move |enigo| {
+                    if reliable_transaction.is_cancelled() {
+                        return Ok(false);
+                    }
                     crate::paste_tx::try_reliable_paste(
                         &text,
-                        &app_handle,
+                        &app,
                         &paste_method,
                         enigo,
-                        auto_submit,
-                        submit_key,
-                        settings.clipboard_handling,
+                        crate::paste_tx::PasteOptions {
+                            auto_submit,
+                            auto_submit_key: submit_key,
+                            clipboard_handling,
+                        },
+                        reliable_transaction,
                     )
+                    .map(|()| true)
                 });
                 match reliable_result {
-                    Ok(()) => return Ok(()),
+                    Ok(true) => {
+                        return completion
+                            .recv_timeout(crate::paste_tx::RESTORE_TIMEOUT + Duration::from_secs(2))
+                            .map_err(|_| {
+                                // Keep the permit with the platform transaction:
+                                // a delayed main loop must restore before another
+                                // paste can snapshot its intermediate clipboard.
+                                transaction.cancel();
+                                "Reliable paste did not finish restoring the clipboard".to_string()
+                            })?;
+                    }
+                    Ok(false) => return Ok(()),
                     Err(e) => {
                         log::warn!("Reliable paste unavailable ({e}); falling back to legacy paste")
                     }
                 }
+                permit = transaction.take_permit();
             }
             if let Err(error) = paste_via_clipboard(
                 &text,
@@ -1013,6 +1170,7 @@ fn paste_on_main_thread(
                 &paste_method,
                 paste_delay_ms,
                 paste_delay_after_ms,
+                Arc::clone(&is_cancelled),
             ) {
                 clipboard_paste_error = Some(error);
             }
@@ -1024,7 +1182,7 @@ fn paste_on_main_thread(
         }
     }
 
-    finish_paste(
+    let result = finish_paste(
         &app_handle,
         &text,
         auto_submit,
@@ -1032,13 +1190,90 @@ fn paste_on_main_thread(
         settings.clipboard_handling,
         clipboard_paste_error,
         is_cancelled,
-    )
+    );
+    drop(permit);
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cancellation_while_waiting_for_paste_lock_does_not_wait_for_previous_paste() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let first_paste = lock.clone().lock_owned().await;
+        let cancelled = AtomicBool::new(false);
+        let check = || cancelled.load(Ordering::Acquire);
+        let waiting = acquire_paste_lock(Arc::clone(&lock), &check);
+        tokio::pin!(waiting);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), waiting.as_mut())
+                .await
+                .is_err()
+        );
+
+        cancelled.store(true, Ordering::Release);
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), waiting.as_mut())
+                .await
+                .expect("cancelled waiter returns without clipboard access")
+                .is_none()
+        );
+        assert!(
+            lock.try_lock().is_err(),
+            "the active paste still owns its snapshot"
+        );
+        drop(first_paste);
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn blocking_paste_does_not_block_event_loop_and_releases_lock_on_error() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.clone().lock_owned().await;
+        let caller_thread = std::thread::current().id();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = run_paste_worker(permit, Arc::new(|| false), move |_permit| {
+            started_tx.send(std::thread::current().id()).unwrap();
+            release_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("event loop releases worker");
+            Err("test input failure".to_string())
+        });
+        tokio::pin!(worker);
+        let worker_thread = tokio::select! {
+            result = worker.as_mut() => panic!("paste blocked the caller instead of waiting asynchronously: {result:?}"),
+            thread = started_rx => thread.expect("worker starts"),
+        };
+        assert_ne!(worker_thread, caller_thread);
+        assert!(lock.try_lock().is_err());
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        release_tx.send(()).unwrap();
+        assert_eq!(worker.await, Err("test input failure".to_string()));
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[tokio::test]
+    async fn cancelled_worker_never_runs_queued_input_and_releases_paste_lock() {
+        let lock = Arc::new(tokio::sync::Mutex::new(()));
+        let permit = lock.clone().lock_owned().await;
+        run_paste_worker(permit, Arc::new(|| true), |_| {
+            panic!("a cancelled queued paste must never produce input")
+        })
+        .await
+        .expect("cancellation is not a paste failure");
+        assert!(lock.try_lock().is_ok());
+    }
+
+    #[test]
+    fn cancelled_paste_skips_long_delays() {
+        let started = Instant::now();
+        assert!(!wait_unless_cancelled(Duration::from_secs(60), &|| true));
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
 
     #[cfg(target_os = "linux")]
     const YDOTOOL_0_1_8_HELP: &str = r#"

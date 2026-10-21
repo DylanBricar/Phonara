@@ -3,11 +3,16 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { Play, Pause } from "lucide-react";
+
+const revokeBlobSource = (src: string | null) => {
+  if (src?.startsWith("blob:")) URL.revokeObjectURL(src);
+};
 
 interface AudioPlayerProps {
   src?: string;
@@ -59,16 +64,75 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [loadedSrc, setLoadedSrc] = useState<string | null>(initialSrc ?? null);
+  const sourceIdentity = useMemo(
+    () => ({ initialSrc, onLoadRequest }),
+    [initialSrc, onLoadRequest],
+  );
+  const currentIdentityRef = useRef(sourceIdentity);
+  currentIdentityRef.current = sourceIdentity;
+  const [loadedSource, setLoadedSource] = useState({
+    identity: sourceIdentity,
+    src: initialSrc ?? null,
+    requested: false,
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement>(null);
-  const src = loadedSrc;
+  const lifecycleRef = useRef<{
+    identity: typeof sourceIdentity;
+    active: boolean;
+    ownedSources: Set<string>;
+  } | null>(null);
+  const src =
+    loadedSource.identity === sourceIdentity
+      ? loadedSource.src
+      : (initialSrc ?? null);
   const animationRef = useRef<number | undefined>(undefined);
   const dragTimeRef = useRef<number>(0);
 
   const isPlayingRef = useRef(false);
   const isDraggingRef = useRef(false);
+
+  useLayoutEffect(() => {
+    const audio = audioRef.current;
+    const lifecycle = {
+      identity: sourceIdentity,
+      active: true,
+      ownedSources: new Set(
+        initialSrc?.startsWith("blob:") ? [initialSrc] : [],
+      ),
+    };
+    lifecycleRef.current = lifecycle;
+    if (initialSrc) audio?.setAttribute("src", initialSrc);
+    setLoadedSource({
+      identity: sourceIdentity,
+      src: initialSrc ?? null,
+      requested: false,
+    });
+    setIsLoading(false);
+    setIsPlaying(false);
+    setIsDragging(false);
+    setCurrentTime(0);
+    setDuration(0);
+
+    return () => {
+      lifecycle.active = false;
+      audio?.pause();
+      audio?.removeAttribute("src");
+      audio?.load();
+      // StrictMode immediately replays setup. Transfer a supplied Blob to that
+      // new lifecycle instead of revoking a source it still needs to read.
+      queueMicrotask(() => {
+        const current = lifecycleRef.current;
+        for (const ownedSrc of lifecycle.ownedSources) {
+          if (!current?.active || !current.ownedSources.has(ownedSrc)) {
+            revokeBlobSource(ownedSrc);
+          }
+        }
+        lifecycle.ownedSources.clear();
+      });
+    };
+  }, [sourceIdentity, initialSrc]);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -114,21 +178,25 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (!audio) return;
 
     const handleLoadedMetadata = () => {
+      if (!lifecycleRef.current?.active) return;
       setDuration(audio.duration || 0);
       setCurrentTime(0);
     };
 
     const handleEnded = () => {
+      if (!lifecycleRef.current?.active) return;
       group?.releasePlayback(audio);
       setIsPlaying(false);
       setCurrentTime(audio.duration || 0);
     };
 
     const handlePlay = () => {
+      if (!lifecycleRef.current?.active) return;
       group?.requestPlayback(audio);
       setIsPlaying(true);
     };
     const handlePause = () => {
+      if (!lifecycleRef.current?.active) return;
       group?.releasePlayback(audio);
       setIsPlaying(false);
     };
@@ -144,29 +212,32 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("play", handlePlay);
       audio.removeEventListener("pause", handlePause);
+      audio.pause();
     };
   }, [group]);
 
-  const prevLoadedSrc = useRef<string | null>(null);
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    const shouldPlay =
-      (loadedSrc && loadedSrc !== prevLoadedSrc.current) ||
-      (autoPlay && initialSrc && !prevLoadedSrc.current);
-
-    if (shouldPlay) {
+    if (
+      src &&
+      (autoPlay ||
+        (loadedSource.identity === sourceIdentity && loadedSource.requested))
+    ) {
+      let active = true;
       const playWhenReady = () => {
-        audio.play().catch(() => {});
+        if (active) audio.play().catch(() => {});
         audio.removeEventListener("canplay", playWhenReady);
       };
       audio.addEventListener("canplay", playWhenReady);
       audio.load();
+      return () => {
+        active = false;
+        audio.removeEventListener("canplay", playWhenReady);
+      };
     }
-
-    prevLoadedSrc.current = loadedSrc;
-  }, [loadedSrc, autoPlay, initialSrc]);
+  }, [src, autoPlay, sourceIdentity, loadedSource]);
 
   const handleMouseUp = useCallback(() => {
     if (isDragging) {
@@ -190,17 +261,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     }
   }, [isDragging, handleMouseUp]);
 
-  useEffect(() => {
-    return () => {
-      if (loadedSrc?.startsWith("blob:")) {
-        URL.revokeObjectURL(loadedSrc);
-      }
-    };
-  }, [loadedSrc]);
-
   const togglePlay = async () => {
     const audio = audioRef.current;
-    if (!audio) return;
+    const lifecycle = lifecycleRef.current;
+    if (!audio || !lifecycle?.active) return;
     if (isLoading) return;
 
     try {
@@ -209,10 +273,34 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       } else {
         if (!src && onLoadRequest) {
           setIsLoading(true);
-          const newSrc = await onLoadRequest();
-          setIsLoading(false);
-          if (newSrc) {
-            setLoadedSrc(newSrc);
+          try {
+            const newSrc = await onLoadRequest();
+            if (
+              !lifecycle.active ||
+              currentIdentityRef.current !== lifecycle.identity ||
+              audioRef.current !== audio
+            ) {
+              revokeBlobSource(newSrc);
+              return;
+            }
+            if (newSrc) {
+              // Take ownership before React commits state, so unmounting in
+              // this microtask cannot leak a resolved file's Blob URL.
+              if (newSrc.startsWith("blob:"))
+                lifecycle.ownedSources.add(newSrc);
+              setLoadedSource({
+                identity: lifecycle.identity,
+                src: newSrc,
+                requested: true,
+              });
+            }
+          } finally {
+            if (
+              lifecycle.active &&
+              currentIdentityRef.current === lifecycle.identity
+            ) {
+              setIsLoading(false);
+            }
           }
         } else if (src) {
           await audio.play();
