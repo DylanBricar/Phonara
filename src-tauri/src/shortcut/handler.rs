@@ -46,6 +46,7 @@ pub fn handle_shortcut_event(
     hotkey_string: &str,
     is_pressed: bool,
 ) {
+    let occurred_at = Instant::now();
     let settings = get_settings(app);
 
     if is_transcribe_binding(binding_id) {
@@ -56,6 +57,7 @@ pub fn handle_shortcut_event(
                 is_pressed,
                 settings.shortcut_activation,
                 std::time::Duration::from_millis(settings.hold_threshold_ms),
+                occurred_at,
             );
         } else {
             warn!("TranscriptionCoordinator is not initialized");

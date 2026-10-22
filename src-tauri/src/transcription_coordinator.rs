@@ -141,6 +141,13 @@ struct InputEvent {
     external: bool,
 }
 
+/// Preserve the shortcut callback's time across synchronous microphone startup.
+/// Queueing and device-open delays must not turn a tap into a long hold.
+struct QueuedInput {
+    input: InputEvent,
+    occurred_at: Instant,
+}
+
 impl InputEvent {
     /// The hold duration at or above which a release stops recording.
     fn effective_hold_threshold(&self) -> Duration {
@@ -170,7 +177,7 @@ enum Effect {
 
 /// Commands processed sequentially by the coordinator thread.
 enum Command {
-    Input(InputEvent),
+    Input(QueuedInput),
     Cancel { recording_was_active: bool },
     ProcessingFinished,
     SelectAction { key: u8 },
@@ -454,6 +461,7 @@ impl CoordinatorState {
             // stopping is the safe reading (it is what push-to-talk always did).
             .unwrap_or(Duration::MAX);
         if held >= threshold {
+            debug!("Hold ({held:?}) for '{binding_id}': stopping on release");
             return Some(self.begin_processing(binding_id, hotkey_string));
         }
         if let Some(hold) = &mut self.hold {
@@ -607,9 +615,9 @@ impl TranscriptionCoordinator {
 
                     match cmd {
                         Command::Input(input) => {
-                            if let Some(effect) = state.on_input(input, Instant::now()) {
-                                run_effect(&app, &mut state, effect);
-                            }
+                            dispatch_input(&mut state, input, Instant::now(), |state, effect| {
+                                run_effect(&app, state, effect);
+                            });
                         }
                         Command::Cancel {
                             recording_was_active,
@@ -654,7 +662,8 @@ impl TranscriptionCoordinator {
     }
 
     /// Send a keyboard input event for a transcribe binding. `hold_threshold`
-    /// only matters for [`ShortcutActivation::HoldOrToggle`].
+    /// only matters for [`ShortcutActivation::HoldOrToggle`]. `occurred_at` is
+    /// captured at callback entry, before settings lookup or queueing.
     pub fn send_input(
         &self,
         binding_id: &str,
@@ -662,14 +671,18 @@ impl TranscriptionCoordinator {
         is_pressed: bool,
         mode: ShortcutActivation,
         hold_threshold: Duration,
+        occurred_at: Instant,
     ) {
         self.send(
-            binding_id,
-            hotkey_string,
-            is_pressed,
-            mode,
-            hold_threshold,
-            false,
+            InputEvent {
+                binding_id: binding_id.to_string(),
+                hotkey_string: hotkey_string.to_string(),
+                is_pressed,
+                mode,
+                hold_threshold,
+                external: false,
+            },
+            occurred_at,
         );
     }
 
@@ -677,34 +690,22 @@ impl TranscriptionCoordinator {
     /// always exempt from debounce — see [`InputEvent::external`].
     pub fn send_external_input(&self, binding_id: &str, source: &str) {
         self.send(
-            binding_id,
-            source,
-            true,
-            ShortcutActivation::Toggle,
-            Duration::ZERO,
-            true,
+            InputEvent {
+                binding_id: binding_id.to_string(),
+                hotkey_string: source.to_string(),
+                is_pressed: true,
+                mode: ShortcutActivation::Toggle,
+                hold_threshold: Duration::ZERO,
+                external: true,
+            },
+            Instant::now(),
         );
     }
 
-    fn send(
-        &self,
-        binding_id: &str,
-        hotkey_string: &str,
-        is_pressed: bool,
-        mode: ShortcutActivation,
-        hold_threshold: Duration,
-        external: bool,
-    ) {
+    fn send(&self, input: InputEvent, occurred_at: Instant) {
         if self
             .tx
-            .send(Command::Input(InputEvent {
-                binding_id: binding_id.to_string(),
-                hotkey_string: hotkey_string.to_string(),
-                is_pressed,
-                mode,
-                hold_threshold,
-                external,
-            }))
+            .send(Command::Input(QueuedInput { input, occurred_at }))
             .is_err()
         {
             warn!("Transcription coordinator channel closed");
@@ -748,6 +749,40 @@ impl TranscriptionCoordinator {
         if self.tx.send(Command::SelectAction { key }).is_err() {
             warn!("Transcription coordinator channel closed");
         }
+    }
+}
+
+fn dispatch_input(
+    state: &mut CoordinatorState,
+    queued: QueuedInput,
+    processed_at: Instant,
+    mut execute: impl FnMut(&mut CoordinatorState, Effect),
+) {
+    let now = queued.occurred_at;
+    let queue_delay = processed_at.saturating_duration_since(now);
+    if queue_delay >= Duration::from_millis(100) {
+        debug!(
+            "Shortcut '{}' {} queued for {queue_delay:?}; using original event time",
+            queued.input.binding_id,
+            if queued.input.is_pressed {
+                "press"
+            } else {
+                "release"
+            },
+        );
+    }
+    // A delayed batch can contain both sides of a real second tap or an X11
+    // auto-repeat pair. Expire by their original spacing, never by queue delay.
+    if state
+        .grace_deadline()
+        .is_some_and(|deadline| now >= deadline)
+    {
+        if let Some(effect) = state.on_grace_expired() {
+            execute(state, effect);
+        }
+    }
+    if let Some(effect) = state.on_input(queued.input, now) {
+        execute(state, effect);
     }
 }
 
@@ -1398,6 +1433,128 @@ mod tests {
 
     fn ms(n: u64) -> Duration {
         Duration::from_millis(n)
+    }
+
+    fn dispatch_key(
+        state: &mut CoordinatorState,
+        mode: ShortcutActivation,
+        pressed: bool,
+        occurred_at: Instant,
+        processed_at: Instant,
+    ) -> Vec<Effect> {
+        // Use the production channel and dispatcher, including the time supplied
+        // by the shortcut callback. Device startup is represented by a later
+        // processing time, without sleeping or opening the user's microphone.
+        let (tx, rx) = mpsc::channel();
+        let coordinator = TranscriptionCoordinator { tx };
+        coordinator.send_input(BINDING, BINDING, pressed, mode, HOLD_THRESHOLD, occurred_at);
+        let Command::Input(queued) = rx.recv().expect("shortcut input") else {
+            panic!("expected shortcut input");
+        };
+        let mut effects = Vec::new();
+        dispatch_input(state, queued, processed_at, |_, effect| {
+            effects.push(effect)
+        });
+        effects
+    }
+
+    #[test]
+    fn queued_tap_stays_recording_after_slow_microphone_startup() {
+        let mode = ShortcutActivation::HoldOrToggle;
+        for startup_ms in [392, 1965] {
+            let mut state = CoordinatorState::new();
+            let t0 = Instant::now();
+            assert!(matches!(
+                dispatch_key(&mut state, mode, true, t0, t0).as_slice(),
+                [Effect::Start { .. }]
+            ));
+            assert!(
+                dispatch_key(&mut state, mode, false, t0 + ms(100), t0 + ms(startup_ms)).is_empty()
+            );
+            assert!(
+                state.on_grace_expired().is_none(),
+                "a 100ms tap must stay recording after {startup_ms}ms device startup"
+            );
+            assert!(state.is_locked());
+            assert_eq!(state.stage, Stage::Recording(BINDING.into()));
+            assert!(matches!(
+                dispatch_key(&mut state, mode, true, t0 + ms(3000), t0 + ms(3000)).as_slice(),
+                [Effect::Stop { .. }]
+            ));
+        }
+    }
+
+    #[test]
+    fn queued_long_hold_still_stops_after_slow_microphone_startup() {
+        let mode = ShortcutActivation::HoldOrToggle;
+        let mut state = CoordinatorState::new();
+        let t0 = Instant::now();
+        dispatch_key(&mut state, mode, true, t0, t0);
+        dispatch_key(&mut state, mode, false, t0 + ms(800), t0 + ms(1965));
+        assert!(matches!(
+            state.on_grace_expired(),
+            Some(Effect::Stop { .. })
+        ));
+        assert_eq!(state.stage, Stage::Processing);
+    }
+
+    #[test]
+    fn queued_short_push_to_talk_still_stops_once_after_slow_startup() {
+        let mode = ShortcutActivation::PushToTalk;
+        let mut state = CoordinatorState::new();
+        let t0 = Instant::now();
+        dispatch_key(&mut state, mode, true, t0, t0);
+        assert!(dispatch_key(&mut state, mode, false, t0 + ms(40), t0 + ms(1965)).is_empty());
+        assert!(matches!(
+            state.on_grace_expired(),
+            Some(Effect::Stop { .. })
+        ));
+        assert!(!state.is_locked());
+        assert!(state.on_grace_expired().is_none());
+        assert!(state.on_processing_finished().is_none());
+        assert_eq!(state.stage, Stage::Idle);
+    }
+
+    #[test]
+    fn queued_autorepeat_within_grace_does_not_end_a_hold() {
+        let mode = ShortcutActivation::HoldOrToggle;
+        let mut state = CoordinatorState::new();
+        let t0 = Instant::now();
+        dispatch_key(&mut state, mode, true, t0, t0);
+        dispatch_key(&mut state, mode, false, t0 + ms(1000), t0 + ms(1965));
+        assert!(dispatch_key(&mut state, mode, true, t0 + ms(1005), t0 + ms(2020)).is_empty());
+        assert!(state.grace_deadline().is_none());
+        assert!(!state.is_locked());
+        assert_eq!(state.stage, Stage::Recording(BINDING.into()));
+        dispatch_key(&mut state, mode, false, t0 + ms(1600), t0 + ms(2021));
+        assert!(matches!(
+            state.on_grace_expired(),
+            Some(Effect::Stop { .. })
+        ));
+    }
+
+    #[test]
+    fn queued_second_tap_after_grace_stops_the_locked_recording() {
+        let mode = ShortcutActivation::HoldOrToggle;
+        let mut state = CoordinatorState::new();
+        let t0 = Instant::now();
+        dispatch_key(&mut state, mode, true, t0, t0);
+        dispatch_key(&mut state, mode, false, t0 + ms(100), t0 + ms(1965));
+        assert!(matches!(
+            dispatch_key(&mut state, mode, true, t0 + ms(500), t0 + ms(1966)).as_slice(),
+            [Effect::Stop { .. }]
+        ));
+        assert_eq!(state.stage, Stage::Processing);
+    }
+
+    #[test]
+    fn queued_key_repeat_uses_event_time_for_debounce() {
+        let mode = ShortcutActivation::Toggle;
+        let mut state = CoordinatorState::new();
+        let t0 = Instant::now();
+        dispatch_key(&mut state, mode, true, t0, t0);
+        assert!(dispatch_key(&mut state, mode, true, t0 + ms(5), t0 + ms(1965)).is_empty());
+        assert_eq!(state.stage, Stage::Recording(BINDING.into()));
     }
 
     /// Hold-or-toggle: a key held past the threshold is push-to-talk — the

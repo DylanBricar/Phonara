@@ -1,6 +1,6 @@
 [package]
 name = "phonara"
-version = "0.9.7"
+version = "0.9.8"
 description = "Phonara"
 authors = ["Dylan Bricar"]
 edition = "2021"
