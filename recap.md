@@ -51,7 +51,9 @@ Vérifié le 27 octobre : bun run lint et bun run format:check réussis (Prettie
 - La protection de main impose une PR et cinq contrôles. Les filtres de chemins des PR code-quality et nix-build empêchaient leur exécution sur une documentation seule ; ils sont retirés côté PR, sans changer les filtres push ni la protection.
 - L'audit strict a détecté clipboard-win 5.4.1 retiré du registre. Cargo.lock passe uniquement cette crate à 5.4.3. L'audit depuis la racine réussit : zéro vulnérabilité et zéro avertissement non couvert par la politique existante ; aucune exception ajoutée.
 - Le contrôle frontend a ensuite signalé Zod 4.5.4 vulnérable. La dépendance et les verrous Bun/Nix passent à 4.6.7 ; le fetchurl Nix reprend exactement l'intégrité du lock Bun. Aucun contrôle d'audit n'est réduit.
-- La PR 18 porte la livraison et ses cinq checks restent à vérifier sur le dernier SHA avant fusion.
+- La PR 18 a été fusionnée après ses cinq contrôles obligatoires verts ; sa branche temporaire est supprimée. La révision fonctionnelle publiée est `3659480e05644a33bb1ee97a8e48982b692e1d58`.
+- Les cinq workflows du main de cette révision ont ensuite tous réussi : qualité, Playwright, tests Rust/audit, build Nix et [builds natifs Windows/macOS](https://github.com/DylanBricar/Phonara/actions/runs/40446643071). L'attente de compilation mentionnée dans les premiers rapports est terminée.
+- La version 0.9.8 dans les sources et les anciens binaires locaux est distincte d'une release GitHub : au contrôle du 27 octobre, la dernière release stable disponible est v0.9.5 et aucun tag/release v0.9.8 n'est disponible. Aucun nouveau lancement de release signée ni installation locale n'a été effectué pendant ces corrections.
 
 ## Restant à traiter ou à confirmer
 
