@@ -50,6 +50,7 @@ Vérifié le 27 octobre : bun run lint et bun run format:check réussis (Prettie
 
 - La protection de main impose une PR et cinq contrôles. Les filtres de chemins des PR code-quality et nix-build empêchaient leur exécution sur une documentation seule ; ils sont retirés côté PR, sans changer les filtres push ni la protection.
 - L'audit strict a détecté clipboard-win 5.4.1 retiré du registre. Cargo.lock passe uniquement cette crate à 5.4.3. L'audit depuis la racine réussit : zéro vulnérabilité et zéro avertissement non couvert par la politique existante ; aucune exception ajoutée.
+- Le contrôle frontend a ensuite signalé Zod 4.5.4 vulnérable. La dépendance et les verrous Bun/Nix passent à 4.6.7 ; le fetchurl Nix reprend exactement l'intégrité du lock Bun. Aucun contrôle d'audit n'est réduit.
 - La PR 18 porte la livraison et ses cinq checks restent à vérifier sur le dernier SHA avant fusion.
 
 ## Restant à traiter ou à confirmer
