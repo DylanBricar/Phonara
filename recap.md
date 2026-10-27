@@ -46,6 +46,12 @@ Commandes de référence : bun run lint ; bun run format:check ; bun run build. 
 
 Vérifié le 27 octobre : bun run lint et bun run format:check réussis (Prettier et cargo fmt). Le changement est documentaire ; aucune nouvelle transcription ni manipulation de microphone. Les vérifications historiques restent datées et ne valent pas une nouvelle preuve de production, d'installation ou d'utilisation réelle.
 
+## Corrections nécessaires à la livraison du récapitulatif
+
+- La protection de main impose une PR et cinq contrôles. Les filtres de chemins des PR code-quality et nix-build empêchaient leur exécution sur une documentation seule ; ils sont retirés côté PR, sans changer les filtres push ni la protection.
+- L'audit strict a détecté clipboard-win 5.4.1 retiré du registre. Cargo.lock passe uniquement cette crate à 5.4.3. L'audit depuis la racine réussit : zéro vulnérabilité et zéro avertissement non couvert par la politique existante ; aucune exception ajoutée.
+- La PR 18 porte la livraison et ses cinq checks restent à vérifier sur le dernier SHA avant fusion.
+
 ## Restant à traiter ou à confirmer
 
 - La preuve GUI réelle de trois dictées, appui bref Ctrl+Espace, indicateur prêt et collage doit encore être confirmée par l'opérateur ; les tests de dispatcher ne remplacent pas cette preuve.
