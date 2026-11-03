@@ -91,6 +91,45 @@ pub(crate) fn bind_legacy_preferences(
     changed
 }
 
+/// Windows can retain an inactive endpoint after assigning the same hardware a
+/// new endpoint ID. Repair only a unique capture endpoint in that non-zero
+/// hardware container, with the same display name. Missing metadata, multiple
+/// inputs or a different device still require the explicit reconnect action.
+pub(crate) fn reconnect_reassigned_preferences(
+    preferences: &mut [MicrophonePreference],
+    devices: &[MicrophoneDevice],
+    hardware: &std::collections::HashMap<String, u128>,
+) -> bool {
+    let mut changed = false;
+    for preference in preferences {
+        let Some(id) = &preference.id else {
+            continue;
+        };
+        if !id.starts_with("wasapi:") || devices.iter().any(|device| device.id == *id) {
+            continue;
+        }
+        // The system container groups unrelated internal devices; it cannot
+        // establish the physical identity of a microphone.
+        let Some(container) = hardware
+            .get(id)
+            .filter(|container| !matches!(**container, 0 | 0x0000000000000000ffffffffffffffff))
+        else {
+            continue;
+        };
+        let mut matches = devices.iter().filter(|device| {
+            device.id.starts_with("wasapi:") && hardware.get(&device.id) == Some(container)
+        });
+        let Some(replacement) = matches.next() else {
+            continue;
+        };
+        if matches.next().is_none() && replacement.name == preference.name {
+            preference.id = Some(replacement.id.clone());
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// Produces the complete fallback order without changing saved preferences.
 pub(crate) fn ordered_candidates(
     preferences: &[MicrophonePreference],
@@ -272,6 +311,142 @@ mod tests {
             ]
         );
         assert!(!bind_legacy_preferences(&mut preferences, &[]));
+    }
+
+    #[test]
+    fn reassigned_windows_endpoint_returns_to_its_original_priority() {
+        let mut preferences = vec![
+            preference(Some("wasapi:old"), "Shure"),
+            preference(Some("wasapi:headset"), "Corsair"),
+        ];
+        let devices = vec![
+            device("wasapi:new", "Shure", true),
+            device("wasapi:headset", "Corsair", false),
+        ];
+        let hardware = std::collections::HashMap::from([
+            ("wasapi:old".into(), 42),
+            ("wasapi:new".into(), 42),
+            ("wasapi:headset".into(), 84),
+        ]);
+        assert_eq!(
+            ordered_candidates(&preferences, &devices, None)[0],
+            devices[1]
+        );
+        assert!(reconnect_reassigned_preferences(
+            &mut preferences,
+            &devices,
+            &hardware
+        ));
+        assert_eq!(preferences[0].id.as_deref(), Some("wasapi:new"));
+        assert_eq!(ordered_candidates(&preferences, &devices, None), devices);
+        assert!(!reconnect_reassigned_preferences(
+            &mut preferences,
+            &devices,
+            &hardware
+        ));
+    }
+
+    #[test]
+    fn reassigned_endpoint_never_matches_by_name_or_unknown_hardware_alone() {
+        let original = vec![preference(Some("wasapi:old"), "Shure")];
+        let devices = vec![device("wasapi:new", "Shure", true)];
+        for hardware in [
+            std::collections::HashMap::new(),
+            std::collections::HashMap::from([("wasapi:new".into(), 42)]),
+            std::collections::HashMap::from([("wasapi:old".into(), 42)]),
+            std::collections::HashMap::from([("wasapi:old".into(), 42), ("wasapi:new".into(), 84)]),
+            std::collections::HashMap::from([("wasapi:old".into(), 0), ("wasapi:new".into(), 0)]),
+            std::collections::HashMap::from([
+                ("wasapi:old".into(), u64::MAX as u128),
+                ("wasapi:new".into(), u64::MAX as u128),
+            ]),
+        ] {
+            let mut preferences = original.clone();
+            assert!(!reconnect_reassigned_preferences(
+                &mut preferences,
+                &devices,
+                &hardware
+            ));
+            assert_eq!(preferences, original);
+        }
+    }
+
+    #[test]
+    fn reassigned_endpoint_requires_one_matching_capture_in_the_container() {
+        let original = vec![preference(Some("wasapi:old"), "Shure")];
+        let hardware = std::collections::HashMap::from([
+            ("wasapi:old".into(), 42),
+            ("wasapi:new".into(), 42),
+            ("wasapi:other".into(), 42),
+        ]);
+        for devices in [
+            vec![
+                device("wasapi:new", "Shure", true),
+                device("wasapi:other", "Shure", false),
+            ],
+            vec![
+                device("wasapi:new", "Shure", true),
+                device("wasapi:other", "Other input", false),
+            ],
+            vec![device("wasapi:new", "Other input", true)],
+        ] {
+            let mut preferences = original.clone();
+            assert!(!reconnect_reassigned_preferences(
+                &mut preferences,
+                &devices,
+                &hardware
+            ));
+            assert_eq!(preferences, original);
+        }
+    }
+
+    #[test]
+    fn present_endpoint_and_non_windows_id_remain_authoritative() {
+        let mut preferences = vec![
+            preference(Some("wasapi:old"), "Shure"),
+            preference(Some("alsa:old"), "Shure"),
+        ];
+        let original = preferences.clone();
+        let devices = vec![
+            device("wasapi:old", "Renamed", false),
+            device("wasapi:new", "Shure", true),
+        ];
+        let hardware = std::collections::HashMap::from([
+            ("wasapi:old".into(), 42),
+            ("wasapi:new".into(), 42),
+            ("alsa:old".into(), 42),
+        ]);
+        assert!(!reconnect_reassigned_preferences(
+            &mut preferences,
+            &devices,
+            &hardware
+        ));
+        assert_eq!(preferences, original);
+    }
+
+    #[test]
+    fn reconnected_endpoint_deduplicates_without_losing_top_rank() {
+        let mut preferences = vec![
+            preference(Some("wasapi:old"), "Shure"),
+            preference(Some("wasapi:new"), "Shure"),
+            preference(Some("wasapi:headset"), "Corsair"),
+        ];
+        let devices = vec![device("wasapi:new", "Shure", true)];
+        let hardware =
+            std::collections::HashMap::from([("wasapi:old".into(), 42), ("wasapi:new".into(), 42)]);
+        assert!(reconnect_reassigned_preferences(
+            &mut preferences,
+            &devices,
+            &hardware
+        ));
+        assert!(bind_legacy_preferences(&mut preferences, &devices));
+        assert_eq!(
+            preferences,
+            vec![
+                preference(Some("wasapi:new"), "Shure"),
+                preference(Some("wasapi:headset"), "Corsair")
+            ]
+        );
     }
 
     #[test]

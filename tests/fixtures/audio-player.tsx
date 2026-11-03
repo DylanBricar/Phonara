@@ -1,6 +1,7 @@
 import React from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import "../../src/i18n";
 import {
   AudioPlayer,
   AudioPlayerGroup,

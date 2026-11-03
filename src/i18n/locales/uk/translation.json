@@ -985,6 +985,7 @@
     "title": "New in Phonara v{{version}}"
   },
   "common": {
+    "playbackPosition": "Позиція відтворення",
     "loading": "Завантаження...",
     "delete": "Видалити",
     "close": "Закрити",

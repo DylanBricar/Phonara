@@ -169,7 +169,7 @@ Phonara builds on both projects by actively integrating pending pull requests, f
 
 | Source                                              | Reviewed Through |
 | --------------------------------------------------- | ---------------- |
-| [cjpais/Handy](https://github.com/cjpais/Handy)     | `5a9451e7`       |
+| [cjpais/Handy](https://github.com/cjpais/Handy)     | `82dfab9f`       |
 | [Melvynx/Parler](https://github.com/Melvynx/Parler) | `1aaa38b6`       |
 
 The [2026-10-21 upstream review](docs/upstream-review-2026-10-21.md)
@@ -178,6 +178,11 @@ reliability fixes are integrated selectively. The C++ engine now runs in a
 supervised worker with transcribe-cpp 0.4.0, while the existing ONNX engines and
 model identities remain available. Four new ASR packages extend the bundled
 catalogue. The review records the remaining differences and validation limits.
+
+The [2026-11-03 follow-up](docs/microphone-reconnection-2026-11-03.md) reviews
+34 additional Handy commits through 0.10.0 and confirms Parler is unchanged.
+It records the Windows microphone reconnection fix and the compatible shortcut,
+audio-player and IME fixes included in Phonara 0.9.9.
 
 ### How to Contribute
 

@@ -1,4 +1,5 @@
 mod device;
+pub(crate) mod identity;
 pub(crate) mod input_state;
 pub(crate) mod probe;
 mod recorder;

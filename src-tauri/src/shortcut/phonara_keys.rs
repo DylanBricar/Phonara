@@ -52,9 +52,13 @@ impl PhonaraKeysState {
     pub fn new(app: AppHandle) -> Result<Self, String> {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ManagerCommand>();
 
+        // Initialize both listeners before returning success so an unavailable
+        // backend reaches the caller and activates its Tauri fallback.
+        let (blocking_manager, passive_manager) =
+            create_managers(HotkeyManager::new_with_blocking, HotkeyManager::new)?;
         let app_clone = app.clone();
         let thread_handle = thread::spawn(move || {
-            Self::manager_thread(cmd_rx, app_clone);
+            Self::manager_thread(cmd_rx, app_clone, blocking_manager, passive_manager);
         });
 
         Ok(Self {
@@ -68,22 +72,12 @@ impl PhonaraKeysState {
         })
     }
 
-    fn manager_thread(cmd_rx: Receiver<ManagerCommand>, app: AppHandle) {
-        let blocking_manager = match HotkeyManager::new_with_blocking() {
-            Ok(m) => m,
-            Err(e) => {
-                error!("Failed to create blocking HotkeyManager: {}", e);
-                return;
-            }
-        };
-        let passive_manager = match HotkeyManager::new() {
-            Ok(m) => m,
-            Err(e) => {
-                error!("Failed to create passive HotkeyManager: {}", e);
-                return;
-            }
-        };
-
+    fn manager_thread(
+        cmd_rx: Receiver<ManagerCommand>,
+        app: AppHandle,
+        blocking_manager: HotkeyManager,
+        passive_manager: HotkeyManager,
+    ) {
         let mut blocking_binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
         let mut blocking_hotkey_to_binding: HashMap<HotkeyId, (String, String)> = HashMap::new();
         let mut passive_binding_to_hotkey: HashMap<String, HotkeyId> = HashMap::new();
@@ -350,6 +344,17 @@ impl PhonaraKeysState {
     }
 }
 
+fn create_managers<T, E: std::fmt::Display>(
+    blocking: impl FnOnce() -> Result<T, E>,
+    passive: impl FnOnce() -> Result<T, E>,
+) -> Result<(T, T), String> {
+    let blocking =
+        blocking().map_err(|error| format!("Failed to create blocking HotkeyManager: {error}"))?;
+    let passive =
+        passive().map_err(|error| format!("Failed to create passive HotkeyManager: {error}"))?;
+    Ok((blocking, passive))
+}
+
 impl Drop for PhonaraKeysState {
     fn drop(&mut self) {
         self.recording_running.store(false, Ordering::SeqCst);
@@ -550,4 +555,46 @@ pub fn stop_phonara_keys_recording(app: AppHandle) -> Result<(), String> {
     let result = state.stop_recording();
     super::resume_all_shortcuts(&app);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::create_managers;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    struct Listener(Arc<AtomicBool>);
+
+    impl Drop for Listener {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn blocking_listener_failure_reaches_the_caller_without_starting_passive() {
+        let result = create_managers::<(), _>(
+            || Err("permission denied"),
+            || panic!("passive listener must not start after blocking failure"),
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            "Failed to create blocking HotkeyManager: permission denied"
+        );
+    }
+
+    #[test]
+    fn passive_listener_failure_reaches_the_caller_and_releases_blocking() {
+        let released = Arc::new(AtomicBool::new(false));
+        let result = create_managers(
+            || Ok(Listener(Arc::clone(&released))),
+            || Err("listener unavailable"),
+        );
+        assert!(
+            matches!(result, Err(error) if error == "Failed to create passive HotkeyManager: listener unavailable")
+        );
+        assert!(released.load(Ordering::SeqCst));
+    }
 }

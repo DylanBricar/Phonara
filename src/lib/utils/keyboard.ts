@@ -1,5 +1,10 @@
 export type OSType = "macos" | "windows" | "linux" | "unknown";
 
+/** IME boundary events may clear isComposing before their legacy code changes. */
+export const isComposingKeyEvent = (
+  event: Pick<KeyboardEvent, "isComposing" | "keyCode">,
+): boolean => event.isComposing || event.keyCode === 229;
+
 const COMPOUND_KEY_DISPLAY: Record<string, string> = {
   capslock: "Caps Lock",
   numlock: "Num Lock",

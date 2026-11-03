@@ -985,6 +985,7 @@
     "title": "New in Phonara v{{version}}"
   },
   "common": {
+    "playbackPosition": "Playback position",
     "loading": "Loading...",
     "delete": "Delete",
     "close": "Close",
