@@ -1,3 +1,4 @@
+use super::super::identity::input_endpoint_containers;
 use super::policy::{
     classify, endpoints_for_container, parse_product_reply, radio_presence, Observation, Query,
     Reply, Tracker, POLL_INTERVAL, RECEIVER_PRODUCT,
@@ -7,16 +8,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows::core::GUID;
-use windows::Win32::Devices::FunctionDiscovery::PKEY_Device_ContainerId;
-use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
-use windows::Win32::Media::Audio::{
-    eCapture, IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
-};
-use windows::Win32::System::Com::StructuredStorage::{PropVariantClear, PropVariantToGUID};
-use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
-    COINIT_MULTITHREADED, STGM_READ,
-};
 
 const VENDOR_ID: u16 = 0x1b1c;
 const USAGE_PAGE: u16 = 0xff42;
@@ -197,7 +188,8 @@ fn probe_receivers(trackers: &mut HashMap<ReceiverKey, ReceiverState>) -> Result
     if receivers.is_empty() {
         return Ok(());
     }
-    let endpoints = input_endpoint_containers().map_err(|_| "audio_endpoint_enumeration_failed")?;
+    let endpoints =
+        input_endpoint_containers(false).map_err(|_| "audio_endpoint_enumeration_failed")?;
     for (index, (key, handle)) in receivers.iter().enumerate() {
         let same_container = trackers
             .keys()
@@ -382,55 +374,6 @@ fn query_property(handle: &HidDevice, channel: u8, property: u8) -> QueryResult 
         }
     }
     QueryResult::unknown("reply_limit_exceeded")
-}
-
-struct ComApartment(bool);
-
-impl Drop for ComApartment {
-    fn drop(&mut self) {
-        if self.0 {
-            // SAFETY: balances this thread's successful CoInitializeEx only.
-            unsafe { CoUninitialize() };
-        }
-    }
-}
-
-fn input_endpoint_containers() -> windows::core::Result<Vec<(String, u128)>> {
-    // SAFETY: COM objects remain on this thread; allocated IDs and property
-    // variants are freed before the apartment guard is dropped. No stream opens.
-    unsafe {
-        let initialized = CoInitializeEx(None, COINIT_MULTITHREADED);
-        if initialized.is_err() && initialized != RPC_E_CHANGED_MODE {
-            initialized.ok()?;
-        }
-        let _apartment = ComApartment(initialized.is_ok());
-        let enumerator: IMMDeviceEnumerator =
-            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
-        let devices = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
-        let mut endpoints = Vec::new();
-        for index in 0..devices.GetCount()? {
-            let device = devices.Item(index)?;
-            let id = device.GetId()?;
-            let endpoint_id = id.to_string();
-            CoTaskMemFree(Some(id.0.cast()));
-            let endpoint_id = endpoint_id?;
-            let Ok(store) = device.OpenPropertyStore(STGM_READ) else {
-                continue;
-            };
-            let Ok(mut property) = store.GetValue(&PKEY_Device_ContainerId) else {
-                continue;
-            };
-            let container = PropVariantToGUID(&property);
-            let _ = PropVariantClear(&mut property);
-            if let Ok(container) = container {
-                endpoints.push((
-                    cpal::DeviceId::new(cpal::HostId::Wasapi, endpoint_id.as_str()).to_string(),
-                    container.to_u128(),
-                ));
-            }
-        }
-        Ok(endpoints)
-    }
 }
 
 #[cfg(test)]

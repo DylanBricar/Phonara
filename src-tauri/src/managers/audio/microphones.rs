@@ -3,9 +3,9 @@ use crate::audio_toolkit::audio::{input_state::input_states, list_raw_input_devi
 use crate::audio_toolkit::CpalInputDevice;
 use crate::helpers::clamshell;
 use crate::microphone::{
-    bind_legacy_preferences, first_usable, ordered_candidates, should_reconcile_stream,
-    usable_microphones, MicrophoneDevice, MicrophonePreference, MicrophoneUnavailableReason,
-    UnavailableMicrophone,
+    bind_legacy_preferences, first_usable, ordered_candidates, reconnect_reassigned_preferences,
+    should_reconcile_stream, usable_microphones, MicrophoneDevice, MicrophonePreference,
+    MicrophoneUnavailableReason, UnavailableMicrophone,
 };
 use crate::settings::{get_settings, update_settings};
 use crate::transcription_coordinator::TranscriptionCoordinator;
@@ -111,7 +111,19 @@ impl AudioRecordingManager {
         let usable = usable_microphones(&available, &unavailable);
         let mut settings = get_settings(&self.app_handle);
         let original_preferences = settings.microphone_priority.clone();
-        if bind_legacy_preferences(&mut settings.microphone_priority, &available) {
+        let needs_reconnect = original_preferences.iter().any(|preference| {
+            preference.id.as_ref().is_some_and(|id| {
+                id.starts_with("wasapi:") && !available.iter().any(|device| device.id == *id)
+            })
+        });
+        let reconnected = needs_reconnect
+            && reconnect_reassigned_preferences(
+                &mut settings.microphone_priority,
+                &available,
+                &crate::audio_toolkit::audio::identity::input_hardware_identities(),
+            );
+        let bound_legacy = bind_legacy_preferences(&mut settings.microphone_priority, &available);
+        if reconnected || bound_legacy {
             let bound = settings.microphone_priority.clone();
             let persisted = update_settings(&self.app_handle, |current| {
                 if current.microphone_priority != original_preferences {
@@ -121,6 +133,11 @@ impl AudioRecordingManager {
                 true
             });
             if persisted {
+                if reconnected {
+                    log::info!(
+                        "Reconnected microphone priority using its Windows hardware identity"
+                    );
+                }
                 let _ = self.app_handle.emit(
                     "settings-changed",
                     serde_json::json!({

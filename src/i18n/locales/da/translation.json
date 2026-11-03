@@ -985,6 +985,7 @@
     "title": "Nyt i Phonara v{{version}}"
   },
   "common": {
+    "playbackPosition": "Afspilningsposition",
     "loading": "Indlæser...",
     "delete": "Slet",
     "close": "Luk",

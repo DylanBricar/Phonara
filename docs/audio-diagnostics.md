@@ -19,6 +19,14 @@ The capture probe opens that exact input twice, for 1.5 seconds each: first thro
 
 ## Availability and fallback
 
+From 0.9.9, a missing Windows endpoint can be reconnected automatically only
+when its retained hardware container ID is non-zero and is not the shared system
+container, exactly one active capture
+endpoint shares it, and its full display name is unchanged. The saved order is
+preserved. Unknown identities and ambiguous or renamed inputs still use the
+explicit reconnect action. `input_hardware_identities` in the JSON report maps
+retained endpoint IDs to lossless hexadecimal hardware-container strings.
+
 The UI preserves the raw OS inventory. An unavailable reason affects candidate selection without making a Windows-present device look physically disconnected. Windows endpoint mute controls are read without changing their state or opening capture. Hardware mute is supported when its driver exposes it through that control; unsupported hardware states remain unknown.
 
 The explicitly supported Corsair XT receiver is identified by VID/PID, HID collection and exact audio container mapping. The poll reads its connected-slot bitfield before and after probing, checks connected slots 1-7, and repeats each product read. A stable empty slot inventory, or disappearance of the previously identified XT slot with the other slots accounted for, can establish absence after three spaced observations. Timeouts, inconsistent inventories and uncorrelated reports alone never establish absence. Uncertainty retains only an already-confirmed absence until its original eight-second expiry.

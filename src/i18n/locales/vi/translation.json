@@ -985,6 +985,7 @@
     "title": "New in Phonara v{{version}}"
   },
   "common": {
+    "playbackPosition": "Vị trí phát",
     "loading": "Đang tải...",
     "delete": "Xóa",
     "close": "Đóng",

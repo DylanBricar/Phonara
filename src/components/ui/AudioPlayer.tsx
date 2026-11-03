@@ -9,6 +9,7 @@ import React, {
   useState,
 } from "react";
 import { Play, Pause } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const revokeBlobSource = (src: string | null) => {
   if (src?.startsWith("blob:")) URL.revokeObjectURL(src);
@@ -59,6 +60,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   className = "",
   autoPlay = false,
 }) => {
+  const { t } = useTranslation();
   const group = useContext(AudioPlayerGroupContext);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -320,10 +322,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   };
 
   const handleSliderMouseDown = () => {
+    dragTimeRef.current = currentTime;
     setIsDragging(true);
   };
 
   const handleSliderTouchStart = () => {
+    dragTimeRef.current = currentTime;
     setIsDragging(true);
   };
 
@@ -370,6 +374,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
         <input
           type="range"
+          aria-label={t("common.playbackPosition")}
           min="0"
           max={duration || 0}
           step="0.01"

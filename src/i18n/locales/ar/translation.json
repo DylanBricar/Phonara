@@ -985,6 +985,7 @@
     "title": "New in Phonara v{{version}}"
   },
   "common": {
+    "playbackPosition": "موضع التشغيل",
     "loading": "...جاري التحميل",
     "delete": "حذف",
     "close": "إغلاق",

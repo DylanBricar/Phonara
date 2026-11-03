@@ -538,6 +538,7 @@ fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
         };
         let unavailable = crate::audio_toolkit::audio::wireless::unavailable_endpoints();
         let controls = crate::audio_toolkit::audio::input_state::input_states();
+        let hardware = crate::audio_toolkit::audio::identity::input_hardware_identities();
         let probe = args.probe_microphone.as_ref().map(|id| {
             devices
                 .iter()
@@ -568,6 +569,7 @@ fn run_headless_transcription(app: &AppHandle, args: &CliArgs) -> i32 {
             }).collect::<Vec<_>>(),
             "wireless_observations": observations,
             "input_controls": controls,
+            "input_hardware_identities": hardware.into_iter().map(|(id, container)| (id, format!("{container:032x}"))).collect::<std::collections::BTreeMap<_, _>>(),
             "capture_probe": probe,
             "recorder_probe": recorder_probe,
         });
